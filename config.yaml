@@ -1,0 +1,41 @@
+# GeoGenIE Configuration File
+
+# Data Input and Preprocessing
+vcf: null  # Path to the VCF file with SNPs. Format: filename.vcf.
+gtseq: null  # Path to the GTSeq CSV file with SNPs. Format: filename.csv
+sample_data: null  # REQUIRED: Tab-delimited file with 'sampleID', 'x', 'y'.
+popmap: null  # Tab-delimited file with 'sampleID' and 'populationID'.
+min_mac: 2  # Minimum minor allele count to retain SNPs.
+max_SNPs: null  # Max number of SNPs to randomly subset.
+impute_missing: true  # Impute missing values from binomial distribution.
+
+# Model Configuration
+nlayers: 10  # Hidden layers in the network.
+width: 256  # Neurons per layer.
+dropout_prop: 0.2  # Dropout rate (0-1).
+
+# Training Parameters
+batch_size: 32  # Training batch size.
+max_epochs: 5000  # Max training epochs.
+learning_rate: 0.001  # Learning rate for optimizer.
+l2_reg: 0.0  # L2 regularization weight.
+patience: 48  # Epochs to wait before reducing learning rate.
+train_split: 0.85  # Training data proportion (0-1).
+val_split: 0.15  # Validation data proportion (0-1).
+class_weights: false  # Apply class weights for imbalanced datasets.
+bootstrap: false  # Enable bootstrap replicates.
+nboots: 50  # Number of bootstrap replicates. Used if 'bootstrap' is true.
+do_gridsearch: false  # Perform parameter optimization search.
+n_iter: 100  # Number of optimization Iterations for parameter sweeps.
+
+# Output and Miscellaneous
+prefix: "output"  # Output file prefix.
+sqldb: "./database"  # SQLite3 database directory.
+output_dir: "./output"  # Directory to store output files.
+seed: null  # Random seed for reproducibility.
+gpu_number: null  # GPU number for computation. Null for CPU usage.
+n_jobs: -1  # Number of CPU jobs to use. -1 uses all available CPUs.
+show_progress_bar: false  # Show tqdm progress bar during optimization.
+show_plots: false # Show plots in-line. Useful in interactive environments.
+fontsize: 18 # Set font size for plot axis labels and title.
+verbose: 1  # Verbosity level (0-2), ranging from least (0) to most (2) verbose.
