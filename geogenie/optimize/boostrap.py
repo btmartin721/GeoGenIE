@@ -24,6 +24,7 @@ class Bootstrap:
         dropout_prop,
         lr,
         l2_weight,
+        patience,
         output_dir,
         prefix,
         sample_data,
@@ -45,6 +46,7 @@ class Bootstrap:
             dropout_prop (float): Dropout proportion to reduce overfitting.
             lr (float): Learning rate for optimizer.
             l2_weight (float): L2 regularization weight (weight decay).
+            patience (int): Patience to use for early stopping.
             prefix (str): Prefix for output filenames.
             sample_data (pd.DataFrame): Sample data with coordinates.
             verbose (int): Verbosity level.
@@ -63,6 +65,7 @@ class Bootstrap:
         self.dropout_prop = dropout_prop
         self.lr = lr
         self.l2_weight = l2_weight
+        self.patience = patience
         self.output_dir = output_dir
         self.prefix = prefix
         self.sample_data = sample_data
@@ -145,13 +148,13 @@ class Bootstrap:
                     resampled_loader,
                     self.val_loader,
                     model,
-                    None,
+                    None,  # trial
                     criterion,
                     optimizer,
-                    self.epochs,
-                    self.patience,
-                    0.5,
-                    self.patience // 6,
+                    0.5,  # lr_scheduler_factor
+                    self.patience // 6,  # lr_scheduler_patience
+                    verbose=self.verbose,
+                    grad_clip=True,
                 )
 
                 self.plotting.plot_times(
@@ -169,7 +172,7 @@ class Bootstrap:
                 self.logger.error(
                     f"Error during bootstrap iteration {boot + 1}: {e}",
                 )
-                continue
+                raise
 
     def save_bootstrap_results(self, boot, val_metrics, val_preds, write_func):
         """
@@ -195,7 +198,7 @@ class Bootstrap:
             f"{self.prefix}_bootrep{boot}_metrics.txt",
         )
 
-        with open(os.path.join(outdir, boot_file_path), "w") as fout:
+        with open(boot_file_path, "w") as fout:
             for k, v in val_metrics.items():
                 fout.write(f"{k}: {v}\n")
 
@@ -244,7 +247,7 @@ class Bootstrap:
             None
         """
         try:
-            if self.args.verbose >= 1:
+            if self.verbose >= 1:
                 self.logger.info("Starting bootstrap training.")
 
             outdir = os.path.join(self.output_dir, "models")
@@ -278,6 +281,7 @@ class Bootstrap:
                     self.device,
                     coord_scaler,
                 )
+
                 bootstrap_metrics.append(val_metrics)
                 bootstrap_preds.append(val_preds)
 
@@ -300,7 +304,7 @@ class Bootstrap:
             # Additional processing like plotting aggregate results, computing
             # statistics, etc.
             self.plotting.plot_bootstrap_aggregates(
-                pd.DataFrame.from_dict(bootstrap_metrics), outfile, train_times
+                pd.DataFrame.from_dict(bootstrap_metrics), outfile
             )
 
             if self.verbose >= 1:
