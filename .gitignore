@@ -13,3 +13,13 @@ build/
 *.vcf.gz.tbi
 *.db
 *_sample_data.txt
+*.pkl
+*.pt
+sim_*.png
+af_*.png
+df_orig.csv
+demography.yaml
+simulated_unlinked*
+settings.json
+*.h5
+population_counts.png
