@@ -161,8 +161,11 @@ class GeoGenIE:
             verbose = False
 
         early_stopping = EarlyStopping(
+            output_dir=self.args.output_dir,
+            prefix=self.args.prefix,
             patience=self.args.patience,
             verbose=verbose,
+            delta=0,
         )
 
         lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -567,12 +570,13 @@ class GeoGenIE:
             self.args.nboots,
             self.args.max_epochs,
             self.device,
-            self.samples_weight,
+            self.data_structure.samples_weight,
             best_params["width"],
             best_params["nlayers"],
             best_params["dropout_prop"],
             best_params["learning_rate"],
             best_params["l2_reg"],
+            self.args.patience,
             self.args.output_dir,
             self.args.prefix,
             self.data_structure.sample_data,
@@ -817,17 +821,18 @@ class GeoGenIE:
 
             self.save_model(best_model, model_out)
 
-            trained_model = self.load_model(
-                self.data_structure.train_loader.dataset.tensors[0].shape[1],
-                best_params["width"],
-                best_params["nlayers"],
-                best_params["dropout_prop"],
-                MLPRegressor,
-                model_out,
-                device,
-            )
+            if not self.args.bootstrap:
+                trained_model = self.load_model(
+                    self.data_structure.train_loader.dataset.tensors[0].shape[1],
+                    best_params["width"],
+                    best_params["nlayers"],
+                    best_params["dropout_prop"],
+                    MLPRegressor,
+                    model_out,
+                    device,
+                )
 
-            return trained_model, real_preds
+                return trained_model, real_preds
 
         except Exception as e:
             self.logger.error(f"Unexpected error occurred: {e}")
