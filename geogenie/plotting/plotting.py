@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 from optuna import visualization
+import geopandas as gpd
 
 
 class PlotGenIE:
@@ -51,6 +52,10 @@ class PlotGenIE:
         plt.title("Training and Validation Loss Over Epochs", fontsize=self.fontsize)
         plt.xlabel("Epochs", fontsize=self.fontsize)
         plt.ylabel("Loss", fontsize=self.fontsize)
+        plt.ylim(
+            bottom=min(np.min(val_loss), 0),
+            top=min(np.max(val_loss), np.min(val_loss) * 5),
+        )
         plt.legend()
         plt.savefig(filename, facecolor="white", bbox_inches="tight")
 
@@ -129,3 +134,39 @@ class PlotGenIE:
         if self.show_plots:
             plt.show()
         plt.close()
+
+
+def plot_geographic_error_distribution(
+    actual_coords, predicted_coords, filename, show=False
+):
+    gdf_actual = gpd.GeoDataFrame(
+        geometry=gpd.points_from_xy(actual_coords[:, 0], actual_coords[:, 1])
+    )
+    gdf_predicted = gpd.GeoDataFrame(
+        geometry=gpd.points_from_xy(predicted_coords[:, 0], predicted_coords[:, 1])
+    )
+
+    fig, ax = plt.subplots(figsize=(10, 10))
+    gdf_actual.plot(ax=ax, color="blue", label="Actual Locations")
+    gdf_predicted.plot(ax=ax, color="red", label="Predicted Locations")
+
+    # Draw lines between actual and predicted points
+    for actual_point, predicted_point in zip(
+        gdf_actual.geometry, gdf_predicted.geometry
+    ):
+        plt.plot(
+            [actual_point.x, predicted_point.x],
+            [actual_point.y, predicted_point.y],
+            "k-",
+            alpha=0.5,
+        )
+
+    plt.legend()
+    plt.title("Geographic Error Distribution")
+    plt.xlabel("Longitude")
+    plt.ylabel("Latitude")
+    plt.grid(True)
+    fig.savefig(filename, facecolor="white")
+    if show:
+        plt.show()
+    plt.close()
