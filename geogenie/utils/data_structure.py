@@ -5,12 +5,22 @@ import numpy as np
 import pandas as pd
 from pysam import VariantFile
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MinMaxScaler, StandardScaler, PolynomialFeatures
+from sklearn.impute import SimpleImputer
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
 from torch import float as torchfloat
 from torch import tensor as torchtensor
 from torch.utils.data import DataLoader, TensorDataset, WeightedRandomSampler
+from torch_geometric.data import DataLoader as GeoDataLoader
+from torch import tensor
+from torch import float as torchfloat
+from torch import int8 as torchint
+
 
 from geogenie.samplers.samplers import Samplers
 from geogenie.utils.gtseq2vcf import GTseqToVCF
+from geogenie.utils.utils import base_to_int, get_iupac_dict
 
 
 class DataStructure:
@@ -26,7 +36,7 @@ class DataStructure:
         self.vcf = VariantFile(vcf_file)  # pysam
         self.samples = list(self.vcf.header.samples)
         self.logger = logging.getLogger(__name__)
-        self.genotypes, self.is_missing = self._parse_genotypes()
+        self.genotypes, self.is_missing, self.genotypes_iupac = self._parse_genotypes()
         self.verbose = verbose
 
         self.samples_weight = None
@@ -45,23 +55,55 @@ class DataStructure:
 
         Also, create a boolean array indicating missing data."""
         genotypes_list = []
+        iupac_alleles = []
         is_missing_list = []
 
         for record in self.vcf:
             if self.is_biallelic(record):
                 genos = []
                 missing = []
+                alleles = []
                 for sample in record.samples.values():
                     genotype = sample.get("GT", (None, None))
                     genos.append(genotype)
                     missing.append(any(allele is None for allele in genotype))
+                    alleles.append(sample.alleles)
                 genotypes_list.append(genos)
                 is_missing_list.append(missing)
+                iupac_alleles.append(
+                    self.map_alleles_to_iupac(alleles, get_iupac_dict())
+                )
 
         # Convert lists to NumPy arrays for efficient computation
         genotypes_array = np.array(genotypes_list, dtype="object")
         is_missing_array = np.array(is_missing_list, dtype=bool)
-        return genotypes_array, is_missing_array
+        genotypes_iupac_array = np.array(iupac_alleles, dtype="object")
+        return genotypes_array, is_missing_array, genotypes_iupac_array
+
+    def map_alleles_to_iupac(self, alleles, iupac_dict):
+        """
+        Maps a list of allele tuples to their corresponding IUPAC nucleotide codes.
+
+        Args:
+            alleles (list of tuple of str): List of tuples representing alleles.
+            iupac_dict (dict): Dictionary mapping allele tuples to IUPAC codes.
+
+        Returns:
+            list of str: List of IUPAC nucleotide codes corresponding to the alleles.
+        """
+        mapped_codes = []
+        for allele_pair in alleles:
+            if len(allele_pair) == 1:
+                # Direct mapping for single alleles
+                code = iupac_dict.get((allele_pair[0],), "N")
+            else:
+                ap = ("N", "N") if None in allele_pair else allele_pair
+
+                # Sort the tuple for unordered pairs
+                sorted_pair = tuple(sorted(ap))
+                code = iupac_dict.get(sorted_pair, "N")
+            mapped_codes.append(code)
+        return mapped_codes
 
     def is_biallelic(self, record):
         """Check if number of alleles is biallelic."""
@@ -94,7 +136,7 @@ class DataStructure:
 
         return np.array(allele_counts)
 
-    def impute_missing(self, af_threshold=0.5):
+    def impute_missing(self, model_type, af_threshold=0.5):
         """Impute missing genotypes based on a given allele frequency threshold."""
         if self.verbose >= 1:
             self.logger.info("Imputing missing values.")
@@ -104,6 +146,14 @@ class DataStructure:
                 if self.is_missing[i, j]:
                     af = np.random.binomial(1, af_threshold, 2)
                     self.genotypes[i, j] = tuple(af)
+        simputer = SimpleImputer(
+            strategy="most_frequent",
+            missing_values="N",
+        )
+        self.genotypes_iupac = simputer.fit_transform(
+            self.genotypes_iupac.T,
+        )
+        self.genotypes_iupac = self.genotypes_iupac.T
         if self.verbose >= 1:
             self.logger.info("Imputations successful.")
 
@@ -128,6 +178,8 @@ class DataStructure:
                 self.popmap_data["sampleID2"] = self.popmap_data["sampleID"]
                 self.popmap_data.set_index("sampleID", inplace=True)
                 self.popmap_data = self.popmap_data.reindex(np.array(self.samples))
+        else:
+            self.popmap_data = None
 
         # Sample ordering check
         self._check_sample_ordering(class_weights)
@@ -141,15 +193,18 @@ class DataStructure:
         self.sdlong = np.nanstd(self.locs[:, 0])
         self.meanlat = np.nanmean(self.locs[:, 1])
         self.sdlat = np.nanstd(self.locs[:, 1])
-        self.locs = np.array(
-            [
-                [
-                    (x[0] - self.meanlong) / self.sdlong,
-                    (x[1] - self.meanlat) / self.sdlat,
-                ]
-                for x in self.locs
-            ]
-        )
+
+        self.norm = MinMaxScaler()
+        self.locs = self.norm.fit_transform(self.locs)
+        # self.locs = np.array(
+        #     [
+        #         [
+        #             (x[0] - self.meanlong) / self.sdlong,
+        #             (x[1] - self.meanlat) / self.sdlat,
+        #         ]
+        #         for x in self.locs
+        #     ]
+        # )
 
         if self.verbose >= 1:
             self.logger.info("Done normalizing.")
@@ -174,6 +229,19 @@ class DataStructure:
                         "sample IDs match those in the VCF."
                     )
 
+    def encode_sequence(self, seq):
+        """Encode DNA sequence as integers.
+
+        4 corresponds to default value for "N".
+
+        Args:
+            seq (str): Whole sequence, not delimited.
+
+        Returns:
+            list: Integer-encoded IUPAC genotypes.
+        """
+        return [base_to_int().get(base, 4) for base in seq]
+
     def snps_to_012(self, min_mac=2, max_snps=None, return_values=True):
         if self.verbose >= 1:
             self.logger.info("Converting SNPs to 012-encodings.")
@@ -186,20 +254,49 @@ class DataStructure:
             arr=self.genotypes_enc,
         )
 
-        if min_mac > 1:
-            mac = 2 * allele_counts[:, 2] + allele_counts[:, 1]
-            self.genotypes_enc = self.genotypes_enc[mac >= min_mac, :]
-
-        if max_snps is not None:
-            self.genotypes_enc = self.genotypes_enc[
-                np.random.choice(
-                    range(self.genotypes_enc.shape[0]), max_snps, replace=False
-                ),
-                :,
-            ]
+        self.genotypes_enc = self.filter_gt(
+            self.genotypes_enc, min_mac, max_snps, allele_counts
+        )
 
         if self.verbose >= 1:
             self.logger.info("Input SNP data converted to 012-encodings.")
+
+        if return_values:
+            return self.genotypes_enc
+
+    def filter_gt(self, gt, min_mac, max_snps, allele_counts):
+        if min_mac > 1:
+            mac = 2 * allele_counts[:, 2] + allele_counts[:, 1]
+            gt = gt[mac >= min_mac, :]
+
+        if max_snps is not None:
+            gt = gt[
+                np.random.choice(range(gt.shape[0]), max_snps, replace=False),
+                :,
+            ]
+
+        return gt
+
+    def snps_to_int(self, min_mac=2, max_snps=None, return_values=True):
+        snps = self.genotypes_iupac.tolist()
+        snps = ["".join(x) for x in snps]
+        snps = list(map(self.encode_sequence, snps))
+        snps_enc = np.array(snps, dtype="int8")
+
+        gt_012 = np.sum(self.genotypes, axis=-1).astype("int8")
+
+        allele_counts = np.apply_along_axis(
+            lambda x: np.bincount(x, minlength=3),
+            axis=1,
+            arr=gt_012,
+        )
+
+        self.genotypes_enc = self.filter_gt(
+            snps_enc,
+            min_mac,
+            max_snps,
+            allele_counts,
+        )
 
         if return_values:
             return self.genotypes_enc
@@ -279,10 +376,14 @@ class DataStructure:
 
         # Prepare genotype and location data for training, validation, testing,
         # and prediction
-        X_train = np.transpose(self.genotypes_enc[:, train_indices])
-        X_val = np.transpose(self.genotypes_enc[:, val_indices])
-        X_test = np.transpose(self.genotypes_enc[:, test_indices])
-        X_pred = np.transpose(self.genotypes_enc[:, pred_indices])
+        # X_train = np.transpose(self.genotypes_enc[:, train_indices])
+        # X_val = np.transpose(self.genotypes_enc[:, val_indices])
+        # X_test = np.transpose(self.genotypes_enc[:, test_indices])
+        # X_pred = np.transpose(self.genotypes_enc[:, pred_indices])
+        X_train = self.genotypes_enc[train_indices, :]
+        X_val = self.genotypes_enc[val_indices, :]
+        X_test = self.genotypes_enc[test_indices, :]
+        X_pred = self.genotypes_enc[pred_indices, :]
         y_train = self.locs[train_indices]
         y_val = self.locs[val_indices]
         y_test = self.locs[test_indices]
@@ -374,13 +475,23 @@ class DataStructure:
 
         # Replace missing data
         if args.impute_missing:
-            self.impute_missing()
+            self.impute_missing(args.model_type)
 
-        self.snps_to_012(
-            min_mac=args.min_mac, max_snps=args.max_SNPs, return_values=False
-        )
+        if args.model_type in ["mlp", "gcn"]:
+            self.snps_to_012(
+                min_mac=args.min_mac,
+                max_snps=args.max_SNPs,
+                return_values=False,
+            )
+        elif args.model_type == "transformer":
+            self.snps_to_int(
+                min_mac=args.min_mac,
+                max_snps=args.max_SNPs,
+                return_values=False,
+            )
 
         self.normalize_locs()
+        self.embed(args, n_components=3, alg="tsne")
         self.split_train_test(args.train_split, args.val_split, args.seed)
 
         if args.verbose >= 1:
@@ -395,6 +506,7 @@ class DataStructure:
             args.batch_size,
             y_strat=self.popmap_data,
             indices=self.indices["train_indices"],
+            model_type=args.model_type,
         )
 
         # Creating DataLoaders
@@ -403,6 +515,7 @@ class DataStructure:
             self.data["y_val"],
             args.class_weights,
             args.batch_size,
+            model_type=args.model_type,
         )
 
         # Creating DataLoaders
@@ -411,13 +524,41 @@ class DataStructure:
             self.data["y_test"],
             args.class_weights,
             args.batch_size,
+            model_type=args.model_type,
         )
+
+        if args.model_type == "gcn":
+            self.train_loader, self.train_dataset = self.train_loader
+            self.val_loader, self.val_dataset = self.val_loader
+            self.test_loader, self.test_dataset = self.test_loader
 
         if args.verbose >= 1:
             self.logger.info("DataLoaders created succesfully.")
 
         if args.verbose >= 1:
             self.logger.info("Data loading and preprocessing completed.")
+
+    def embed(self, args, n_components=3, alg="polynomial", degree=2):
+        X = self.genotypes_enc.copy()
+
+        if args.model_type != "transformer":
+            do_embed = True
+        else:
+            do_embed = False
+        if alg.lower() == "polynomial":
+            emb = PolynomialFeatures(degree)
+        elif alg.lower() == "pca":
+            emb = PCA(n_components=n_components)
+        elif alg.lower() == "tsne":
+            emb = TSNE(n_components=n_components)
+        elif alg.lower() == "none":
+            do_embed = False
+        else:
+            raise ValueError(f"Invalid 'alg' value pasesed to 'embed()': {alg}")
+
+        if do_embed:
+            self.genotypes_enc = emb.fit_transform(X.T)
+        self.genotypes_enc = X.T
 
     def create_dataloaders(
         self,
@@ -427,56 +568,76 @@ class DataStructure:
         batch_size,
         y_strat=None,
         indices=None,
+        model_type="mlp",
     ):
         """
         Create dataloaders for training, testing, and validation datasets.
 
         Args:
-            X (numpy.ndarray): X dataset. Train, test, or validation.
-            y (numpy.ndarray): Target data (train, test, or validation).
+            X (numpy.ndarray or list of PyG Data objects): X dataset. Train, test, or validation.
+            y (numpy.ndarray or None): Target data (train, test, or validation). None for GNN.
             class_weights (bool): If True, calculates class weights for weighted sampling.
             batch_size (int): Batch size to use with model.
             y_strat (dict): Mapping data used for class weights, if applicable.
             indices (numpy.ndarray): Indices to use if 'class_weights' is True.
+            model_type (str): Type of the model ('gcn', 'transformer', 'mlp').
 
         Returns:
-            torch.utils.data.DataLoader: DataLoader object.
+            DataLoader: DataLoader object suitable for the specified model type.
         """
-        # Convert data to TensorDatasets
-        dataset = TensorDataset(
-            torchtensor(X, dtype=torchfloat),
-            torchtensor(y, dtype=torchfloat),
-        )
+        # For GNNs
+        if model_type == "gcn":
+            if not isinstance(X, list):
+                try:
+                    X = X.tolist()
+                except Exception:
+                    raise ValueError(
+                        "For GNNs, X should be a list of PyG Data objects",
+                    )
+            # Convert data to TensorDatasets
+            dataset = TensorDataset(
+                tensor(X, dtype=torchfloat), tensor(y, dtype=torchfloat)
+            )
 
-        weighted_sampler = None
-        samples_weight = None
-        # Initialize weighted sampler if class weights are used
-        if class_weights:
-            if y_strat is not None and indices is not None:
-                samp = Samplers(indices)
-                samples_weight = samp.get_class_weights_populations(y_strat)
-                weighted_sampler = WeightedRandomSampler(
-                    weights=samples_weight,
-                    num_samples=len(samples_weight),
-                    replacement=True,
-                )
-            elif y_strat is None and indices is not None:
-                raise TypeError(
-                    "y_strat and indices must both or neither be provided.",
-                )
-            elif y_strat is not None and indices is None:
-                raise TypeError(
-                    "y_strat and indices must both or neither be provided.",
-                )
+            return GeoDataLoader(X, batch_size=batch_size, shuffle=True), dataset
 
-            self.samples_weight = samples_weight
+        # For MLPs and Transformers
+        else:
+            # Convert data to TensorDatasets
+            dataset = TensorDataset(
+                tensor(X, dtype=torchfloat),
+                tensor(y, dtype=torchfloat),
+            )
 
-        # Create DataLoaders
-        return DataLoader(
-            dataset,
-            batch_size=batch_size,
-            sampler=weighted_sampler,
-        )
+            weighted_sampler = None
+            samples_weight = None
+            # Initialize weighted sampler if class weights are used
+            if class_weights:
+                if y_strat is not None and indices is not None:
+                    samp = Samplers(indices)
+                    samples_weight = samp.get_class_weights_populations(y_strat)
+                    weighted_sampler = WeightedRandomSampler(
+                        weights=samples_weight,
+                        num_samples=len(samples_weight),
+                        replacement=True,
+                    )
+                elif y_strat is None and indices is not None:
+                    raise TypeError(
+                        "y_strat and indices must both or neither be provided.",
+                    )
+                elif y_strat is not None and indices is None:
+                    raise TypeError(
+                        "y_strat and indices must both or neither be provided.",
+                    )
+
+                self.samples_weight = samples_weight
+
+            # Create DataLoaders
+            return DataLoader(
+                dataset,
+                batch_size=batch_size,
+                sampler=weighted_sampler,
+            )
 
     def read_gtseq(
         self,
