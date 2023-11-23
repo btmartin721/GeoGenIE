@@ -26,6 +26,20 @@ class ProcessPopMapAction(argparse.Action):
         setattr(namespace, self.dest, values if values is not None else False)
 
 
+def validate_model_type(value):
+    if value is None:
+        raise TypeError("'model_type' cannot be NoneType.")
+    try:
+        model_type = str(value)
+        if model_type not in ["mlp", "gcn", "transformer"]:
+            raise ValueError(f"Invalid model_type argument provided: {model_type}")
+    except (TypeError, ValueError):
+        raise TypeError(
+            f"Could not convert 'model_type' to a string: {type(model_type)}"
+        )
+    return model_type
+
+
 def validate_gpu_number(value):
     """
     Validate the provided GPU number.
@@ -125,6 +139,18 @@ def validate_l2(value):
     except ValueError:
         raise ValueError(f"'l2_reg' must be >= 0 and < 1.0: {l2}")
     return l2
+
+
+def validate_transformer(value):
+    try:
+        val = int(value)
+        if val <= 0:
+            raise ValueError(
+                f"Transformer parameter settings must integers > 0, but got: {value}"
+            )
+    except ValueError:
+        raise ValueError(f"Transformer parameter settings must integers > 0: {value}")
+    return val
 
 
 def validate_patience(value):
@@ -256,6 +282,12 @@ def setup_parser():
         "Model Configuration", description="Model configuration arguments."
     )
     model_group.add_argument(
+        "--model_type",
+        type=validate_model_type,
+        default="mlp",
+        help="Specify model type. Supported options: 'mlp', 'gcn', 'transformer'.",
+    )
+    model_group.add_argument(
         "--nlayers",
         type=int,
         default=10,
@@ -343,6 +375,28 @@ def setup_parser():
         type=int,
         default=100,
         help="Iterations for parameter optimization. Used with 'do_gridsearch'. Optuna recommends between 100-1000. Default: 100.",
+    )
+    transformer_group = parser.add_argument_group(
+        "Transformer-specific model parameters.",
+        description="Parameters to adjust for the 'transformer' model_type only.",
+    )
+    transformer_group.add_argument(
+        "--embedding_dim",
+        type=validate_transformer,
+        default=256,
+        help="The size of the embedding vectors. It defines the dimensionality of the input and output tokens in the model. Higher dimensions can capture more information but increase computational complexity.",
+    )
+    transformer_group.add_argument(
+        "--nhead",
+        type=validate_transformer,
+        default=8,
+        help="In multi-head attention, this parameter defines the number of parallel attention heads used. More heads allow the model to simultaneously attend to information from different representation subspaces, potentially capturing a wider range of dependencies.",
+    )
+    transformer_group.add_argument(
+        "--dim_feedforward",
+        type=validate_transformer,
+        default=1024,
+        help="The size of the inner feedforward networks within each transformer layer. Adjusting this can impact the model’s ability to process information within each layer.",
     )
 
     # Output and Miscellaneous Arguments
