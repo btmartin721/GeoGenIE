@@ -4,6 +4,8 @@ import os
 import time
 import traceback
 from pathlib import Path
+from math import radians, cos, sin, asin, sqrt
+
 
 import numpy as np
 import optuna
@@ -13,8 +15,10 @@ import torch.nn as nn
 import torch.optim as optim
 from scipy import spatial
 from torch.utils.data import DataLoader, TensorDataset
+from torchmetrics.functional import r2_score
+from sklearn.metrics.pairwise import haversine_distances
 
-from geogenie.models.models import MLPRegressor
+from geogenie.models.models import MLPRegressor, SNPTransformer, GeoRegressionGNN
 from geogenie.optimize.boostrap import Bootstrap
 from geogenie.optimize.optuna_opt import Optimize
 from geogenie.plotting.plotting import PlotGenIE
@@ -98,9 +102,7 @@ class GeoGenIE:
         if self.args.verbose >= 1:
             self.logger.info(f"Model saved to {filename}")
 
-    def load_model(
-        self, input_size, width, nlayers, dropout_prop, ModelClass, filename, device
-    ):
+    def load_model(self, input_size, ModelClass, filename, device):
         """
         Loads a model from a file.
 
@@ -116,9 +118,17 @@ class GeoGenIE:
         Returns:
             torch.nn.Module: The loaded PyTorch model.
         """
+
         model = ModelClass(
-            input_size, width=256, nlayers=10, dropout_prop=0.2, device="cpu"
-        )  # Initialize your model class here
+            input_size,
+            width=self.args.width,
+            nlayers=self.args.nlayers,
+            dropout_prop=self.args.dropout_prop,
+            device=device,
+            embedding_dim=self.args.embedding_dim,
+            nhead=self.args.nhead,
+            dim_feedforward=self.args.dim_feedforward,
+        )
         model.load_state_dict(torch.load(filename, map_location=device))
         model.to(device)
         return model
@@ -190,35 +200,71 @@ class GeoGenIE:
                 start_time = time.time()  # Start time for the epoch
                 model.train()
                 total_loss = 0.0
-                for data, targets in train_loader:
-                    data = data.to(model.device)
-                    targets = targets.to(model.device)
+
+                if self.args.model_type == "gcn":
                     optimizer.zero_grad()
-                    outputs = model(data)
-                    loss = criterion(outputs, targets)
+                    outputs = model(train_loader)
+                    loss = criterion(outputs, self.data_structure.train_dataset[1])
                     loss.backward()
-
-                    if grad_clip:
-                        # Gradient clipping.
-                        nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                     optimizer.step()
-                    total_loss += loss.item()
-                avg_train_loss = total_loss / len(train_loader)
+                    train_losses.append(loss.item())
+                    avg_train_loss = loss.item()
 
-                train_losses.append(avg_train_loss)
+                    model.eval()
+                    with torch.no_grad():
+                        outputs = model(val_loader)
+                        val_loss = criterion(
+                            outputs, self.data_structure.val_dataset[1]
+                        )
 
-                # Validation
-                model.eval()
-                total_val_loss = 0.0
-                with torch.no_grad():
-                    for data, targets in val_loader:
-                        data = data.to(model.device)
-                        targets = targets.to(model.device)
+                        val_losses.append(val_loss.item())
+                        avg_val_loss = val_loss.item()
+                else:
+                    for batch in train_loader:
+                        if self.args.model_type == "gcn":
+                            data = batch
+                        else:
+                            data, targets = batch
+                        if self.args.model_type == "transformer":
+                            data = data.long()
+
+                        if self.args.model_type != "gcn":
+                            data = data.to(model.device)
+                            targets = targets.to(model.device)
+                        optimizer.zero_grad()
                         outputs = model(data)
-                        val_loss = criterion(outputs, targets)
-                        total_val_loss += val_loss.item()
-                avg_val_loss = total_val_loss / len(val_loader)
-                val_losses.append(avg_val_loss)
+                        loss = criterion(outputs, targets)
+                        loss.backward()
+
+                        if grad_clip and self.args.model_type == "mlp":
+                            # Gradient clipping.
+                            nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                        optimizer.step()
+                        total_loss += loss.item()
+                    avg_train_loss = total_loss / len(train_loader)
+
+                    train_losses.append(avg_train_loss)
+
+                    # Validation
+                    model.eval()
+                    total_val_loss = 0.0
+                    with torch.no_grad():
+                        for batch in val_loader:
+                            if self.args.model_type == "gcn":
+                                data = batch
+                            else:
+                                data, targets = batch
+                            if self.args.model_type == "transformer":
+                                data = data.long()
+
+                            if self.args.model_type != "gcn":
+                                data = data.to(model.device)
+                                targets = targets.to(model.device)
+                            outputs = model(data)
+                            val_loss = criterion(outputs, targets)
+                            total_val_loss += val_loss.item()
+                    avg_val_loss = total_val_loss / len(val_loader)
+                    val_losses.append(avg_val_loss)
 
                 if verbose:
                     self.logger.info(
@@ -300,6 +346,63 @@ class GeoGenIE:
         """Custom PyTorch loss function."""
         return torch.sqrt(torch.sum((y_pred - y_true) ** 2, axis=1)).mean()
 
+    @staticmethod
+    def haversine_distance_torch(lat1, lon1, lat2, lon2):
+        """
+        Calculate the Haversine distance between two points on the earth in PyTorch.
+        Args:
+            lat1, lon1, lat2, lon2: latitude and longitude of two points in radians.
+        Returns:
+            Distance in kilometers.
+        """
+        R = 6371.0  # Earth radius in kilometers
+        dlat = lat2 - lat1
+        dlon = lon2 - lon1
+
+        a = (
+            torch.sin(dlat / 2.0) ** 2
+            + torch.cos(lat1) * torch.cos(lat2) * torch.sin(dlon / 2.0) ** 2
+        )
+        c = 2 * torch.atan2(torch.sqrt(a), torch.sqrt(1 - a))
+
+        return R * c
+
+    # @staticmethod
+    # def haversine_loss(y_true, y_pred):
+    #     """
+    #     Haversine loss function.
+    #     Args:
+    #         y_true: true values tensor, expected shape (batch_size, 2)
+    #         y_pred: predicted values tensor, expected shape (batch_size, 2)
+    #     Returns:
+    #         Loss value.
+    #     """
+    #     lat1, lon1 = y_true[:, 0], y_true[:, 1]
+    #     lat2, lon2 = y_pred[:, 0], y_pred[:, 1]
+    #     # Convert degrees to radians
+    #     lat1, lon1, lat2, lon2 = map(torch.deg2rad, (lat1, lon1, lat2, lon2))
+
+    #     return torch.mean(GeoGenIE.haversine_distance_torch(lat1, lon1, lat2, lon2))
+
+    def haversine_loss(
+        pred, target, epsSq=1.0e-13, epsAs=1.0e-7
+    ):  # add optional epsilons to avoid singularities
+        lon1, lat1 = torch.split(pred, 1, dim=1)
+        lon2, lat2 = torch.split(target, 1, dim=1)
+        r = 6371  # Radius of Earth in kilometers
+        phi1, phi2 = torch.deg2rad(lat1), torch.deg2rad(lat2)
+        delta_phi, delta_lambda = torch.deg2rad(lat2 - lat1), torch.deg2rad(lon2 - lon1)
+        a = (
+            torch.sin(delta_phi / 2) ** 2
+            + torch.cos(phi1) * torch.cos(phi2) * torch.sin(delta_lambda / 2) ** 2
+        )
+        # return tensor.mean(2 * r * torch.asin(torch.sqrt(a)))
+        # "+ (1.0 - a**2) * epsSq" to keep sqrt() away from zero
+        # "(1.0 - epsAs) *" to keep asin() away from plus-or-minus one
+        return torch.Tensor.mean(
+            2 * r * torch.asin((1.0 - epsAs) * torch.sqrt(a + (1.0 - a**2) * epsSq))
+        )
+
     def predict_locations(
         self,
         model,
@@ -325,6 +428,8 @@ class GeoGenIE:
         ground_truth = []
         with torch.no_grad():
             for data, target in data_loader:
+                if self.args.model_type == "transformer":
+                    data = data.long()
                 data = data.to(device)
                 output = model(data)
                 predictions.append(output.cpu().numpy())
@@ -333,44 +438,95 @@ class GeoGenIE:
         predictions = np.concatenate(predictions, axis=0)
         ground_truth = np.concatenate(ground_truth, axis=0)
 
-        meanlong, meanlat, sdlong, sdlat = (
-            coord_scaler["meanlong"],
-            coord_scaler["meanlat"],
-            coord_scaler["sdlong"],
-            coord_scaler["sdlat"],
-        )
+        # meanlong, meanlat, sdlong, sdlat = (
+        #     coord_scaler["meanlong"],
+        #     coord_scaler["meanlat"],
+        #     coord_scaler["sdlong"],
+        #     coord_scaler["sdlat"],
+        # )
 
         def rescale_predictions(y):
-            return np.array(
-                [[x[0] * sdlong + meanlong, x[1] * sdlat + meanlat] for x in y]
-            )
+            return self.data_structure.norm.inverse_transform(y)
+            # return np.array(
+            #     [[x[0] * sdlong + meanlong, x[1] * sdlat + meanlat] for x in y]
+            # )
 
         # Rescale predictions and ground truth to original scale
         rescaled_preds = rescale_predictions(predictions)
         rescaled_truth = rescale_predictions(ground_truth)
 
         def get_r2(y_true, y_pred, idx):
+            # return r2_score(y_true[:, idx], y_pred[:, idx])
             return np.corrcoef(y_pred[:, idx], y_true[:, idx])[0][1] ** 2
 
         # Evaluate predictions
         r2_long = get_r2(rescaled_truth, rescaled_preds, 0)
         r2_lat = get_r2(rescaled_truth, rescaled_preds, 1)
 
+        def haversine(lon1, lat1, lon2, lat2):
+            """
+            Calculate the great circle distance in kilometers between two points
+            on the earth (specified in decimal degrees).
+
+            Args:
+            lon1 (float): Longitude of the first point.
+            lat1 (float): Latitude of the first point.
+            lon2 (float): Longitude of the second point.
+            lat2 (float): Latitude of the second point.
+
+            Returns:
+            float: Distance in kilometers.
+            """
+            # Convert decimal degrees to radians
+            lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
+
+            # Haversine formula
+            dlon = lon2 - lon1
+            dlat = lat2 - lat1
+            a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
+            c = 2 * asin(sqrt(a))
+            r = 6371  # Radius of earth in kilometers. Use 3956 for miles.
+            return c * r
+
         def get_dist_metric(y_true, y_pred, func):
+            """
+            Calculate the distance metric between y_true and y_pred using the specified function.
+
+            Args:
+            y_true (numpy.ndarray): Array of true values (latitude, longitude).
+            y_pred (numpy.ndarray): Array of predicted values (latitude, longitude).
+            func (function): Function to aggregate distances.
+
+            Returns:
+            float: Aggregated distance.
+            """
             return func(
                 [
-                    spatial.distance.euclidean(y_pred[x, :], y_true[x, :])
+                    haversine(y_pred[x, 0], y_pred[x, 1], y_true[x, 0], y_true[x, 1])
                     for x in range(len(y_pred))
                 ]
             )
 
+        # def get_dist_metric(y_true, y_pred, func):
+        #     # haversine_distances(y_true, y_pred)
+        #     # return func(
+        #     #     [
+        #     #         spatial.distance.euclidean(y_pred[x, :], y_true[x, :])
+        #     #         for x in range(len(y_pred))
+        #     #     ]
+        #     # )
+
         mean_dist = get_dist_metric(rescaled_truth, rescaled_preds, np.mean)
         median_dist = get_dist_metric(rescaled_truth, rescaled_preds, np.median)
+        std_dist = get_dist_metric(rescaled_truth, rescaled_preds, np.std)
         self.logger.info(f"R2(x) = {r2_long}")
         self.logger.info(f"R2(y) = {r2_lat}")
-        self.logger.info(f"Mean Validation Error (Euclidean Distance) = {mean_dist}")
+        self.logger.info(f"Mean Validation Error (Haversine Distance) = {mean_dist}")
         self.logger.info(
-            f"Median Validation Error (Euclidean Distance) = {median_dist}"
+            f"Median Validation Error (Haversine Distance) = {median_dist}"
+        )
+        self.logger.info(
+            f"Standard deviation for Error (Haversine Distance) = {std_dist}"
         )
 
         # return the evaluation metrics along with the predictions
@@ -379,6 +535,7 @@ class GeoGenIE:
             "r2_lat": r2_lat,
             "mean_dist": mean_dist,
             "median_dist": median_dist,
+            "stdev_dist": std_dist,
         }
 
         return rescaled_preds, metrics
@@ -426,12 +583,27 @@ class GeoGenIE:
         try:
             self.logger.info("Starting standard model training.")
 
-            # Initialize the model
-            model = ModelClass(
-                input_size=train_loader.dataset.tensors[0].shape[1],
-                device=device,
-                **best_params,
-            ).to(device)
+            if self.args.model_type == "transformer":
+                if "embedding_dim" not in best_params:
+                    best_params["embedding_dim"] = self.args.embedding_dim
+                if "nhead" not in best_params:
+                    best_params["nhead"] = self.args.nhead
+                if "dim_feedforward" not in best_params:
+                    best_params["dim_feedforward"] = self.args.dim_feedforward
+
+            try:
+                # Initialize the model
+                model = ModelClass(
+                    input_size=train_loader.dataset.tensors[0].shape[1],
+                    device=device,
+                    **best_params,
+                ).to(device)
+            except AttributeError:
+                model = ModelClass(
+                    input_size=len(train_loader.dataset[0]),
+                    device=device,
+                    **best_params,
+                ).to(device)
 
             # Define the criterion and optimizer
             optimizer = optim.Adam(
@@ -698,26 +870,33 @@ class GeoGenIE:
 
         outdir = self.args.output_dir
         prefix = self.args.prefix
-        sdlong, sdlat = self.data_structure.sdlong, self.data_structure.sdlat
-        mlong, mlat = self.data_structure.meanlong, self.data_structure.meanlat
 
         # Convert X_pred to a PyTorch tensor and move it to the correct
         # device (GPU or CPU)
-        pred_tensor = torch.tensor(
-            self.data_structure.data["X_pred"], dtype=torch.float
-        ).to(device)
+
+        if self.args.model_type == "transformer":
+            dtype = torch.long
+        else:
+            dtype = torch.float
+        pred_tensor = torch.tensor(self.data_structure.data["X_pred"], dtype=dtype).to(
+            device
+        )
 
         with torch.no_grad():
             # Make predictions
             pred_locations_scaled = model(pred_tensor)
 
         # rescale the predictions back to the original range
-        pred_locations = np.array(
-            [
-                [x[0] * sdlong + mlong, x[1] * sdlat + mlat]
-                for x in pred_locations_scaled.cpu().numpy()
-            ]
+        pred_locations = self.data_structure.norm.inverse_transform(
+            pred_locations_scaled.cpu().numpy()
         )
+
+        # pred_locations = np.array(
+        #     [
+        #         [x[0] * sdlong + mlong, x[1] * sdlat + mlat]
+        #         for x in pred_locations_scaled.cpu().numpy()
+        #     ]
+        # )
 
         pred_outfile = os.path.join(
             outdir,
@@ -764,12 +943,23 @@ class GeoGenIE:
             self.data_structure.define_params(self.args)
             best_params = self.data_structure.params
 
-            criterion = GeoGenIE.euclidean_distance_loss
+            criterion = GeoGenIE.haversine_loss
+
+            if self.args.model_type == "transformer":
+                modelclass = SNPTransformer
+            elif self.args.model_type == "mlp":
+                modelclass = MLPRegressor
+            elif self.args.model_type == "gcn":
+                modelclass = GeoRegressionGNN
+            else:
+                raise ValueError(
+                    f"Invalid 'model_type' parameter specified: {self.args.model_type}"
+                )
 
             # Parameter optimization with Optuna
             if self.args.do_gridsearch:
                 best_params = self.optimize_parameters(
-                    criterion=criterion, ModelClass=MLPRegressor
+                    criterion=criterion, ModelClass=modelclass
                 )
                 self.data_structure.params = best_params
                 self.logger.info(f"Best found parameters: {best_params}")
@@ -778,7 +968,7 @@ class GeoGenIE:
             if self.args.bootstrap:
                 self.perform_bootstrap_training(
                     criterion,
-                    MLPRegressor,
+                    modelclass,
                     best_params,
                 )
 
@@ -791,7 +981,7 @@ class GeoGenIE:
                 self.data_structure.test_loader,
                 device,
                 best_params,
-                MLPRegressor,
+                modelclass,
                 criterion,
             )
 
@@ -821,18 +1011,18 @@ class GeoGenIE:
 
             self.save_model(best_model, model_out)
 
-            if not self.args.bootstrap:
-                trained_model = self.load_model(
-                    self.data_structure.train_loader.dataset.tensors[0].shape[1],
-                    best_params["width"],
-                    best_params["nlayers"],
-                    best_params["dropout_prop"],
-                    MLPRegressor,
-                    model_out,
-                    device,
-                )
+            # if not self.args.bootstrap:
+            #     trained_model = self.load_model(
+            #         self.data_structure.train_loader.dataset.tensors[0].shape[1],
+            #         best_params["width"],
+            #         best_params["nlayers"],
+            #         best_params["dropout_prop"],
+            #         MLPRegressor,
+            #         model_out,
+            #         device,
+            #     )
 
-                return trained_model, real_preds
+            #     return trained_model, real_preds
 
         except Exception as e:
             self.logger.error(f"Unexpected error occurred: {e}")
