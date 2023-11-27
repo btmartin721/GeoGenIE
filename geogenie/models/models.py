@@ -1,8 +1,9 @@
+import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
-from torch_geometric.nn import GCNConv
 from torch import mean as torchmean
+from torch_geometric.nn import GCNConv
+
 from geogenie.utils.utils import base_to_int
 
 
@@ -24,42 +25,50 @@ class MLPRegressor(nn.Module):
         self.elu = nn.ELU()
         self.dropout = nn.Dropout(dropout_prop)
 
+        self.layers = nn.ModuleList()
+
         # Creating blocks of layers with residual connections
-        self.blocks = nn.ModuleList()
-        for _ in range(nlayers // 2):  # Handles even numbers of layers
-            self.blocks.append(
-                nn.Sequential(
-                    nn.Linear(width, width, device=self.device),
-                    nn.BatchNorm1d(width, device=self.device),
-                    nn.ELU(),
-                    nn.Dropout(dropout_prop),
-                    nn.Linear(width, width, device=self.device),
-                    nn.BatchNorm1d(width, device=self.device),
+        # self.blocks = nn.ModuleList()
+        # for _ in range(nlayers // 2):  # Handles even numbers of layers
+        inwidth = width
+        for _ in range(nlayers):
+            outwidth = int(inwidth * 0.9)
+            if outwidth > 2:
+                self.layers.append(
+                    nn.Sequential(
+                        nn.Linear(inwidth, outwidth, device=self.device),
+                        nn.BatchNorm1d(outwidth, outwidth, device=self.device),
+                        nn.Dropout(dropout_prop),
+                    )
                 )
-            )
+                inwidth = outwidth
+            else:
+                break
 
         # Adding an additional layer if nlayers is odd
-        self.extra_layer = None
-        if nlayers % 2 != 0:
-            self.extra_layer = nn.Sequential(
-                nn.Linear(width, width, device=self.device),
-                nn.BatchNorm1d(width, device=self.device),
-                nn.ELU(),
-                nn.Dropout(dropout_prop),
-            )
+        # self.extra_layer = None
+        # if nlayers % 2 != 0:
+        #     self.extra_layer = nn.Sequential(
+        #         nn.Linear(width, width, device=self.device),
+        #         nn.BatchNorm1d(width, device=self.device),
+        #         nn.ELU(),
+        #         nn.Dropout(dropout_prop),
+        #     )
 
-        self.output_layer = nn.Linear(width, 2, device=self.device)
+        self.output_layer = nn.Linear(inwidth, 2, device=self.device)
 
     def forward(self, x):
         """Forward pass through network."""
         x = self.elu(self.input_layer(x))
+        for layer in self.layers:
+            x = self.elu(layer(x))
         # Applying residual blocks
-        for block in self.blocks:
-            residual = x
-            # Add the residual (skip connection)
-            x = self.elu(block(x) + residual)
-        if self.extra_layer is not None:
-            x = self.extra_layer(x)
+        # for block in self.blocks:
+        # residual = x
+        # Add the residual (skip connection)
+        # x = self.elu(block(x) + residual)
+        # if self.extra_layer is not None:
+        # x = self.extra_layer(x)
         return self.output_layer(x)
 
 
