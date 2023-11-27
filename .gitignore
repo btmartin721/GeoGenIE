@@ -23,3 +23,4 @@ simulated_unlinked*
 settings.json
 *.h5
 population_counts.png
+geogenie_test*
