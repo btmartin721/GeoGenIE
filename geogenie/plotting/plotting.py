@@ -1,12 +1,21 @@
 import logging
 import os
 import traceback
+import wget
+from pathlib import Path
 
+import geopandas as gpd
+import matplotlib.colors as colors
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import seaborn as sns
 from optuna import visualization
-import geopandas as gpd
+from shapely.geometry import Point
+from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import RBF, WhiteKernel
+
+from geogenie.utils.scorers import haversine
 
 
 class PlotGenIE:
@@ -135,38 +144,195 @@ class PlotGenIE:
             plt.show()
         plt.close()
 
-
-def plot_geographic_error_distribution(
-    actual_coords, predicted_coords, filename, show=False
-):
-    gdf_actual = gpd.GeoDataFrame(
-        geometry=gpd.points_from_xy(actual_coords[:, 0], actual_coords[:, 1])
-    )
-    gdf_predicted = gpd.GeoDataFrame(
-        geometry=gpd.points_from_xy(predicted_coords[:, 0], predicted_coords[:, 1])
-    )
-
-    fig, ax = plt.subplots(figsize=(10, 10))
-    gdf_actual.plot(ax=ax, color="blue", label="Actual Locations")
-    gdf_predicted.plot(ax=ax, color="red", label="Predicted Locations")
-
-    # Draw lines between actual and predicted points
-    for actual_point, predicted_point in zip(
-        gdf_actual.geometry, gdf_predicted.geometry
+    def plot_geographic_error_distribution(
+        self,
+        actual_coords,
+        predicted_coords,
+        outfile,
+        fontsize,
+        url,
+        output_dir,
+        buffer=0.1,
+        show=False,
     ):
-        plt.plot(
-            [actual_point.x, predicted_point.x],
-            [actual_point.y, predicted_point.y],
-            "k-",
-            alpha=0.5,
+        # Calculate Haversine error for each pair of points
+        haversine_errors = np.array(
+            [
+                haversine(act[0], act[1], pred[0], pred[1])
+                for act, pred in zip(actual_coords, predicted_coords)
+            ]
         )
 
-    plt.legend()
-    plt.title("Geographic Error Distribution")
-    plt.xlabel("Longitude")
-    plt.ylabel("Latitude")
-    plt.grid(True)
-    fig.savefig(filename, facecolor="white")
-    if show:
-        plt.show()
-    plt.close()
+        # Fit Gaussian Process Regressor with a larger initial length scale and
+        # no upper bound
+        kernel = 1 * RBF(
+            length_scale=1.0, length_scale_bounds=(1e-2, 1e5)
+        ) + WhiteKernel(noise_level=1, noise_level_bounds=(1e-10, 1e5))
+        gp = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=25)
+        gp.fit(actual_coords, haversine_errors)
+
+        # Create a grid over the area of interest
+        grid_x, grid_y = np.meshgrid(
+            np.linspace(
+                actual_coords[:, 0].min() - buffer,
+                actual_coords[:, 0].max() + buffer,
+                1000,
+            ),
+            np.linspace(
+                actual_coords[:, 1].min() - buffer,
+                actual_coords[:, 1].max() + buffer,
+                1000,
+            ),
+        )
+
+        # Predict error for each point in the grid
+        error_predictions = gp.predict(
+            np.vstack((grid_x.ravel(), grid_y.ravel())).T
+        ).reshape(grid_x.shape)
+
+        # Plot the interpolated errors with corrected color normalization
+        fig, ax = plt.subplots(figsize=(12, 12))
+
+        # Correct the normalization range based on the actual error values
+        vmin, vmax = np.min(haversine_errors), np.max(haversine_errors)
+
+        norm = colors.Normalize(vmin=vmin, vmax=vmax)
+
+        contour = ax.contourf(
+            grid_x, grid_y, error_predictions, levels=1000, cmap="coolwarm", norm=norm
+        )
+        cbar = plt.colorbar(
+            contour,
+            ax=ax,
+            label="Prediction Error (km)",
+            extend="both",
+        )
+
+        # Load and plot dynamic boundaries
+        gdf = gpd.GeoDataFrame(
+            geometry=gpd.points_from_xy(actual_coords[:, 0], actual_coords[:, 1])
+        )
+
+        outshp = os.path.join(output_dir, "shapefile")
+
+        # Download and save map data.
+        wget.download(url, outshp)
+        mapfile = os.path.join(outshp, url.split("/")[-1])
+
+        try:
+            mapdata = gpd.read_file(os.path.join(outshp, url.split("/")[-1]))
+        except Exception:
+            self.logger.error(f"Could not read map file {mapfile} from url {url}.")
+            raise
+        ax.set_xlim(
+            [actual_coords[:, 0].min() - buffer, actual_coords[:, 0].max() + buffer]
+        )
+        ax.set_ylim(
+            [actual_coords[:, 1].min() - buffer, actual_coords[:, 1].max() + buffer]
+        )
+        mapdata[mapdata.geometry.intersects(gdf.unary_union.envelope)].boundary.plot(
+            ax=ax,
+            edgecolor="k",
+            linewidth=5,
+            facecolor="none",
+            label="Haversine Error",
+        )
+
+        # Customization
+        ax.set_title(
+            "Kriging of Haversine Prediction Errors",
+            fontsize=fontsize,
+        )
+        ax.set_xlabel("Longitude", fontsize=fontsize)
+        ax.set_ylabel("Latitude", fontsize=fontsize)
+        ax.xaxis.set_tick_params(labelsize=fontsize)
+        ax.yaxis.set_tick_params(labelsize=fontsize)
+        for t in cbar.ax.get_yticklabels():
+            t.set_fontsize(fontsize)
+
+        cbar.ax.set_ylabel("Prediction Error (km)", fontsize=fontsize)
+
+        if show:
+            plt.show()
+        fig.savefig(outfile, facecolor="white", bbox_inches="tight")
+
+    def plot_pca_curve(self, x, vr, knee, output_dir, prefix, show=False):
+        plt.figure()
+        plt.plot(x, vr, "-", color="b")
+        plt.xlabel("Number of Components")
+        plt.ylabel("Cumulative Explained Variance")
+        plt.axvline(
+            x=knee,
+            label="Selected Number of Components",
+            linestyle="--",
+            color="orange",
+        )
+        plt.legend(loc="best")
+        plt.title(f"N-Components vs. Explained Variance")
+
+        outfile = os.path.join(output_dir, "plots", f"{prefix}_pca_curve.png")
+
+        if show:
+            plt.show()
+        plt.savefig(outfile, facecolor="white", bbox_inches="tight")
+
+    def plot_dbscan_clusters(
+        self,
+        Xy,
+        output_dir,
+        prefix,
+        dataset,
+        labels,
+        show=False,
+        buffer=1.0,
+    ):
+        """
+        Plot DBSCAN clusters for the given DataFrame.
+
+        Args:
+            y (numpy.ndarray): Array containing the data with 'x' and 'y' coordinates (pre-transformed).
+            eps (float): The maximum distance between two samples for DBSCAN.
+            min_samples (int): The number of samples in a neighborhood for DBSCAN.
+            show (bool): Whether to show plots in-line.
+        """
+        # Applying DBSCAN
+        df = pd.DataFrame(Xy, columns=["x", "y"] + list(range(Xy.shape[1] - 2)))
+
+        # Convert to GeoDataFrame for plotting
+        gdf = gpd.GeoDataFrame(df, geometry=[Point(xy) for xy in zip(df.x, df.y)])
+        gdf["cluster"] = labels
+
+        # Plotting
+        fig, ax = plt.subplots(figsize=(10, 8))
+        # Load USA states data
+        usa_states = gpd.read_file(
+            "https://www2.census.gov/geo/tiger/GENZ2021/shp/cb_2021_us_state_20m.zip"
+        )
+
+        # Extract Arkansas
+        arkansas = usa_states[usa_states["STUSPS"] == "AR"]
+
+        # Plotting
+        arkansas.plot(ax=ax, color="white", edgecolor="black")
+
+        # Plot each cluster with different color
+        unique_labels = set(labels)
+        for label in unique_labels:
+            cluster_gdf = gdf[gdf["cluster"] == label]
+            color = (
+                "red"
+                if label == -1
+                else np.random.rand(
+                    3,
+                )
+            )  # Outliers in red
+            cluster_gdf.plot(ax=ax, color=color)
+
+        outfile = os.path.join(
+            output_dir, "plots", f"{prefix}_outlier_clustering_{dataset}.png"
+        )
+
+        if show:
+            plt.show()
+        fig.savefig(outfile, facecolor="white", bbox_inches="tight")
+        plt.close()
