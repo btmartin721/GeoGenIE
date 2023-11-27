@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 
 
 def setup_logger(log_file):
@@ -7,6 +8,8 @@ def setup_logger(log_file):
 
     # Clear existing handlers
     logger.handlers = []
+
+    Path(log_file).parents[0].mkdir(parents=True, exist_ok=True)
 
     # Create handlers
     file_handler = logging.FileHandler(log_file)
