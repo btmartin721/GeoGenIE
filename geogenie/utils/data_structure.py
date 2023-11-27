@@ -3,22 +3,22 @@ import os
 
 import numpy as np
 import pandas as pd
+from kneed import KneeLocator
 from pysam import VariantFile
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import MinMaxScaler, StandardScaler, PolynomialFeatures
-from sklearn.impute import SimpleImputer
+from sklearn.cluster import DBSCAN
 from sklearn.decomposition import PCA
+from sklearn.impute import SimpleImputer
 from sklearn.manifold import TSNE
+from sklearn.model_selection import GridSearchCV, train_test_split
+from sklearn.neighbors import KernelDensity, NearestNeighbors
+from sklearn.preprocessing import MinMaxScaler, PolynomialFeatures, RobustScaler
 from torch import float as torchfloat
-from torch import tensor as torchtensor
-from torch.utils.data import DataLoader, TensorDataset, WeightedRandomSampler
-from torch_geometric.data import DataLoader as GeoDataLoader
 from torch import tensor
-from torch import float as torchfloat
-from torch import int8 as torchint
+from torch.utils.data import DataLoader, TensorDataset
+from torch_geometric.data import DataLoader as GeoDataLoader
 
-
-from geogenie.samplers.samplers import Samplers
+from geogenie.plotting.plotting import PlotGenIE
+from geogenie.samplers.samplers import GeographicDensitySampler
 from geogenie.utils.gtseq2vcf import GTseqToVCF
 from geogenie.utils.utils import base_to_int, get_iupac_dict
 
@@ -38,7 +38,6 @@ class DataStructure:
         self.logger = logging.getLogger(__name__)
         self.genotypes, self.is_missing, self.genotypes_iupac = self._parse_genotypes()
         self.verbose = verbose
-
         self.samples_weight = None
 
     def define_params(self, args):
@@ -194,20 +193,96 @@ class DataStructure:
         self.meanlat = np.nanmean(self.locs[:, 1])
         self.sdlat = np.nanstd(self.locs[:, 1])
 
-        self.norm = MinMaxScaler()
-        self.locs = self.norm.fit_transform(self.locs)
-        # self.locs = np.array(
-        #     [
-        #         [
-        #             (x[0] - self.meanlong) / self.sdlong,
-        #             (x[1] - self.meanlat) / self.sdlat,
-        #         ]
-        #         for x in self.locs
-        #     ]
-        # )
+        self.norm = RobustScaler()
+        self.data["y_train"] = self.norm.fit_transform(self.data["y_train"])
+        self.data["y_test"] = self.norm.transform(self.data["y_test"])
+        self.data["y_val"] = self.norm.transform(self.data["y_val"])
 
         if self.verbose >= 1:
             self.logger.info("Done normalizing.")
+
+    def _estimate_eps(self, y, n_neighbors=5):
+        """
+        Estimate an initial eps value for DBSCAN based on the average distance
+        to the n-th nearest neighbor of each point.
+
+        Args:
+            y (numpy.ndarray): Array containing the 'x' and 'y' data (pre-normalized).
+            n_neighbors (int): Number of neighbors to consider for each point.
+
+        Returns:
+            float: Estimated eps value.
+        """
+        coords = y.copy()
+        nn = NearestNeighbors(n_neighbors=n_neighbors)
+        nn.fit(coords)
+        distances, _ = nn.kneighbors(coords)
+
+        # Use the average distance to the n-th nearest neighbor
+        return np.mean(distances[:, n_neighbors - 1])
+
+    def remove_outliers_dbscan(self, X, y, min_samples, args, dataset):
+        """
+        Remove outliers from a DataFrame using DBSCAN.
+
+        Args:
+            y (numpy.ndarray): Array containing the 'x' and 'y' data (pre-normalized).
+            eps (float): The maximum distance between two samples for one to be considered as in the neighborhood of the other.
+            min_samples (int): The number of samples in a neighborhood for a point to be considered as a core point.
+            args (argparse.Namespace): Command-line argument namespace.
+            dataset (str): One of "train", "test", "validation".
+
+        Returns:
+            numpy.ndarray: Mask with True values being non-outliers.
+            numpy.ndarray: Array with outliers removed.
+        """
+        if args.verbose >= 1:
+            self.logger.info(f"Removing potential outliers from {dataset} dataset...")
+
+        genomic_reduced = pd.DataFrame(X)
+        df_geo = pd.DataFrame(y, columns=["x", "y"])
+
+        # Standardize both genomic and geographic data
+        scaler = RobustScaler()
+        geo_scaled = scaler.fit_transform(df_geo)
+        genomic_scaled = scaler.fit_transform(genomic_reduced)
+
+        # Combine the datasets
+        combined_features = np.concatenate([geo_scaled, genomic_scaled], axis=1)
+
+        combined_unscaled_y = np.concatenate(
+            [df_geo.to_numpy(), genomic_scaled], axis=1
+        )
+
+        eps = self._estimate_eps(combined_features, n_neighbors=min_samples)
+        db = DBSCAN(eps=eps, min_samples=min_samples).fit(combined_features)
+
+        # Labels of -1 indicate outliers
+        mask = db.labels_ != -1
+
+        plotting = PlotGenIE(
+            "cpu",
+            args.output_dir,
+            args.prefix,
+            show_plots=args.show_plots,
+            fontsize=args.fontsize,
+        )
+
+        plotting.plot_dbscan_clusters(
+            combined_unscaled_y,
+            args.output_dir,
+            args.prefix,
+            dataset,
+            db.labels_,
+            show=args.show_plots,
+        )
+
+        if args.verbose >= 1:
+            self.logger.info(
+                f"Removed {np.count_nonzero(~mask)} outliers from {dataset} dataset."
+            )
+
+        return mask, df_geo[mask].to_numpy()
 
     def _check_sample_ordering(self, class_weights):
         """
@@ -374,6 +449,8 @@ class DataStructure:
             train_val_indices, test_size=val_split, random_state=seed
         )
 
+        self.genotypes_enc = self.genotypes_enc.T
+
         # Prepare genotype and location data for training, validation, testing,
         # and prediction
         # X_train = np.transpose(self.genotypes_enc[:, train_indices])
@@ -490,9 +567,42 @@ class DataStructure:
                 return_values=False,
             )
 
-        self.normalize_locs()
-        self.embed(args, n_components=3, alg="tsne")
         self.split_train_test(args.train_split, args.val_split, args.seed)
+        X_train, X_test, X_val, _ = self.embed(
+            args, n_components=6, alg="pca", return_values=True
+        )
+
+        mask_train, self.data["y_train"] = self.remove_outliers_dbscan(
+            X_train,
+            self.data["y_train"],
+            int(X_train.shape[0] * args.outlier_detection_scaler),
+            args,
+            "train",
+        )
+        mask_test, self.data["y_test"] = self.remove_outliers_dbscan(
+            X_test,
+            self.data["y_test"],
+            int(X_test.shape[0] * args.outlier_detection_scaler),
+            args,
+            "test",
+        )
+        mask_val, self.data["y_val"] = self.remove_outliers_dbscan(
+            X_val,
+            self.data["y_val"],
+            int(X_val.shape[0] * args.outlier_detection_scaler),
+            args,
+            "validation",
+        )
+
+        self.data["X_train"] = self.data["X_train"][mask_train]
+        self.data["X_test"] = self.data["X_test"][mask_test]
+        self.data["X_val"] = self.data["X_val"][mask_val]
+        self.indices["train_indices"] = self.indices["train_indices"][mask_train]
+        self.indices["test_indices"] = self.indices["test_indices"][mask_test]
+        self.indices["val_indices"] = self.indices["val_indices"][mask_val]
+
+        self.normalize_locs()
+        self.embed(args, n_components=6, alg="pca", return_values=False)
 
         if args.verbose >= 1:
             self.logger.info("Data split into train, val, and test sets.")
@@ -504,8 +614,7 @@ class DataStructure:
             self.data["y_train"],
             args.class_weights,
             args.batch_size,
-            y_strat=self.popmap_data,
-            indices=self.indices["train_indices"],
+            args,
             model_type=args.model_type,
         )
 
@@ -513,8 +622,9 @@ class DataStructure:
         self.val_loader = self.create_dataloaders(
             self.data["X_val"],
             self.data["y_val"],
-            args.class_weights,
+            False,
             args.batch_size,
+            args,
             model_type=args.model_type,
         )
 
@@ -522,8 +632,9 @@ class DataStructure:
         self.test_loader = self.create_dataloaders(
             self.data["X_test"],
             self.data["y_test"],
-            args.class_weights,
+            False,
             args.batch_size,
+            args,
             model_type=args.model_type,
         )
 
@@ -538,9 +649,9 @@ class DataStructure:
         if args.verbose >= 1:
             self.logger.info("Data loading and preprocessing completed.")
 
-    def embed(self, args, n_components=3, alg="polynomial", degree=2):
-        X = self.genotypes_enc.copy()
-
+    def embed(
+        self, args, n_components=None, alg="polynomial", degree=2, return_values=False
+    ):
         if args.model_type != "transformer":
             do_embed = True
         else:
@@ -548,6 +659,15 @@ class DataStructure:
         if alg.lower() == "polynomial":
             emb = PolynomialFeatures(degree)
         elif alg.lower() == "pca":
+            if n_components is None:
+                self.plotting = PlotGenIE(
+                    "cpu",
+                    args.output_dir,
+                    args.prefix,
+                    show_plots=args.show_plots,
+                    fontsize=args.fontsize,
+                )
+                n_components = self.get_num_pca_comp(self.data["X_train"], args)
             emb = PCA(n_components=n_components)
         elif alg.lower() == "tsne":
             emb = TSNE(n_components=n_components)
@@ -557,8 +677,39 @@ class DataStructure:
             raise ValueError(f"Invalid 'alg' value pasesed to 'embed()': {alg}")
 
         if do_embed:
-            self.genotypes_enc = emb.fit_transform(X.T)
-        self.genotypes_enc = X.T
+            if return_values:
+                X_train = emb.fit_transform(self.data["X_train"])
+                X_test = emb.transform(self.data["X_test"])
+                X_val = emb.transform(self.data["X_val"])
+                X_pred = emb.transform(self.data["X_pred"])
+                return X_train, X_test, X_val, X_pred
+            else:
+                self.data["X_train"] = emb.fit_transform(self.data["X_train"])
+                self.data["X_test"] = emb.transform(self.data["X_test"])
+                self.data["X_val"] = emb.transform(self.data["X_val"])
+                self.data["X_pred"] = emb.transform(self.data["X_pred"])
+
+    def get_num_pca_comp(self, x, args):
+        pca = PCA().fit(x)
+
+        vr = np.cumsum(pca.explained_variance_ratio_)
+
+        x = range(1, len(vr) + 1)
+        kneedle = KneeLocator(
+            x,
+            vr,
+            S=1.0,
+            curve="concave",
+            direction="increasing",
+        )
+
+        knee = int(np.ceil(kneedle.knee))
+
+        self.plotting.plot_pca_curve(
+            x, vr, knee, args.output_dir, args.prefix, show=args.show_plots
+        )
+
+        return knee
 
     def create_dataloaders(
         self,
@@ -566,8 +717,7 @@ class DataStructure:
         y,
         class_weights,
         batch_size,
-        y_strat=None,
-        indices=None,
+        args,
         model_type="mlp",
     ):
         """
@@ -609,28 +759,10 @@ class DataStructure:
                 tensor(y, dtype=torchfloat),
             )
 
-            weighted_sampler = None
-            samples_weight = None
-            # Initialize weighted sampler if class weights are used
-            if class_weights:
-                if y_strat is not None and indices is not None:
-                    samp = Samplers(indices)
-                    samples_weight = samp.get_class_weights_populations(y_strat)
-                    weighted_sampler = WeightedRandomSampler(
-                        weights=samples_weight,
-                        num_samples=len(samples_weight),
-                        replacement=True,
-                    )
-                elif y_strat is None and indices is not None:
-                    raise TypeError(
-                        "y_strat and indices must both or neither be provided.",
-                    )
-                elif y_strat is not None and indices is None:
-                    raise TypeError(
-                        "y_strat and indices must both or neither be provided.",
-                    )
-
-                self.samples_weight = samples_weight
+            # Custom sampler - density-based.
+            weighted_sampler = self.get_sample_weights(
+                self.norm.inverse_transform(y), class_weights, args
+            )
 
             # Create DataLoaders
             return DataLoader(
@@ -638,6 +770,48 @@ class DataStructure:
                 batch_size=batch_size,
                 sampler=weighted_sampler,
             )
+
+    def get_sample_weights(self, y, class_weights, args):
+        # Initialize weighted sampler if class weights are used
+        weighted_sampler = None
+        if class_weights:
+            if args.verbose >= 1:
+                self.logger.info("Estimating sampling density weights...")
+
+            # Define the grid of bandwidths to search over
+            bandwidths = np.linspace(0.01, 1.0, 30)
+
+            if args.verbose == 2:
+                self.logger.info("Searching for optimal kernel density bandwidth...")
+
+            # Grid search with cross-validation
+            grid = GridSearchCV(
+                KernelDensity(kernel="gaussian"),
+                {"bandwidth": bandwidths},
+                cv=5,
+                n_jobs=args.n_jobs,
+                verbose=args.verbose,
+            )
+            grid.fit(y)
+
+            if args.verbose == 2:
+                self.logger.info("Done searching bandwidth.")
+
+                # Optimal bandwidth
+            best_bandwidth = grid.best_estimator_.bandwidth
+
+            # Weight by sampling density.
+            weighted_sampler = GeographicDensitySampler(
+                self.norm.inverse_transform(y),
+                bandwidth=best_bandwidth,
+            )
+
+            if args.verbose >= 1:
+                self.logger.info("Done estimating sample weights.")
+
+            self.samples_weight = weighted_sampler.weights
+            self.samples_weight_indices = weighted_sampler.indices
+        return weighted_sampler
 
     def read_gtseq(
         self,
