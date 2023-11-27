@@ -193,8 +193,21 @@ def validate_verbosity(value):
         if verb < 0 or verb > 2:
             raise ValueError(f"'verbose' must >= 0 and <= 2: {verb}")
     except ValueError:
-        raise ValueError(f"'verbose' must >= 0 and <= 2: {verb}")
+        raise ValueError(f"'verbose' must >= 0 and <= 2: {value}")
     return verb
+
+
+def validate_outlier_scaler(value):
+    try:
+        outlier = float(value)
+        if outlier <= 0.0 or outlier >= 1.0:
+            raise ValueError(
+                f"'outlier_detection_scaler' must be > 0 and < 1, but got: {outlier}"
+            )
+    except ValueError:
+        raise ValueError(
+            f"'outlier_detection_scaler' must be > 0 and < 1, but got: {value}"
+        )
 
 
 def validate_seed(value):
@@ -275,6 +288,11 @@ def setup_parser():
         "--impute_missing",
         action="store_false",
         help="If True, imputes missing values from binomial distribution. Default: True",
+    )
+    data_group.add_argument(
+        "--outlier_detection_scaler",
+        default=0.3,
+        help="Scaler to remove outliers from training/ validation data. Adjust if too many or too few samples are getting removed. Must be between 0 and 1.",
     )
 
     # Model Configuration Arguments
@@ -462,6 +480,13 @@ def setup_parser():
         type=int,
         default=18,
         help="Font size for plot axis labels and title. Default: 18.",
+    )
+
+    output_group.add_argument(
+        "--shapefile_url",
+        type=str,
+        default="https://www2.census.gov/geo/tiger/GENZ2018/shp/cb_2018_us_state_500k.zip",
+        help="URL for shapefile used for plotting prediction error.",
     )
 
     args = parser.parse_args()
