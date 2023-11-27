@@ -278,8 +278,7 @@ class Bootstrap:
                 val_preds, val_metrics = pred_func(
                     model,
                     self.val_loader,
-                    self.device,
-                    coord_scaler,
+                    device=self.device,
                 )
 
                 bootstrap_metrics.append(val_metrics)
