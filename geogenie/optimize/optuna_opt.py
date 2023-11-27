@@ -7,10 +7,10 @@ from pathlib import Path
 import torch
 from optuna import create_study, pruners, samplers
 from optuna.logging import (
-    enable_default_handler,
-    enable_propagation,
     disable_default_handler,
     disable_propagation,
+    enable_default_handler,
+    enable_propagation,
 )
 from torch import optim
 
