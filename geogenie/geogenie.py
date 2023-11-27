@@ -4,8 +4,6 @@ import os
 import time
 import traceback
 from pathlib import Path
-from math import radians, cos, sin, asin, sqrt
-
 
 import numpy as np
 import optuna
@@ -13,19 +11,14 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from scipy import spatial
-from torch.utils.data import DataLoader, TensorDataset
-from torchmetrics.functional import r2_score
-from sklearn.metrics.pairwise import haversine_distances
 
-from geogenie.models.models import MLPRegressor, SNPTransformer, GeoRegressionGNN
+from geogenie.models.models import GeoRegressionGNN, MLPRegressor, SNPTransformer
 from geogenie.optimize.boostrap import Bootstrap
 from geogenie.optimize.optuna_opt import Optimize
 from geogenie.plotting.plotting import PlotGenIE
-from geogenie.samplers.samplers import Samplers
-from geogenie.utils.argument_parser import setup_parser
 from geogenie.utils.callbacks import EarlyStopping
 from geogenie.utils.data_structure import DataStructure
+from geogenie.utils.scorers import get_r2, haversine
 
 
 class GeoGenIE:
@@ -65,6 +58,7 @@ class GeoGenIE:
             "models",
             "optimize",
             "data",
+            "shapefile",
         ]
 
         output_dir = self.args.output_dir
@@ -145,7 +139,7 @@ class GeoGenIE:
         lr_scheduler_patience=8,
         objective_mode=False,
         verbose=False,
-        grad_clip=True,
+        grad_clip=False,
     ):
         """
         Train the PyTorch model with given parameters.
@@ -367,23 +361,6 @@ class GeoGenIE:
 
         return R * c
 
-    # @staticmethod
-    # def haversine_loss(y_true, y_pred):
-    #     """
-    #     Haversine loss function.
-    #     Args:
-    #         y_true: true values tensor, expected shape (batch_size, 2)
-    #         y_pred: predicted values tensor, expected shape (batch_size, 2)
-    #     Returns:
-    #         Loss value.
-    #     """
-    #     lat1, lon1 = y_true[:, 0], y_true[:, 1]
-    #     lat2, lon2 = y_pred[:, 0], y_pred[:, 1]
-    #     # Convert degrees to radians
-    #     lat1, lon1, lat2, lon2 = map(torch.deg2rad, (lat1, lon1, lat2, lon2))
-
-    #     return torch.mean(GeoGenIE.haversine_distance_torch(lat1, lon1, lat2, lon2))
-
     def haversine_loss(
         pred, target, epsSq=1.0e-13, epsAs=1.0e-7
     ):  # add optional epsilons to avoid singularities
@@ -396,9 +373,6 @@ class GeoGenIE:
             torch.sin(delta_phi / 2) ** 2
             + torch.cos(phi1) * torch.cos(phi2) * torch.sin(delta_lambda / 2) ** 2
         )
-        # return tensor.mean(2 * r * torch.asin(torch.sqrt(a)))
-        # "+ (1.0 - a**2) * epsSq" to keep sqrt() away from zero
-        # "(1.0 - epsAs) *" to keep asin() away from plus-or-minus one
         return torch.Tensor.mean(
             2 * r * torch.asin((1.0 - epsAs) * torch.sqrt(a + (1.0 - a**2) * epsSq))
         )
@@ -408,7 +382,7 @@ class GeoGenIE:
         model,
         data_loader,
         device,
-        coord_scaler,
+        return_truths=False,
     ):
         """
         Predict locations using the trained model and evaluate predictions.
@@ -419,6 +393,7 @@ class GeoGenIE:
             data_loader (torch.utils.data.DataLoader): DataLoader containing the dataset for prediction.
             device (torch.device): Device to run the model on ('cpu' or 'cuda').
             coord_scaler (dict): Dictionary with meanlong, meanlat, stdlong, stdlat.
+            return_truths (bool): Whether to return truths as well as predictions.
 
         Returns:
             pandas.DataFrame: DataFrame with predicted locations and corresponding sample IDs.
@@ -438,55 +413,16 @@ class GeoGenIE:
         predictions = np.concatenate(predictions, axis=0)
         ground_truth = np.concatenate(ground_truth, axis=0)
 
-        # meanlong, meanlat, sdlong, sdlat = (
-        #     coord_scaler["meanlong"],
-        #     coord_scaler["meanlat"],
-        #     coord_scaler["sdlong"],
-        #     coord_scaler["sdlat"],
-        # )
-
         def rescale_predictions(y):
             return self.data_structure.norm.inverse_transform(y)
-            # return np.array(
-            #     [[x[0] * sdlong + meanlong, x[1] * sdlat + meanlat] for x in y]
-            # )
 
         # Rescale predictions and ground truth to original scale
         rescaled_preds = rescale_predictions(predictions)
         rescaled_truth = rescale_predictions(ground_truth)
 
-        def get_r2(y_true, y_pred, idx):
-            # return r2_score(y_true[:, idx], y_pred[:, idx])
-            return np.corrcoef(y_pred[:, idx], y_true[:, idx])[0][1] ** 2
-
         # Evaluate predictions
-        r2_long = get_r2(rescaled_truth, rescaled_preds, 0)
-        r2_lat = get_r2(rescaled_truth, rescaled_preds, 1)
-
-        def haversine(lon1, lat1, lon2, lat2):
-            """
-            Calculate the great circle distance in kilometers between two points
-            on the earth (specified in decimal degrees).
-
-            Args:
-            lon1 (float): Longitude of the first point.
-            lat1 (float): Latitude of the first point.
-            lon2 (float): Longitude of the second point.
-            lat2 (float): Latitude of the second point.
-
-            Returns:
-            float: Distance in kilometers.
-            """
-            # Convert decimal degrees to radians
-            lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
-
-            # Haversine formula
-            dlon = lon2 - lon1
-            dlat = lat2 - lat1
-            a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
-            c = 2 * asin(sqrt(a))
-            r = 6371  # Radius of earth in kilometers. Use 3956 for miles.
-            return c * r
+        r2_long = get_r2(ground_truth, predictions, 0)
+        r2_lat = get_r2(ground_truth, predictions, 1)
 
         def get_dist_metric(y_true, y_pred, func):
             """
@@ -506,15 +442,6 @@ class GeoGenIE:
                     for x in range(len(y_pred))
                 ]
             )
-
-        # def get_dist_metric(y_true, y_pred, func):
-        #     # haversine_distances(y_true, y_pred)
-        #     # return func(
-        #     #     [
-        #     #         spatial.distance.euclidean(y_pred[x, :], y_true[x, :])
-        #     #         for x in range(len(y_pred))
-        #     #     ]
-        #     # )
 
         mean_dist = get_dist_metric(rescaled_truth, rescaled_preds, np.mean)
         median_dist = get_dist_metric(rescaled_truth, rescaled_preds, np.median)
@@ -538,6 +465,8 @@ class GeoGenIE:
             "stdev_dist": std_dist,
         }
 
+        if return_truths:
+            return rescaled_preds, metrics, rescaled_truth
         return rescaled_preds, metrics
 
     def plot_bootstrap_aggregates(self, df, filename, train_times):
@@ -630,7 +559,7 @@ class GeoGenIE:
                 0.5,
                 self.args.patience // 6,
                 verbose=self.args.verbose,
-                grad_clip=True,
+                grad_clip=False,
             )
 
             self.logger.info(
@@ -770,7 +699,7 @@ class GeoGenIE:
             self.logger.info("Bootstrap training completed.")
 
     def evaluate_and_save_results(
-        self, model, train_losses, val_losses, device, dataset="validation"
+        self, model, train_losses, val_losses, device, dataset="val"
     ):
         """
         Evaluate the model and save the results.
@@ -783,7 +712,7 @@ class GeoGenIE:
             dataset (str): Whether 'val' or 'test' dataset.
         """
         if self.args.verbose >= 1:
-            self.logger.info("Evaluating the model on the validation set.")
+            self.logger.info(f"Evaluating the model on the {dataset} set.")
 
         if dataset not in ["val", "test"]:
             self.logger.error(
@@ -804,8 +733,11 @@ class GeoGenIE:
         else:
             loader = self.data_structure.test_loader
 
-        val_preds, val_metrics = self.predict_locations(
-            model, loader, device, self.data_structure.coord_scaler
+        val_preds, val_metrics, y_true = self.predict_locations(
+            model,
+            loader,
+            device,
+            return_truths=True,
         )
 
         # Save validation results to file
@@ -857,8 +789,23 @@ class GeoGenIE:
             f"{prefix}_train_history.png",
         )
 
+        geo_outdir = os.path.join(
+            self.args.output_dir,
+            "plots",
+            f"{self.args.prefix}_geographic_error_{dataset}.png",
+        )
         # Plot training history
         self.plotting.plot_history(train_losses, val_losses, hist_outdir)
+        self.plotting.plot_geographic_error_distribution(
+            y_true,
+            val_preds,
+            geo_outdir,
+            self.args.fontsize,
+            self.args.shapefile_url,
+            self.args.output_dir,
+            buffer=0.5,
+            show=self.args.show_plots,
+        )
 
         if self.args.verbose >= 1:
             self.logger.info("Training history plotted.")
