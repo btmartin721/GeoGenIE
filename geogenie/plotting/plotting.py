@@ -54,17 +54,31 @@ class PlotGenIE:
         plt.close()
 
     def plot_history(self, train_loss, val_loss, filename):
-        """Plot training and validation loss."""
+        """Automatically plot training and validation loss with appropriate scaling.
+
+        Args:
+            train_loss (list): List of training loss values.
+            val_loss (list): List of validation loss values.
+            filename (str): Name of the file to save the plot.
+
+        """
         plt.figure(figsize=(10, 5))
         plt.plot(train_loss, label="Training Loss")
         plt.plot(val_loss, label="Validation Loss")
         plt.title("Training and Validation Loss Over Epochs", fontsize=self.fontsize)
         plt.xlabel("Epochs", fontsize=self.fontsize)
-        plt.ylabel("Loss", fontsize=self.fontsize)
-        plt.ylim(
-            bottom=min(np.min(val_loss), 0),
-            top=min(np.max(val_loss), np.min(val_loss) * 5),
-        )
+
+        # Determine the scaling based on loss values
+        max_loss = max(np.max(train_loss), np.max(val_loss))
+        min_loss = min(np.min(train_loss), np.min(val_loss))
+
+        if max_loss / min_loss > 10:  # Threshold for log scale
+            plt.yscale("log")
+            plt.ylabel("Log Loss", fontsize=self.fontsize)
+            plt.ylim(bottom=max(min_loss, 1e-5))  # Avoid log(0) error
+        else:
+            plt.ylabel("Loss", fontsize=self.fontsize)
+
         plt.legend()
         plt.savefig(filename, facecolor="white", bbox_inches="tight")
 
