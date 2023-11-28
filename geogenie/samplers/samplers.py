@@ -63,13 +63,14 @@ class GeographicDensitySampler(Sampler):
         Returns:
             numpy array: Weights for each sample.
         """
-        coords = self.data.copy()
+        coords = self.data.copy()  # Columns ['x' and 'y']
         kde = KernelDensity(bandwidth=self.bandwidth, kernel="gaussian")
         kde.fit(coords)
         log_density = kde.score_samples(coords)
         density = np.exp(log_density)
-        # Adding a small constant to avoid division by zero
-        weights = 1 / (density + 1e-5)
+
+        # More aggressive transformation: square the inverse density
+        weights = 1 / np.square(density + 1e-5)
         return weights
 
     def __iter__(self):
