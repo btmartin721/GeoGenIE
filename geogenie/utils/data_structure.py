@@ -193,7 +193,7 @@ class DataStructure:
         self.meanlat = np.nanmean(self.locs[:, 1])
         self.sdlat = np.nanstd(self.locs[:, 1])
 
-        self.norm = RobustScaler()
+        self.norm = MinMaxScaler()
         self.data["y_train"] = self.norm.fit_transform(self.data["y_train"])
         self.data["y_test"] = self.norm.transform(self.data["y_test"])
         self.data["y_val"] = self.norm.transform(self.data["y_val"])
@@ -243,7 +243,7 @@ class DataStructure:
         df_geo = pd.DataFrame(y, columns=["x", "y"])
 
         # Standardize both genomic and geographic data
-        scaler = RobustScaler()
+        scaler = MinMaxScaler()
         geo_scaled = scaler.fit_transform(df_geo)
         genomic_scaled = scaler.fit_transform(genomic_reduced)
 
@@ -568,41 +568,41 @@ class DataStructure:
             )
 
         self.split_train_test(args.train_split, args.val_split, args.seed)
-        X_train, X_test, X_val, _ = self.embed(
-            args, n_components=6, alg="pca", return_values=True
-        )
+        # X_train, X_test, X_val, _ = self.embed(
+        #     args, n_components=6, alg="pca", return_values=True
+        # )
 
-        mask_train, self.data["y_train"] = self.remove_outliers_dbscan(
-            X_train,
-            self.data["y_train"],
-            int(X_train.shape[0] * args.outlier_detection_scaler),
-            args,
-            "train",
-        )
-        mask_test, self.data["y_test"] = self.remove_outliers_dbscan(
-            X_test,
-            self.data["y_test"],
-            int(X_test.shape[0] * args.outlier_detection_scaler),
-            args,
-            "test",
-        )
-        mask_val, self.data["y_val"] = self.remove_outliers_dbscan(
-            X_val,
-            self.data["y_val"],
-            int(X_val.shape[0] * args.outlier_detection_scaler),
-            args,
-            "validation",
-        )
+        # mask_train, self.data["y_train"] = self.remove_outliers_dbscan(
+        #     X_train,
+        #     self.data["y_train"],
+        #     int(X_train.shape[0] * args.outlier_detection_scaler),
+        #     args,
+        #     "train",
+        # )
+        # mask_test, self.data["y_test"] = self.remove_outliers_dbscan(
+        #     X_test,
+        #     self.data["y_test"],
+        #     int(X_test.shape[0] * args.outlier_detection_scaler),
+        #     args,
+        #     "test",
+        # )
+        # mask_val, self.data["y_val"] = self.remove_outliers_dbscan(
+        #     X_val,
+        #     self.data["y_val"],
+        #     int(X_val.shape[0] * args.outlier_detection_scaler),
+        #     args,
+        #     "validation",
+        # )
 
-        self.data["X_train"] = self.data["X_train"][mask_train]
-        self.data["X_test"] = self.data["X_test"][mask_test]
-        self.data["X_val"] = self.data["X_val"][mask_val]
-        self.indices["train_indices"] = self.indices["train_indices"][mask_train]
-        self.indices["test_indices"] = self.indices["test_indices"][mask_test]
-        self.indices["val_indices"] = self.indices["val_indices"][mask_val]
+        # self.data["X_train"] = self.data["X_train"][mask_train]
+        # self.data["X_test"] = self.data["X_test"][mask_test]
+        # self.data["X_val"] = self.data["X_val"][mask_val]
+        # self.indices["train_indices"] = self.indices["train_indices"][mask_train]
+        # self.indices["test_indices"] = self.indices["test_indices"][mask_test]
+        # self.indices["val_indices"] = self.indices["val_indices"][mask_val]
 
         self.normalize_locs()
-        self.embed(args, n_components=6, alg="pca", return_values=False)
+        self.embed(args, n_components=None, alg="pca", return_values=False)
 
         if args.verbose >= 1:
             self.logger.info("Data split into train, val, and test sets.")
@@ -760,6 +760,7 @@ class DataStructure:
             )
 
             # Custom sampler - density-based.
+            # weighted_sampler = self.get_sample_weights(y, class_weights, args)
             weighted_sampler = self.get_sample_weights(
                 self.norm.inverse_transform(y), class_weights, args
             )
@@ -802,7 +803,7 @@ class DataStructure:
 
             # Weight by sampling density.
             weighted_sampler = GeographicDensitySampler(
-                self.norm.inverse_transform(y),
+                y,
                 bandwidth=best_bandwidth,
             )
 
