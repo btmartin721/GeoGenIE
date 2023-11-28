@@ -18,7 +18,7 @@ from geogenie.optimize.optuna_opt import Optimize
 from geogenie.plotting.plotting import PlotGenIE
 from geogenie.utils.callbacks import EarlyStopping
 from geogenie.utils.data_structure import DataStructure
-from geogenie.utils.scorers import get_r2, haversine
+from geogenie.utils.scorers import haversine, calculate_r2
 
 
 class GeoGenIE:
@@ -139,7 +139,7 @@ class GeoGenIE:
         lr_scheduler_patience=8,
         objective_mode=False,
         verbose=False,
-        grad_clip=False,
+        grad_clip=True,
     ):
         """
         Train the PyTorch model with given parameters.
@@ -361,21 +361,26 @@ class GeoGenIE:
 
         return R * c
 
-    def haversine_loss(
-        pred, target, epsSq=1.0e-13, epsAs=1.0e-7
-    ):  # add optional epsilons to avoid singularities
+    @staticmethod
+    def haversine_loss(pred, target, eps=1e-6):
         lon1, lat1 = torch.split(pred, 1, dim=1)
         lon2, lat2 = torch.split(target, 1, dim=1)
         r = 6371  # Radius of Earth in kilometers
+
         phi1, phi2 = torch.deg2rad(lat1), torch.deg2rad(lat2)
-        delta_phi, delta_lambda = torch.deg2rad(lat2 - lat1), torch.deg2rad(lon2 - lon1)
+        delta_phi = torch.deg2rad(lat2 - lat1)
+        delta_lambda = torch.deg2rad(lon2 - lon1)
+
         a = (
             torch.sin(delta_phi / 2) ** 2
             + torch.cos(phi1) * torch.cos(phi2) * torch.sin(delta_lambda / 2) ** 2
         )
-        return torch.Tensor.mean(
-            2 * r * torch.asin((1.0 - epsAs) * torch.sqrt(a + (1.0 - a**2) * epsSq))
-        )
+        a = torch.clamp(a, min=0, max=1)  # Clamp 'a' to avoid sqrt of negative number
+
+        c = 2 * torch.atan2(torch.sqrt(a), torch.sqrt(1 - a + eps))
+        distance = r * c  # Compute the distance
+
+        return torch.mean(distance)  # Use torch.mean for proper gradient computation
 
     def predict_locations(
         self,
@@ -421,8 +426,7 @@ class GeoGenIE:
         rescaled_truth = rescale_predictions(ground_truth)
 
         # Evaluate predictions
-        r2_long = get_r2(ground_truth, predictions, 0)
-        r2_lat = get_r2(ground_truth, predictions, 1)
+        r2_longlat = calculate_r2(rescaled_truth, rescaled_preds)
 
         def get_dist_metric(y_true, y_pred, func):
             """
@@ -446,8 +450,7 @@ class GeoGenIE:
         mean_dist = get_dist_metric(rescaled_truth, rescaled_preds, np.mean)
         median_dist = get_dist_metric(rescaled_truth, rescaled_preds, np.median)
         std_dist = get_dist_metric(rescaled_truth, rescaled_preds, np.std)
-        self.logger.info(f"R2(x) = {r2_long}")
-        self.logger.info(f"R2(y) = {r2_lat}")
+        self.logger.info(f"R2(x,y) = {r2_longlat}")
         self.logger.info(f"Mean Validation Error (Haversine Distance) = {mean_dist}")
         self.logger.info(
             f"Median Validation Error (Haversine Distance) = {median_dist}"
@@ -458,16 +461,15 @@ class GeoGenIE:
 
         # return the evaluation metrics along with the predictions
         metrics = {
-            "r2_long": r2_long,
-            "r2_lat": r2_lat,
+            "r2_longlat": r2_longlat,
             "mean_dist": mean_dist,
             "median_dist": median_dist,
             "stdev_dist": std_dist,
         }
 
         if return_truths:
-            return rescaled_preds, metrics, rescaled_truth
-        return rescaled_preds, metrics
+            return predictions, metrics, ground_truth
+        return predictions, metrics
 
     def plot_bootstrap_aggregates(self, df, filename, train_times):
         self.plotting.plot_bootstrap_aggregates(df, filename)
@@ -559,7 +561,7 @@ class GeoGenIE:
                 0.5,
                 self.args.patience // 6,
                 verbose=self.args.verbose,
-                grad_clip=False,
+                grad_clip=True,
             )
 
             self.logger.info(
@@ -630,6 +632,7 @@ class GeoGenIE:
             show_progress_bar=False,
             n_startup_trials=10,
             verbose=self.args.verbose,
+            grad_clip=True,
         )
 
         best_trial, study = opt.perform_optuna_optimization(
@@ -797,8 +800,8 @@ class GeoGenIE:
         # Plot training history
         self.plotting.plot_history(train_losses, val_losses, hist_outdir)
         self.plotting.plot_geographic_error_distribution(
-            y_true,
-            val_preds,
+            self.data_structure.norm.inverse_transform(y_true),
+            self.data_structure.norm.inverse_transform(val_preds),
             geo_outdir,
             self.args.fontsize,
             self.args.shapefile_url,
@@ -833,17 +836,12 @@ class GeoGenIE:
             # Make predictions
             pred_locations_scaled = model(pred_tensor)
 
+        pred_locations = pred_locations_scaled.cpu().numpy()
+
         # rescale the predictions back to the original range
         pred_locations = self.data_structure.norm.inverse_transform(
             pred_locations_scaled.cpu().numpy()
         )
-
-        # pred_locations = np.array(
-        #     [
-        #         [x[0] * sdlong + mlong, x[1] * sdlat + mlat]
-        #         for x in pred_locations_scaled.cpu().numpy()
-        #     ]
-        # )
 
         pred_outfile = os.path.join(
             outdir,
@@ -890,7 +888,7 @@ class GeoGenIE:
             self.data_structure.define_params(self.args)
             best_params = self.data_structure.params
 
-            criterion = GeoGenIE.haversine_loss
+            criterion = nn.MSELoss()
 
             if self.args.model_type == "transformer":
                 modelclass = SNPTransformer
