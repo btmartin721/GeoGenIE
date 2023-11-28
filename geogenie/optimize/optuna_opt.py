@@ -4,15 +4,21 @@ import os
 import pickle
 from pathlib import Path
 
+import numpy as np
+import pandas as pd
+
+from sklearn.model_selection import KFold
+
 import torch
 from optuna import create_study, pruners, samplers
 from optuna.logging import (
     disable_default_handler,
-    disable_propagation,
     enable_default_handler,
     enable_propagation,
 )
 from torch import optim
+from torch.utils.data import DataLoader
+from torch.utils.data import Subset
 
 from geogenie.plotting.plotting import PlotGenIE
 
@@ -64,6 +70,10 @@ class Optimize:
             device, output_dir, prefix, show_plots=show_plots, fontsize=fontsize
         )
 
+        self.cv_results = pd.DataFrame(
+            columns=["trial", "average_loss", "std_dev"],
+        )
+
     def objective_function(self, trial, criterion, ModelClass, train_func):
         """Optuna hyperparameter tuning.
 
@@ -73,48 +83,109 @@ class Optimize:
         Returns:
             float: Loss value.
         """
+        dataset = self.train_loader.dataset
+
         # Optuna hyperparameters
-        lr = trial.suggest_float("lr", 1e-6, 1e-1, log=True)
-        width = trial.suggest_int("width", 8, 512)
-        nlayers = trial.suggest_int("nlayers", 1, 20)
+        lr = trial.suggest_categorical(
+            "lr",
+            [1e-6, 5e-6, 1e-5, 5e-5, 1e-4, 5e-4, 1e-3, 5e-3, 1e-2, 5e-2, 1e-1, 5e-1],
+        )
+        width = trial.suggest_int(
+            "width", 8, self.train_loader.dataset.tensors[0].shape[1] - 1
+        )
+        nlayers = trial.suggest_int("nlayers", 2, 20)
         dropout_prop = trial.suggest_float("dropout_prop", 0.0, 0.5)
         l2_weight = trial.suggest_float("l2_weight", 1e-6, 1e-1, log=True)
 
-        # Model, loss, and optimizer
-        model = ModelClass(
-            input_size=self.train_loader.dataset.tensors[0].shape[1],
-            width=width,
-            nlayers=nlayers,
-            dropout_prop=dropout_prop,
-            device=self.device,
-        ).to(self.device)
-        optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=l2_weight)
+        # K-Fold Cross-Validation
+        num_folds = 5
+        kfold = KFold(n_splits=num_folds, shuffle=True)
+        fold_losses = []  # Store losses for each fold
+        total_loss = 0.0
 
-        # Train model
-        trained_model = train_func(
-            self.train_loader,
-            self.val_loader,
-            model,
-            trial,
-            criterion,
-            optimizer,
-            self.lr_scheduler_factor,
-            self.lr_scheduler_patience,
-            objective_mode=True,
-            grad_clip=self.grad_clip,
+        for _, (train_idx, val_idx) in enumerate(kfold.split(dataset)):
+            # Create train and validation subsets for this fold
+            train_subset = Subset(dataset, train_idx)
+            val_subset = Subset(dataset, val_idx)
+
+            train_loader = DataLoader(
+                train_subset, batch_size=self.train_loader.batch_size, shuffle=True
+            )
+            val_loader = DataLoader(
+                val_subset, batch_size=self.train_loader.batch_size, shuffle=False
+            )
+
+            # Model, loss, and optimizer
+            model = ModelClass(
+                input_size=dataset.tensors[0].shape[1],
+                width=width,
+                nlayers=nlayers,
+                dropout_prop=dropout_prop,
+                device=self.device,
+            ).to(self.device)
+
+            optimizer = optim.Adam(
+                model.parameters(),
+                lr=lr,
+                weight_decay=l2_weight,
+            )
+
+            # Train model
+            trained_model = train_func(
+                train_loader,
+                val_loader,
+                model,
+                trial,
+                criterion,
+                optimizer,
+                self.lr_scheduler_factor,
+                self.lr_scheduler_patience,
+                objective_mode=True,
+                grad_clip=self.grad_clip,
+            )
+
+            # Evaluate on validation set
+            fold_loss = self.evaluate_model(
+                self.val_loader,
+                trained_model,
+                criterion,
+            )
+            fold_losses.append(fold_loss)
+            total_loss += fold_loss
+
+        # Calculate average loss and standard deviation
+        average_loss = np.mean(fold_losses)
+        std_dev = np.std(fold_losses)
+
+        # Create a new row as a DataFrame
+        new_row = pd.DataFrame(
+            [
+                {
+                    "trial": trial.number,
+                    "average_loss": average_loss,
+                    "std_dev": std_dev,
+                },
+            ]
         )
 
-        # Evaluate model with test data.
-        trained_model.eval()
+        # Concatenate the new row to the existing DataFrame
+        self.cv_results = pd.concat(
+            [self.cv_results, new_row],
+            ignore_index=True,
+        )
+
+        return average_loss
+
+    def evaluate_model(self, val_loader, model, criterion):
+        model.eval()
         total_loss = 0.0
         with torch.no_grad():
-            for inputs, labels in self.test_loader:
+            for inputs, labels in val_loader:
                 inputs, labels = inputs.to(self.device), labels.to(self.device)
-                outputs = trained_model(inputs)
+                outputs = model(inputs)
                 loss = criterion(outputs, labels)
                 total_loss += loss.item()
-
-        return total_loss / len(self.test_loader)
+        return total_loss / len(val_loader)
 
     def perform_optuna_optimization(self, criterion, ModelClass, train_func):
         """
@@ -171,6 +242,12 @@ class Optimize:
             n_jobs=self.n_jobs,
             show_progress_bar=self.show_progress_bar,
         )
+
+        cv_outfile = os.path.join(
+            self.output_dir, "optimize", f"{self.prefix}_cv_results.csv"
+        )
+
+        self.cv_results.to_csv(cv_outfile, header=True, index=False)
 
         if self.verbose >= 1:
             self.logger.info("Finished parameter search!")
