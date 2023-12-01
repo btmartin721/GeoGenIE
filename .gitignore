@@ -24,3 +24,5 @@ settings.json
 *.h5
 population_counts.png
 geogenie_test*
+shapefile
+shapefile.shp
