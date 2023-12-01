@@ -380,7 +380,7 @@ class GeoGenIE:
         c = 2 * torch.atan2(torch.sqrt(a), torch.sqrt(1 - a + eps))
         distance = r * c  # Compute the distance
 
-        return torch.mean(distance)  # Use torch.mean for proper gradient computation
+        return torch.mean(distance)
 
     def predict_locations(
         self,
