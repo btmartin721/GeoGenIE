@@ -1,8 +1,6 @@
 import logging
 import os
 import traceback
-import wget
-from pathlib import Path
 
 import geopandas as gpd
 import matplotlib.colors as colors
@@ -10,6 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+import wget
 from optuna import visualization
 from shapely.geometry import Point
 from sklearn.gaussian_process import GaussianProcessRegressor
@@ -165,9 +164,7 @@ class PlotGenIE:
         outfile,
         fontsize,
         url,
-        output_dir,
         buffer=0.1,
-        show=False,
     ):
         # Calculate Haversine error for each pair of points
         haversine_errors = np.array(
@@ -223,34 +220,7 @@ class PlotGenIE:
         )
 
         # Load and plot dynamic boundaries
-        gdf = gpd.GeoDataFrame(
-            geometry=gpd.points_from_xy(actual_coords[:, 0], actual_coords[:, 1])
-        )
-
-        outshp = os.path.join(output_dir, "shapefile")
-
-        # Download and save map data.
-        wget.download(url, outshp)
-        mapfile = os.path.join(outshp, url.split("/")[-1])
-
-        try:
-            mapdata = gpd.read_file(os.path.join(outshp, url.split("/")[-1]))
-        except Exception:
-            self.logger.error(f"Could not read map file {mapfile} from url {url}.")
-            raise
-        ax.set_xlim(
-            [actual_coords[:, 0].min() - buffer, actual_coords[:, 0].max() + buffer]
-        )
-        ax.set_ylim(
-            [actual_coords[:, 1].min() - buffer, actual_coords[:, 1].max() + buffer]
-        )
-        mapdata[mapdata.geometry.intersects(gdf.unary_union.envelope)].boundary.plot(
-            ax=ax,
-            edgecolor="k",
-            linewidth=5,
-            facecolor="none",
-            label="Haversine Error",
-        )
+        self.plot_map(actual_coords, url, self.output_dir, buffer, ax)
 
         # Customization
         ax.set_title(
@@ -266,11 +236,60 @@ class PlotGenIE:
 
         cbar.ax.set_ylabel("Prediction Error (km)", fontsize=fontsize)
 
-        if show:
+        if self.show_plots:
             plt.show()
         fig.savefig(outfile, facecolor="white", bbox_inches="tight")
 
-    def plot_pca_curve(self, x, vr, knee, output_dir, prefix, show=False):
+    def plot_map(self, actual_coords, url, output_dir, buffer, ax):
+        # Ensure coordinates are valid
+        if np.any(np.isnan(actual_coords)) or np.any(np.isinf(actual_coords)):
+            self.logger.error("Invalid coordinates detected.")
+            raise ValueError("Invalid coordinates in actual_coords.")
+
+        gdf = gpd.GeoDataFrame(
+            geometry=gpd.points_from_xy(actual_coords[:, 0], actual_coords[:, 1]),
+            crs="EPSG:4326",
+        )
+
+        outshp = os.path.join(output_dir, "shapefile")
+        mapfile = os.path.join(outshp, url.split("/")[-1])
+
+        if not os.path.exists(mapfile):
+            wget.download(url, outshp, bar=None)
+
+        try:
+            mapdata = gpd.read_file(mapfile)
+        except Exception:
+            self.logger.error(f"Could not read map file {mapfile} from url {url}.")
+            raise
+
+        mapdata.crs = "epsg:4326"
+
+        # Set the limits with a buffer
+        x_min, x_max = actual_coords[:, 0].min(), actual_coords[:, 0].max()
+        y_min, y_max = actual_coords[:, 1].min(), actual_coords[:, 1].max()
+
+        x_min -= buffer
+        y_min -= buffer
+        x_max += buffer
+        y_max += buffer
+
+        cdf = pd.DataFrame(actual_coords, columns=["Longitude", "Latitude"])
+
+        # Plotting
+        mapdata = mapdata.clip([x_min, y_min, x_max, y_max])
+
+        mapdata.plot(
+            ax=ax,
+            edgecolor="k",
+            linewidth=3,
+            facecolor="none",
+            label="State/ Country Lines",
+        )
+
+        return ax
+
+    def plot_pca_curve(self, x, vr, knee):
         plt.figure()
         plt.plot(x, vr, "-", color="b")
         plt.xlabel("Number of Components")
@@ -284,20 +303,22 @@ class PlotGenIE:
         plt.legend(loc="best")
         plt.title(f"N-Components vs. Explained Variance")
 
-        outfile = os.path.join(output_dir, "plots", f"{prefix}_pca_curve.png")
+        outfile = os.path.join(
+            self.output_dir,
+            "plots",
+            f"{self.prefix}_pca_curve.png",
+        )
 
-        if show:
+        if self.show_plots:
             plt.show()
         plt.savefig(outfile, facecolor="white", bbox_inches="tight")
 
     def plot_dbscan_clusters(
         self,
         Xy,
-        output_dir,
-        prefix,
         dataset,
         labels,
-        show=False,
+        url,
         buffer=1.0,
     ):
         """
@@ -318,16 +339,8 @@ class PlotGenIE:
 
         # Plotting
         fig, ax = plt.subplots(figsize=(10, 8))
-        # Load USA states data
-        usa_states = gpd.read_file(
-            "https://www2.census.gov/geo/tiger/GENZ2021/shp/cb_2021_us_state_20m.zip"
-        )
 
-        # Extract Arkansas
-        arkansas = usa_states[usa_states["STUSPS"] == "AR"]
-
-        # Plotting
-        arkansas.plot(ax=ax, color="white", edgecolor="black")
+        ax = self.plot_map(Xy, url, self.output_dir, buffer, ax)
 
         # Plot each cluster with different color
         unique_labels = set(labels)
@@ -343,10 +356,93 @@ class PlotGenIE:
             cluster_gdf.plot(ax=ax, color=color)
 
         outfile = os.path.join(
-            output_dir, "plots", f"{prefix}_outlier_clustering_{dataset}.png"
+            self.output_dir,
+            "plots",
+            f"{self.prefix}_outlier_clustering_{dataset}.png",
         )
 
-        if show:
+        if self.show_plots:
+            plt.show()
+        fig.savefig(outfile, facecolor="white", bbox_inches="tight")
+        plt.close()
+
+    def plot_outliers_with_traces(
+        self,
+        genetic_data,
+        geographic_data,
+        genetic_outliers,
+        geographic_outliers,
+        correct_centroids_gen,
+        correct_centroids_geo,
+        url,
+        buffer=0.5,
+    ):
+        """
+        Plots geographic data with traces to centroids for outliers only if they are in the wrong cluster.
+
+        Args:
+            geographic_data (numpy.ndarray): The geographic data of the samples.
+            genetic_outliers (set): Indices of genetic outliers.
+            geographic_outliers (set): Indices of geographic outliers.
+            cluster_centroids_gen (dict): Genetic cluster centroids.
+            cluster_centroids_geo (dict): Geographic cluster centroids.
+            current_cluster_assignments (numpy.ndarray): Current cluster assignments for each sample.
+            url (str): URL for map data.
+            buffer (float): Buffer size for the map plot.
+        """
+        fig, axs = plt.subplots(1, 2, figsize=(10, 10))
+
+        for ax, data_type in zip(axs, ["geographic", "genetic"]):
+            data = genetic_data if data_type == "genetic" else geographic_data
+            if data_type == "geographic":
+                ax = self.plot_map(data, url, self.output_dir, buffer, ax)
+
+            # Plot all samples
+            ax.scatter(data[:, 0], data[:, 1], alpha=0.5)
+
+            # Function to draw a line from sample to the correct cluster
+            # centroid
+            def draw_line_to_correct_centroid(idx, centroid, color):
+                ax.plot(
+                    [data[idx][0], centroid[0]],
+                    [data[idx][1], centroid[1]],
+                    color=color,
+                    alpha=0.5,
+                )
+
+            # Draw lines for misclustered samples
+            for idx in geographic_outliers:
+                if idx in correct_centroids_geo:
+                    draw_line_to_correct_centroid(
+                        idx,
+                        correct_centroids_geo[idx],
+                        "red",
+                    )
+
+            for idx in genetic_outliers:
+                if idx in correct_centroids_gen:
+                    draw_line_to_correct_centroid(
+                        idx,
+                        correct_centroids_gen[idx],
+                        "blue",
+                    )
+
+            if data_type == "geographic":
+                xlab = "Longitude"
+                ylab = "Latutude"
+            else:
+                xlab = "Principal Component 1"
+                ylab = "Principal Component 2"
+            ax.set_xlabel(xlab, fontsize=self.fontsize)
+            ax.set_ylabel(ylab, fontsize=self.fontsize)
+
+        outfile = os.path.join(
+            self.output_dir,
+            "plots",
+            f"{self.prefix}_outliers.png",
+        )
+
+        if self.show_plots:
             plt.show()
         fig.savefig(outfile, facecolor="white", bbox_inches="tight")
         plt.close()
