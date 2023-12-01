@@ -11,12 +11,13 @@ from sklearn.impute import SimpleImputer
 from sklearn.manifold import TSNE
 from sklearn.model_selection import GridSearchCV, train_test_split
 from sklearn.neighbors import KernelDensity, NearestNeighbors
-from sklearn.preprocessing import MinMaxScaler, PolynomialFeatures, RobustScaler
+from sklearn.preprocessing import MinMaxScaler, PolynomialFeatures
 from torch import float as torchfloat
 from torch import tensor
 from torch.utils.data import DataLoader, TensorDataset
 from torch_geometric.data import DataLoader as GeoDataLoader
 
+from geogenie.outliers.detect_outliers import GeoGeneticOutlierDetector
 from geogenie.plotting.plotting import PlotGenIE
 from geogenie.samplers.samplers import GeographicDensitySampler
 from geogenie.utils.gtseq2vcf import GTseqToVCF
@@ -270,11 +271,10 @@ class DataStructure:
 
         plotting.plot_dbscan_clusters(
             combined_unscaled_y,
-            args.output_dir,
-            args.prefix,
             dataset,
             db.labels_,
-            show=args.show_plots,
+            args.shapefile_url,
+            buffer=1.0,
         )
 
         if args.verbose >= 1:
@@ -568,41 +568,33 @@ class DataStructure:
             )
 
         self.split_train_test(args.train_split, args.val_split, args.seed)
-        # X_train, X_test, X_val, _ = self.embed(
-        #     args, n_components=6, alg="pca", return_values=True
-        # )
-
-        # mask_train, self.data["y_train"] = self.remove_outliers_dbscan(
-        #     X_train,
-        #     self.data["y_train"],
-        #     int(X_train.shape[0] * args.outlier_detection_scaler),
-        #     args,
-        #     "train",
-        # )
-        # mask_test, self.data["y_test"] = self.remove_outliers_dbscan(
-        #     X_test,
-        #     self.data["y_test"],
-        #     int(X_test.shape[0] * args.outlier_detection_scaler),
-        #     args,
-        #     "test",
-        # )
-        # mask_val, self.data["y_val"] = self.remove_outliers_dbscan(
-        #     X_val,
-        #     self.data["y_val"],
-        #     int(X_val.shape[0] * args.outlier_detection_scaler),
-        #     args,
-        #     "validation",
-        # )
-
-        # self.data["X_train"] = self.data["X_train"][mask_train]
-        # self.data["X_test"] = self.data["X_test"][mask_test]
-        # self.data["X_val"] = self.data["X_val"][mask_val]
-        # self.indices["train_indices"] = self.indices["train_indices"][mask_train]
-        # self.indices["test_indices"] = self.indices["test_indices"][mask_test]
-        # self.indices["val_indices"] = self.indices["val_indices"][mask_val]
-
         self.normalize_locs()
+        X_train, _, __, ___ = self.embed(
+            args, n_components=6, alg="pca", return_values=True
+        )
+
+        outlier_detector = GeoGeneticOutlierDetector(
+            X_train,
+            self.norm.inverse_transform(self.data["y_train"]),
+            output_dir=args.output_dir,
+            prefix=args.prefix,
+            url=args.shapefile_url,
+            buffer=0.1,
+            show_plots=args.show_plots,
+        )
+
         self.embed(args, n_components=None, alg="pca", return_values=False)
+
+        outlier_indices = outlier_detector.composite_outlier_detection(
+            significance_level=0.95,
+            max_k=20,
+        )
+
+        print(outlier_indices)
+
+        import sys
+
+        sys.exit()
 
         if args.verbose >= 1:
             self.logger.info("Data split into train, val, and test sets.")
@@ -704,11 +696,7 @@ class DataStructure:
         )
 
         knee = int(np.ceil(kneedle.knee))
-
-        self.plotting.plot_pca_curve(
-            x, vr, knee, args.output_dir, args.prefix, show=args.show_plots
-        )
-
+        self.plotting.plot_pca_curve(x, vr, knee)
         return knee
 
     def create_dataloaders(
