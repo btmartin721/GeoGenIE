@@ -10,9 +10,11 @@ import pandas as pd
 import seaborn as sns
 import wget
 from optuna import visualization
+from scipy.stats import gamma
 from shapely.geometry import Point
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, WhiteKernel
+from sklearn.metrics import ConfusionMatrixDisplay
 
 from geogenie.utils.scorers import haversine
 
@@ -445,4 +447,60 @@ class PlotGenIE:
         if self.show_plots:
             plt.show()
         fig.savefig(outfile, facecolor="white", bbox_inches="tight")
+        plt.close()
+
+    def plot_confusion_matrix(self, y_true, y_pred, dtype):
+        fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+
+        ConfusionMatrixDisplay.from_predictions(
+            y_true=y_true,
+            y_pred=y_pred,
+            ax=ax,
+        )
+
+        outfile = os.path.join(
+            self.output_dir,
+            "plots",
+            f"{self.prefix}_outlier_{dtype}_confusion_matrix.png",
+        )
+
+        if self.show_plots:
+            plt.show()
+        fig.savefig(outfile, facecolor="white")
+        plt.close()
+
+    def plot_gamma_distribution(self, shape, scale, Dg, sig_level, filename, plot_main):
+        """
+        Plot the gamma distribution.
+
+        Args:
+            shape (float): Shape parameter of the gamma distribution.
+            scale (float): Scale parameter of the gamma distribution.
+            Dg (np.array): Dg statistic for each sample.
+            sig_level (float): Significance level.
+            filename (str): Name of the file to save the plot.
+            plot_main (str): Title of the plot.
+        """
+        x = np.linspace(0, np.max(Dg), 1000)
+        y = gamma.pdf(x, a=shape, scale=scale)
+
+        gamma_threshold = gamma.ppf(1 - sig_level, a=shape, scale=scale)
+
+        plt.figure()
+        plt.plot(x, y, color="blue")
+        plt.axvline(x=gamma_threshold, color="red", linestyle="--")
+        plt.text(
+            gamma_threshold,
+            plt.ylim()[1],
+            f"p = {sig_level}",
+            horizontalalignment="right",
+        )
+        plt.xlabel(f"Gamma(α={shape:.3f}, β={scale:.3f})")
+        plt.ylabel("Density")
+        plt.title(plot_main)
+        plt.grid(True)
+
+        if self.show_plots:
+            plt.show()
+        plt.savefig(filename, facecolor="white")
         plt.close()
