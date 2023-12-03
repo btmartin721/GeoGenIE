@@ -26,3 +26,9 @@ population_counts.png
 geogenie_test*
 shapefile
 shapefile.shp
+KNN_*.pdf
+geneticKNN_test*
+geoKNN_test*
+test.vcf*
+outlier_sampids.txt
+test_coords.txt
