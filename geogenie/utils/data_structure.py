@@ -1,10 +1,12 @@
 import logging
 import os
+import sys
 
 import numpy as np
 import pandas as pd
 from kneed import KneeLocator
 from pysam import VariantFile
+from sklearn.base import clone
 from sklearn.cluster import DBSCAN
 from sklearn.decomposition import PCA
 from sklearn.impute import SimpleImputer
@@ -73,7 +75,6 @@ class DataStructure:
                 iupac_alleles.append(
                     self.map_alleles_to_iupac(alleles, get_iupac_dict())
                 )
-
         # Convert lists to NumPy arrays for efficient computation
         genotypes_array = np.array(genotypes_list, dtype="object")
         is_missing_array = np.array(is_missing_list, dtype=bool)
@@ -136,8 +137,10 @@ class DataStructure:
 
         return np.array(allele_counts)
 
-    def impute_missing(self, model_type, af_threshold=0.5):
+    def impute_missing(self, model_type, seed, af_threshold=0.5):
         """Impute missing genotypes based on a given allele frequency threshold."""
+        if seed is not None:
+            np.random.seed(seed)
         if self.verbose >= 1:
             self.logger.info("Imputing missing values.")
         # Example implementation (can be adapted)
@@ -195,6 +198,7 @@ class DataStructure:
         self.sdlat = np.nanstd(self.locs[:, 1])
 
         self.norm = MinMaxScaler()
+        self.data["y"] = self.norm.fit_transform(self.locs[self.indices["all_indices"]])
         self.data["y_train"] = self.norm.fit_transform(self.data["y_train"])
         self.data["y_test"] = self.norm.transform(self.data["y_test"])
         self.data["y_val"] = self.norm.transform(self.data["y_val"])
@@ -461,6 +465,7 @@ class DataStructure:
         X_val = self.genotypes_enc[val_indices, :]
         X_test = self.genotypes_enc[test_indices, :]
         X_pred = self.genotypes_enc[pred_indices, :]
+        X = self.genotypes_enc[train_val_indices, :]
         y_train = self.locs[train_indices]
         y_val = self.locs[val_indices]
         y_test = self.locs[test_indices]
@@ -476,6 +481,7 @@ class DataStructure:
             "X_val": X_val,
             "X_test": X_test,
             "X_pred": X_pred,
+            "X": X,
             "y_train": y_train,
             "y_val": y_val,
             "y_test": y_test,
@@ -487,6 +493,7 @@ class DataStructure:
             "val_indices": val_indices,
             "test_indices": test_indices,
             "pred_indices": pred_indices,
+            "all_indices": train_val_indices,
         }
 
         if self.verbose >= 1:
@@ -552,7 +559,7 @@ class DataStructure:
 
         # Replace missing data
         if args.impute_missing:
-            self.impute_missing(args.model_type)
+            self.impute_missing(args.model_type, args.seed)
 
         if args.model_type in ["mlp", "gcn"]:
             self.snps_to_012(
@@ -569,30 +576,45 @@ class DataStructure:
 
         self.split_train_test(args.train_split, args.val_split, args.seed)
         self.normalize_locs()
-        X_train, _, __, ___ = self.embed(
+        X_train, _, __, ___, X = self.embed(
             args, n_components=6, alg="pca", return_values=True
         )
 
+        train_samples = pd.Series(
+            self.samples[self.indices["train_indices"]], name="SampleID"
+        )
+        train_samples.to_csv("data/test_train_samples.csv")
+
         outlier_detector = GeoGeneticOutlierDetector(
-            X_train,
-            self.norm.inverse_transform(self.data["y_train"]),
+            pd.DataFrame(X_train, index=train_samples),
+            pd.DataFrame(
+                self.norm.inverse_transform(self.data["y_train"]), index=train_samples
+            ),
             output_dir=args.output_dir,
             prefix=args.prefix,
             url=args.shapefile_url,
             buffer=0.1,
             show_plots=args.show_plots,
+            seed=args.seed,
+            debug=True,
         )
 
         self.embed(args, n_components=None, alg="pca", return_values=False)
 
-        outlier_indices = outlier_detector.composite_outlier_detection(
-            significance_level=0.95,
-            max_k=20,
+        outliers = outlier_detector.composite_outlier_detection(
+            sig_level=0.025, maxk=50, min_nn_dist=0.1
         )
 
-        print(outlier_indices)
+        # outlier_geo_indices = outliers["geographic"]
+        # outlier_gen_indices = outliers["genetic"]
+        outlier_composite_indices = outliers["composite"]
+        # print(len(outlier_gen_indices))
+        # print(len(outlier_geo_indices))
+        print(len(outlier_composite_indices))
 
-        import sys
+        # self.evaluate_outliers(train_samples, outlier_gen_indices, "genetic")
+        # self.evaluate_outliers(train_samples, outlier_geo_indices, "geographic")
+        # self.evaluate_outliers(train_samples, outlier_composite_indices, "composite")
 
         sys.exit()
 
@@ -641,6 +663,35 @@ class DataStructure:
         if args.verbose >= 1:
             self.logger.info("Data loading and preprocessing completed.")
 
+    def evaluate_outliers(self, train_samples, outlier_indices, dt):
+        y_pred = self.process_pred(train_samples, outlier_indices, "Pred")
+        y_true = self.process_truths(train_samples)
+        self.plotting.plot_confusion_matrix(y_true["Label"], y_pred["Label"], dt)
+
+    def process_truths(self, train_samples):
+        truths = pd.read_csv("data/real_outliers.csv", sep=" ")
+        truths["Label"] = 0
+        truths["Type"] = "True"
+        y_true = pd.DataFrame(columns=["ID", "Label", "Type"])
+        y_true["ID"] = train_samples
+        y_true["Label"] = 0
+        y_true["Type"] = "True"
+        y_true.loc[y_true["ID"].isin(truths["ID"]), "Label"] = 1
+        return y_true
+
+    def process_pred(self, train_samples, outlier_indices, type):
+        y = pd.DataFrame(columns=["ID", "Label", "Type"])
+        y["ID"] = train_samples
+        y["Label"] = 0
+        y["Type"] = type
+        y.iloc[outlier_indices, 1] = 1
+        y.sort_values(by=["ID"], ascending=True, inplace=True)
+
+        with open("data/outlier_sampids.txt", "w") as fout:
+            for out in y["ID"].to_numpy().tolist():
+                fout.write(out + "\n")
+        return y
+
     def embed(
         self, args, n_components=None, alg="polynomial", degree=2, return_values=False
     ):
@@ -660,7 +711,7 @@ class DataStructure:
                     fontsize=args.fontsize,
                 )
                 n_components = self.get_num_pca_comp(self.data["X_train"], args)
-            emb = PCA(n_components=n_components)
+            emb = PCA(n_components=n_components, random_state=args.seed)
         elif alg.lower() == "tsne":
             emb = TSNE(n_components=n_components)
         elif alg.lower() == "none":
@@ -670,12 +721,16 @@ class DataStructure:
 
         if do_embed:
             if return_values:
+                X = emb.fit_transform(self.data["X"])
+                emb = clone(emb)
                 X_train = emb.fit_transform(self.data["X_train"])
                 X_test = emb.transform(self.data["X_test"])
                 X_val = emb.transform(self.data["X_val"])
                 X_pred = emb.transform(self.data["X_pred"])
-                return X_train, X_test, X_val, X_pred
+                return X_train, X_test, X_val, X_pred, X
             else:
+                self.data["X"] = emb.fit_transform(self.data["X"])
+                emb = clone(emb)
                 self.data["X_train"] = emb.fit_transform(self.data["X_train"])
                 self.data["X_test"] = emb.transform(self.data["X_test"])
                 self.data["X_val"] = emb.transform(self.data["X_val"])
