@@ -1,5 +1,4 @@
 import logging
-import sys
 from os import path
 
 import numpy as np
@@ -7,7 +6,6 @@ from haversine import haversine
 from scipy.optimize import minimize
 from scipy.spatial.distance import cdist, pdist, squareform
 from scipy.stats import gamma
-from sklearn.cluster import KMeans
 from sklearn.metrics.pairwise import haversine_distances
 from sklearn.neighbors import NearestNeighbors
 
@@ -16,13 +14,7 @@ from geogenie.utils.scorers import calculate_r2_knn, haversine_distance
 
 
 class GeoGeneticOutlierDetector:
-    """
-    A class to detect outliers based on genomic SNPs and geographic coordinates.
-
-    Attributes:
-        genetic_data (np.array): 2D array of shape (n_samples, n_loci) for SNP data.
-        geographic_data (np.array): 2D array of shape (n_samples, 2) for geographic coordinates.
-    """
+    """A class to detect outliers based on genomic SNPs and geographic coordinates."""
 
     def __init__(
         self,
@@ -42,6 +34,13 @@ class GeoGeneticOutlierDetector:
         Args:
             genetic_data (pd.DataFrame): The SNP data as a DataFrame.
             geographic_data (np.array): geographic coordinates as 2D array.
+            output_dir (str): Output directory.
+            prefix (str): Prefix for output files.
+            seed (int): Random seed to use. If None, then the seed is random.
+            url (str): url to download base map for plots.
+            buffer (float): Buffer to put around sampling area on base map when plotting.
+            show_plots (bool): Whether to show plots in-line.
+            debug (bool): If True, writes genetic_data and geographic_data to file.
         """
         if debug:
             genetic_data.to_csv("data/test_eigen.csv", header=False, index=False)
@@ -78,12 +77,11 @@ class GeoGeneticOutlierDetector:
         Args:
             pred_geo_coords (np.array): Predicted geographic coordinates.
             actual_geo_coords (np.array): Actual geographic coordinates.
-            scalar (float): Scaling factor for the distances.
+            scaling_factor (float): Scaling factor for the distances.
 
         Returns:
             np.array: Scaled distances representing the Dgeo statistic.
         """
-
         actual_geo_coords = actual_geo_coords.copy()
         pred_geo_coords = pred_geo_coords.copy()
         actual_geo_coords = actual_geo_coords[:, [1, 0]]
@@ -108,7 +106,6 @@ class GeoGeneticOutlierDetector:
             raise ValueError(
                 "Geographic coordinates are empty or not properly formatted."
             )
-
         geo_coords_tmp = geo_coords[:, [1, 0]]
 
         # Convert latitude and longitude from degrees to radians
@@ -126,18 +123,16 @@ class GeoGeneticOutlierDetector:
         # Add a small amount to zero distances if min_nn_dist is not None
         if min_nn_dist is not None:
             min_nn_dist_scaled = min_nn_dist / scale_factor
-            np.fill_diagonal(
-                dist_matrix, 0
-            )  # Set diagonal to zero to avoid self-distances
+            # Set diagonal to zero to avoid self-distances
             # Add one unit of distance to pairs with identical geographic
             # coordinates
+            np.fill_diagonal(dist_matrix, 0)
             dist_matrix[dist_matrix == 0] += min_nn_dist_scaled
 
         return dist_matrix
 
     def calculate_statistic(self, predicted_data, actual_data):
-        """
-        Calculate the Dg or Dgeo statistic based on the difference between predicted and actual data.
+        """Calculate the Dg or Dgeo statistic based on the difference between predicted and actual data.
 
         Args:
             predicted_data (np.array): Predicted data from KNN.
@@ -156,7 +151,7 @@ class GeoGeneticOutlierDetector:
         Rescale the D statistic if its maximum value exceeds a threshold.
 
         Args:
-            D_statistic (np.array): Dg or Dgeo statistic.
+            D_statistic (np.array): Dg or Dgen statistic.
 
         Returns:
             np.array: Rescaled Dg or Dgeo statistic.
@@ -176,16 +171,16 @@ class GeoGeneticOutlierDetector:
         sig_level=0.95,
         scale_factor=100,
     ):
-        """
-        Detect outliers based on geographic data using the KNN approach.
+        """Detect outliers based on geographic data using the KNN approach.
 
         Args:
             geo_coords (np.array): Array of geographic coordinates.
             gen_coords (np.array): Array of genetic data coordinates.
-            k (int): Number of neighbors.
+            maxk (int): Maximum number of neighbors to search for optimal K.
             min_nn_dist (float): Minimum neighbor distance for geographic KNN.
             w_power (float): Power of distance weight in KNN prediction.
             sig_level (float): Significance level for detecting outliers.
+            scale_factor (int): Scaling factor for geogrpahic coordinates.
 
         Returns:
             np.array: Indices of detected outliers.
@@ -224,8 +219,10 @@ class GeoGeneticOutlierDetector:
         dgeo = self.calculate_dgeo(
             predicted_geo_data, geo_coords, scale_factor=scale_factor
         )
+
         r2 = calculate_r2_knn(predicted_gen_data, gen_coords)
         self.logger.info(f"r-squared for genetic outlier detection: {r2}")
+
         outliers, p_values, gamma_params = self.fit_gamma_mle(dg, sig_level)
         fn = path.join(self.output_dir, "plots", f"{self.prefix}_gamma_genetic.png")
 
@@ -252,16 +249,14 @@ class GeoGeneticOutlierDetector:
         # Calculate genetic distances
         gen_dist_matrix = self.get_dist_matrices(gen_coords, dtype="genetic")
 
-        # Find the optimal K using genetic distances to predict geographic
-        # coordinates
+        # Find optimal K using genetic distances to predict geo coords
         optk = self.find_optimal_k(
             geo_coords, gen_dist_matrix, (2, maxk), w_power, min_nn_dist=min_nn_dist
         )
 
         knn_indices = self.find_gen_knn(gen_dist_matrix, optk)
 
-        # Predict geographic coordinates using weighted KNN based on genetic
-        # distances
+        # Predict geographic coordinates using weighted genetic KNN
         predicted_geo_coords = self.predict_coords_knn(
             geo_coords, gen_dist_matrix, knn_indices, w_power
         )
@@ -271,6 +266,7 @@ class GeoGeneticOutlierDetector:
 
         r2 = calculate_r2_knn(predicted_geo_coords, geo_coords)
         self.logger.info(f"r-squared for geographic outlier detection: {r2}")
+
         outliers, p_values, gamma_params = self.fit_gamma_mle(dgeo, sig_level)
         fn = path.join(self.output_dir, "plots", f"{self.prefix}_gamma_geographic.png")
 
@@ -285,13 +281,11 @@ class GeoGeneticOutlierDetector:
         return outliers, p_values, gamma_params
 
     def find_gen_knn(self, dist_matrix, k):
-        """
-        Find K-nearest neighbors for geographic data considering minimum neighbor distance.
+        """Find K-nearest neighbors for geographic data considering minimum neighbor distance.
 
         Args:
             dist_matrix (np.array): Distance matrix.
             k (int): Number of neighbors.
-            min_nn_dist (float): Minimum distance to consider for neighbors.
 
         Returns:
             np.array: Indices of K-nearest neighbors.
@@ -316,22 +310,20 @@ class GeoGeneticOutlierDetector:
         neighbors = NearestNeighbors(n_neighbors=k, metric="precomputed")
         neighbors.fit(dist_matrix)
         distances, indices = neighbors.kneighbors(dist_matrix)
-
-        # Set indices to -1 if below min_nn_dist
         indices[distances < min_nn_dist] = -1
         return indices
 
     def find_optimal_k(
         self, coords, dist_matrix, klim, w_power, min_nn_dist, is_genetic=True
     ):
-        """
-        Find the optimal number of nearest neighbors (K) for either genetic or geographic KNN.
+        """Find optimal number of nearest neighbors for KNN.
 
         Args:
             coords (np.array): Genetic or geographic coordinates.
             dist_matrix (np.array): Distance matrix.
             klim (tuple): Range of K values to search (min_k, max_k).
             w_power (float): Power for distance weighting.
+            min_nn_dist (int): Minimum nearest neighbor distance to consider points.
             is_genetic (bool): Flag to determine if the calculation is for genetic data as distance matrix.
 
         Returns:
@@ -339,7 +331,6 @@ class GeoGeneticOutlierDetector:
         """
         min_k, max_k = klim
         all_D = []
-
         for k in range(min_k, max_k + 1):
             if is_genetic:
                 knn_indices = self.find_gen_knn(dist_matrix, k)
@@ -355,7 +346,6 @@ class GeoGeneticOutlierDetector:
                 D_statistic = self.calculate_statistic(predictions, coords)
 
             all_D.append(np.sum(D_statistic))
-
         optimal_k = min_k + np.argmin(all_D)  # Adjust index to actual K value
         return optimal_k
 
@@ -396,6 +386,7 @@ class GeoGeneticOutlierDetector:
 
         Args:
             D_statistic (np.array): Dg or Dgeo statistic for each sample.
+            Dgeo (np.array): For determining initial_shape and initial_scale.
             sig_level (float): Significance level for detecting outliers.
             initial_params (tuple): Initial shape and scale parameters for gamma distribution.
 
@@ -526,7 +517,6 @@ class GeoGeneticOutlierDetector:
                     break
 
             if idtype != "composite":
-                # Update the outlier flags
                 original_outlier_indices = filtered_indices[current_outliers]
                 outlier_flags[original_outlier_indices] = True
             else:
@@ -541,7 +531,6 @@ class GeoGeneticOutlierDetector:
 
         if idtype == "composite":
             return np.where(outlier_flags_geo)[0], np.where(outlier_flags_gen)[0]
-
         else:
             return np.where(outlier_flags)[0]
 
@@ -557,8 +546,7 @@ class GeoGeneticOutlierDetector:
         min_nn_dist=100,
         scale_factor=100,
     ):
-        """
-        Detect outliers based on composite data using the KNN approach.
+        """Detect outliers based on composite data using the KNN approach.
 
         Args:
             geo_coords (np.array): Array of geographic coordinates.
@@ -567,6 +555,8 @@ class GeoGeneticOutlierDetector:
             min_nn_dist (float): Minimum neighbor distance for geographic KNN.
             w_power (float): Power of distance weight in KNN prediction.
             sig_level (float): Significance level for detecting outliers.
+            min_nn_dist (int): Minimum distance required to consider points.
+            scale_factor (int): Scaling factor for geo coordinates.
 
         Returns:
             np.array: Indices of detected outliers.
@@ -609,6 +599,7 @@ class GeoGeneticOutlierDetector:
         dgen = self.calculate_statistic(predicted_gen_data, gen_coords)
         dg = self.calculate_statistic(predicted_geo_data, geo_coords)
         dgeo = self.calculate_dgeo(predicted_geo_data, geo_coords, scale_factor)
+
         r2 = calculate_r2_knn(predicted_gen_data, gen_coords)
         self.logger.info(f"r-squared for genetic outlier detection: {r2}")
 
@@ -622,29 +613,21 @@ class GeoGeneticOutlierDetector:
         outliers_geo, p_value_geo, gamma_params_geo = self.fit_gamma_mle(
             dgeo, dgeo, sig_level
         )
+        outdir = path.join(self.output_dir, "plots")
 
-        fn = path.join(self.output_dir, "plots", f"{self.prefix}_gamma_geographic.png")
-
-        self.plotting.plot_gamma_distribution(
-            gamma_params_geo[0],
-            gamma_params_geo[1],
-            dg,
-            sig_level,
-            fn,
-            "Geographic Outlier Gamma Distribution",
-        )
-
-        fn = path.join(self.output_dir, "plots", f"{self.prefix}_gamma_genetic.png")
-
-        self.plotting.plot_gamma_distribution(
-            gamma_params_gen[0],
-            gamma_params_gen[1],
-            dgen,
-            sig_level,
-            fn,
-            "Genetic Outlier Gamma Distribution",
-        )
-
+        dtypes, ds = ["genetic", "geographic"], [dgen, dg]
+        for dtype, gamma_params in zip(
+            dtypes, [gamma_params_gen, gamma_params_geo], ds
+        ):
+            fn = path.join(outdir, f"{self.prefix}_gamma_{dtype}.png")
+            self.plotting.plot_gamma_distribution(
+                gamma_params[0],
+                gamma_params[1],
+                dg,
+                sig_level,
+                fn,
+                f"{dtype.capitalize()} Outlier Gamma Distribution",
+            )
         return (
             outliers_geo,
             outliers_gen,
@@ -659,8 +642,6 @@ class GeoGeneticOutlierDetector:
 
         dgen = self.genetic_data
         dgeo = self.geographic_data
-        # geocent, geoassn = self.cluster_centroids(dgeo, max_clusters)
-        # gencent = self.genetic_centroids(dgen, geoassn)
         outliers = {}
         for idtype in ["composite"]:
             outliers[idtype] = self.multi_stage_outlier_knn(
@@ -672,30 +653,11 @@ class GeoGeneticOutlierDetector:
                 min_nn_dist=min_nn_dist,
                 scale_factor=100,
             )
-
         self.logger.info("Outlier detection completed.")
         return outliers
 
-        # misclust_idx = self.misclust_samp(dgeo, dgen, geocent, gencent, geoassn)
-
-        # # Get correct centroids for misclustered samps
-        # corr_cent_geo = {
-        #     idx: gencent[self.closest_cent(dgen[idx], list(gencent.values()))]
-        #     for idx in misclust_idx["geographic"]
-        # }
-        # corr_cent_gen = {
-        #     idx: geocent[
-        #         f"Cluster {str(self.closest_cent(dgeo[idx], list(geocent.values())))}"
-        #     ]
-        #     for idx in misclust_idx["genetic"]
-        # }
-        # args = [dgen, dgeo, outliers["genetic"], outliers["geographic"]]
-        # args += [corr_cent_gen, corr_cent_geo, self.url, self.buffer]
-        # self.plotting.plot_outliers_with_traces(*args)
-        # return outliers
-
     def compute_pairwise_p(self, distmat, gamma_params, k):
-        """Compute p-values for each pair of sample and its K nearest neighbors."""
+        """Compute p-values for each pair of sample and K nearest neighbors."""
         shape, scale, _ = gamma_params
         n_samples = distmat.shape[0]
         pairwise_p_val = np.zeros((n_samples, k))
@@ -729,91 +691,3 @@ class GeoGeneticOutlierDetector:
                         adjacency_mat[i, j], adjacency_mat[j, i]
                     )
         return adjacency_mat
-
-    def cluster_centroids(self, data, max_clusters):
-        """Gets geographic cluster centroids.
-
-        Args:
-            max_clusters (int): Maximum clusters to form. Gets optimized.
-
-        Returns:
-            dict: Dictionary with cluster ids as keys and centroid coords as values.
-        """
-        optk = self.find_optk(max_clusters=max_clusters)
-        kmeans = KMeans(optk, random_state=self.seed, n_init="auto").fit(data)
-        cent, cluster_assn = kmeans.cluster_centers_, kmeans.labels_
-        d = {f"Cluster {i}": tuple(centroid) for i, centroid in enumerate(cent)}
-        return d, cluster_assn
-
-    def misclust_samp(
-        self,
-        dgeo,
-        dgen,
-        geographic_centroids,
-        gen_cent,
-        curr_clust_assn,
-    ):
-        """
-        Identify samples that are incorrectly clustered, considering both geographic and genetic distances.
-
-        Args:
-            dgeo (numpy.ndarray): Array of geographic coordinates.
-            dgen (numpy.ndarray): Array of genetic data.
-            geo_cent(numpy.ndarray): Array of geographic centroids.
-            gen_cent (numpy.ndarray): Array of genetic centroids.
-            curr_clust_assn (numpy.ndarray): Current cluster assignments for each sample.
-
-        Returns:
-            dict: Dictionary with keys 'genetic' and 'geographic', each containing an array of indices representing samples that are incorrectly clustered.
-        """
-        misclust_samp = {"genetic": [], "geographic": []}
-        for idx, gen_sample in enumerate(dgen):
-            closest_gen_cent = self.closest_cent(gen_sample, gen_cent)
-            if closest_gen_cent != curr_clust_assn[idx]:
-                misclust_samp["genetic"].append(idx)
-        for idx, geo_sample in enumerate(dgeo):
-            closest_geo_cent = self.closest_cent(
-                geo_sample, geographic_centroids.values()
-            )
-            if closest_geo_cent != curr_clust_assn[idx]:
-                misclust_samp["geographic"].append(idx)
-        return misclust_samp
-
-    def closest_cent(self, sample, centroids):
-        """Find the closest centroid to a given sample.
-
-        Args:
-            sample (numpy.ndarray): The sample data (genetic or geographic).
-            centroids (list): List of centroids (genetic or geographic).
-
-        Returns:
-            int: The ID of the closest centroid.
-        """
-        min_distance = float("inf")
-        closest_cent_id = -1
-        if isinstance(centroids, dict):
-            centroids = centroids.values()
-        for centroid_id, centroid in enumerate(centroids):
-            distance = np.linalg.norm(sample - centroid)
-            if distance < min_distance:
-                min_distance = distance
-                closest_cent_id = centroid_id
-        return closest_cent_id
-
-    def genetic_centroids(self, genetic_data, cluster_assignments):
-        """
-        Calculates the centroids of genetic clusters.
-
-        Args:
-            genetic_data (numpy.ndarray): Array of genetic data where rows are samples and columns are features.
-            cluster_assignments (numpy.ndarray): Array of cluster assignments for each sample.
-
-        Returns:
-            numpy.ndarray: An array where each row is the centroid of a cluster.
-        """
-        unique_clusters = np.unique(cluster_assignments)
-        centroids = np.zeros((len(unique_clusters), genetic_data.shape[1]))
-        for i, cluster in enumerate(unique_clusters):
-            members = genetic_data[cluster_assignments == cluster]
-            centroids[i] = np.mean(members, axis=0)
-        return centroids
