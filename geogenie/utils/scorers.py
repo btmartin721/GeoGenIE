@@ -7,6 +7,22 @@ from sklearn.metrics import r2_score
 logger = logging.getLogger(__name__)
 
 
+def calculate_r2_knn(predicted_data, actual_data):
+    """
+    Calculate the coefficient of determination (R^2) for predictions.
+
+    Args:
+        predicted_data (np.array): Predicted data from KNN.
+        actual_data (np.array): Actual data.
+
+    Returns:
+        float: R^2 value.
+    """
+    correlation_matrix = np.corrcoef(predicted_data, actual_data)
+    r_squared = correlation_matrix[0, 1] ** 2
+    return r_squared
+
+
 def calculate_r2(actual_coords, predicted_coords):
     """
     Calculate the coefficient of determination (r^2 value) for actual vs predicted coordinates.
@@ -67,3 +83,27 @@ def haversine(lon1, lat1, lon2, lat2):
     c = 2 * asin(sqrt(a))
     r = 6371  # Radius of Earth in kilometers
     return c * r
+
+
+def haversine_distance(coord1, coord2):
+    """
+    Calculate the Haversine distance between two geographic coordinate points.
+
+    Args:
+        coord1, coord2 (tuple): Latitude and longitude for each point.
+
+    Returns:
+        float: Distance in kilometers.
+    """
+    radius = 6371  # Earth radius in kilometers
+    lon1, lat1 = coord1
+    lon2, lat2 = coord2
+
+    dlat = np.radians(lat2 - lat1)
+    dlon = np.radians(lon2 - lon1)
+    a = np.sin(dlat / 2) * np.sin(dlat / 2) + np.cos(np.radians(lat1)) * np.cos(
+        np.radians(lat2)
+    ) * np.sin(dlon / 2) * np.sin(dlon / 2)
+    c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
+
+    return radius * c
