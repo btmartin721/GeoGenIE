@@ -2,6 +2,7 @@ import logging
 from math import asin, cos, radians, sin, sqrt
 
 import numpy as np
+from scipy.spatial.distance import cdist
 from sklearn.metrics import r2_score
 
 logger = logging.getLogger(__name__)
@@ -107,3 +108,23 @@ def haversine_distance(coord1, coord2):
     c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
 
     return radius * c
+
+
+def parallel_haversine(args):
+    geo_chunk, pred_geo_coords, haversine_distance, scalar = args
+    return (
+        np.diagonal(cdist(geo_chunk, pred_geo_coords, metric=haversine_distance))
+        / scalar
+    )
+
+
+def parallel_euclidean(args):
+    gen_chunk, gen_coords = args
+    return cdist(gen_chunk, gen_coords, metric="euclidean")
+
+
+def parallel_haversine_sklearn(args):
+    geo_chunk, sklearn_haversine, scale_factor = args
+    dist_matrix_chunk = sklearn_haversine(geo_chunk) * 6371.0
+    dist_matrix_chunk /= scale_factor
+    return dist_matrix_chunk
