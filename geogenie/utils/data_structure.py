@@ -592,6 +592,7 @@ class DataStructure:
             ),
             output_dir=args.output_dir,
             prefix=args.prefix,
+            n_jobs=args.n_jobs,
             url=args.shapefile_url,
             buffer=0.1,
             show_plots=args.show_plots,
@@ -602,19 +603,18 @@ class DataStructure:
         self.embed(args, n_components=None, alg="pca", return_values=False)
 
         outliers = outlier_detector.composite_outlier_detection(
-            sig_level=0.025, maxk=50, min_nn_dist=0.1
+            sig_level=0.025, maxk=50, min_nn_dist=100
         )
 
-        # outlier_geo_indices = outliers["geographic"]
-        # outlier_gen_indices = outliers["genetic"]
-        outlier_composite_indices = outliers["composite"]
+        outlier_geo_indices = outliers["geographic"]
+        outlier_gen_indices = outliers["genetic"]
         # print(len(outlier_gen_indices))
         # print(len(outlier_geo_indices))
-        print(len(outlier_composite_indices))
+        print(len(outlier_geo_indices))
+        print(len(outlier_gen_indices))
 
-        # self.evaluate_outliers(train_samples, outlier_gen_indices, "genetic")
-        # self.evaluate_outliers(train_samples, outlier_geo_indices, "geographic")
-        # self.evaluate_outliers(train_samples, outlier_composite_indices, "composite")
+        self.evaluate_outliers(train_samples, outlier_gen_indices, "genetic")
+        self.evaluate_outliers(train_samples, outlier_geo_indices, "geographic")
 
         sys.exit()
 
