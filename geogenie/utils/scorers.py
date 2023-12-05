@@ -23,7 +23,7 @@ def calculate_r2_knn(predicted_data, actual_data):
     """
     correlation_matrix = np.corrcoef(predicted_data, actual_data)
     r_squared = correlation_matrix[0, 1] ** 2
-    return r_squared
+    return np.mean(r_squared)
 
 
 def calculate_r2(actual_coords, predicted_coords):
@@ -69,6 +69,12 @@ def get_r2(y_true, y_pred, idx):
 
     This is not the same as the calculate_r2 method."""
     return r2_score(y_true[:, idx], y_pred[:, idx], multioutput="variance_weighted")
+
+
+def loc_r2(p2, testlocs2):
+    r2_long = np.corrcoef(p2[:, 0], testlocs2[:, 0])[0][1] ** 2
+    r2_lat = np.corrcoef(p2[:, 1], testlocs2[:, 1])[0][1] ** 2
+    return r2_long, r2_lat
 
 
 def haversine(lon1, lat1, lon2, lat2):
