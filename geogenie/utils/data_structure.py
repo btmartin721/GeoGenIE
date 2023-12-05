@@ -611,14 +611,16 @@ class DataStructure:
 
         outlier_geo_indices = outliers["geographic"]
         outlier_gen_indices = outliers["genetic"]
+        all_outliers = list(outlier_geo_indices) + list(outlier_gen_indices)
         print(len(outlier_geo_indices))
         print(len(outlier_gen_indices))
+
+        self.data["X_train"] = self.data["X_train"][all_outliers, :]
+        self.data["y_train"] = self.data["y_train"][all_outliers, :]
 
         self.evaluate_outliers(
             train_samples, outlier_geo_indices, outlier_gen_indices, "Composite"
         )
-
-        sys.exit()
 
         if args.verbose >= 1:
             self.logger.info("Data split into train, val, and test sets.")
