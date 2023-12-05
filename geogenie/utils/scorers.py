@@ -1,6 +1,8 @@
 import logging
+import math
 from math import asin, cos, radians, sin, sqrt
 
+import numba
 import numpy as np
 from scipy.spatial.distance import cdist
 from sklearn.metrics import r2_score
@@ -86,6 +88,7 @@ def haversine(lon1, lat1, lon2, lat2):
     return c * r
 
 
+@numba.jit(fastmath=True, nopython=True)
 def haversine_distance(coord1, coord2):
     """
     Calculate the Haversine distance between two geographic coordinate points.
@@ -100,12 +103,12 @@ def haversine_distance(coord1, coord2):
     lon1, lat1 = coord1
     lon2, lat2 = coord2
 
-    dlat = np.radians(lat2 - lat1)
-    dlon = np.radians(lon2 - lon1)
-    a = np.sin(dlat / 2) * np.sin(dlat / 2) + np.cos(np.radians(lat1)) * np.cos(
-        np.radians(lat2)
-    ) * np.sin(dlon / 2) * np.sin(dlon / 2)
-    c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat / 2) * math.sin(dlat / 2) + math.cos(
+        math.radians(lat1)
+    ) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) * math.sin(dlon / 2)
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
     return radius * c
 
