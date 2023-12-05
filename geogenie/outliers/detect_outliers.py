@@ -1,9 +1,11 @@
 import logging
 import os
 import time
+from multiprocessing import Pool
 from os import path
 
 import numpy as np
+from pynndescent import NNDescent
 from scipy.optimize import minimize
 from scipy.spatial.distance import cdist
 from scipy.stats import gamma
@@ -29,6 +31,7 @@ class GeoGeneticOutlierDetector:
         buffer=0.1,
         show_plots=False,
         debug=False,
+        verbose=0,
     ):
         """Initialize GeoGeneticOutlierDetector.
 
@@ -42,6 +45,7 @@ class GeoGeneticOutlierDetector:
             buffer (float): Buffer to put around sampling area on base map when plotting.
             show_plots (bool): Whether to show plots in-line.
             debug (bool): If True, writes genetic_data and geographic_data to file.
+            verbose (int): Verbosity setting (0-2), least to most verbose.
         """
         if debug:
             genetic_data.to_csv("data/test_eigen.csv", header=False, index=False)
@@ -59,6 +63,7 @@ class GeoGeneticOutlierDetector:
         self.show_plots = show_plots
         self.logger = logging.getLogger(__name__)
         self.plotting = PlotGenIE("cpu", output_dir, prefix)
+        self.verbose = verbose
 
     def calculate_dg(pred_gen, gen_coords):
         """Calculate the Dg statistic for genetic coordinates.
@@ -84,7 +89,8 @@ class GeoGeneticOutlierDetector:
         Returns:
             np.array: Calculated Dgeo values.
         """
-        self.logger.info("Estimating Dgeo statistic...")
+        if self.verbose >= 2:
+            self.logger.info("Estimating Dgeo statistic...")
 
         if pred_geo_coords.shape[1] > 2:
             msg = f"Invalid shape for pred_geo_coords: {pred_geo_coords.shape}"
@@ -101,7 +107,8 @@ class GeoGeneticOutlierDetector:
             / scalar
         )
 
-        self.logger.info("Finished estimating Dgeo statistic.")
+        if self.verbose >= 2:
+            self.logger.info("Finished estimating Dgeo statistic.")
         return distances
 
     def calculate_genetic_distances(self, gen_coords):
@@ -116,14 +123,17 @@ class GeoGeneticOutlierDetector:
         if gen_coords is None or len(gen_coords) == 0:
             raise ValueError("Genetic coordinates are empty or not properly formatted.")
 
-        self.logger.info("Estimating genetic distance matrix...")
+        if self.verbose >= 2:
+            self.logger.info("Estimating genetic distance matrix...")
 
         # Calculate the Euclidean distance matrix
         dist_matrix = cdist(gen_coords, gen_coords, metric="euclidean")
 
         # Add a small value to diagonal to avoid zeros (if required)
         np.fill_diagonal(dist_matrix, 1e-8)
-        self.logger.info("Finished estimating genetic distances.")
+
+        if self.verbose >= 2:
+            self.logger.info("Finished estimating genetic distances.")
         return dist_matrix
 
     def calculate_geographic_distances(
@@ -143,7 +153,8 @@ class GeoGeneticOutlierDetector:
         Returns:
             np.array: Scaled distance matrix.
         """
-        self.logger.info("Estimating geographic distance matrix...")
+        if self.verbose >= 2:
+            self.logger.info("Estimating geographic distance matrix...")
 
         geo_coords = np.flip(geo_coords, axis=1)
         if geo_coords is None or geo_coords.shape[1] != 2:
@@ -167,7 +178,9 @@ class GeoGeneticOutlierDetector:
             min_nn_dist_scaled = min_nn_dist / scale_factor
             np.fill_diagonal(dist_matrix, 0)
             dist_matrix[dist_matrix < min_nn_dist_scaled] = eps
-        self.logger.info("Finished calculating geographic distance matrix.")
+
+        if self.verbose >= 2:
+            self.logger.info("Finished calculating geographic distance matrix.")
         return dist_matrix
 
     def calculate_statistic(
@@ -242,16 +255,17 @@ class GeoGeneticOutlierDetector:
         optk = self.find_optimal_k(
             gen_coords,
             geo_dist_matrix,
-            (2, maxk),
+            (1, maxk),  # does k + 1
             w_power,
             min_nn_dist,
             is_genetic=False,
         )
 
-        self.logger.info(f"Optimal K for KNN Genetic Regression: {optk}")
+        if self.verbose >= 1:
+            self.logger.info(f"Optimal K for KNN Genetic Regression: {optk}")
 
         # Step 2: Find KNN based on geographic distances
-        knn_indices = self.find_geo_knn(geo_dist_matrix, optk, min_nn_dist)
+        knn_indices = self.find_geo_knn(optk, min_nn_dist)
 
         # Step 3: Predict genetic data using weighted KNN
         predicted_gen_data = self.predict_coords_knn(
@@ -299,10 +313,10 @@ class GeoGeneticOutlierDetector:
 
         # Find optimal K using genetic distances to predict geo coords
         optk = self.find_optimal_k(
-            geo_coords, gen_dist_matrix, (2, maxk), w_power, min_nn_dist=min_nn_dist
+            geo_coords, gen_dist_matrix, (1, maxk), w_power, min_nn_dist=min_nn_dist
         )
 
-        knn_indices = self.find_gen_knn(gen_dist_matrix, optk)
+        knn_indices = self.find_gen_knn(optk)
 
         # Predict geographic coordinates using weighted genetic KNN
         predicted_geo_coords = self.predict_coords_knn(
@@ -328,8 +342,8 @@ class GeoGeneticOutlierDetector:
         )
         return outliers, p_values, gamma_params
 
-    def find_gen_knn(self, dist_matrix, k):
-        """Find K-nearest neighbors for geographic data considering minimum neighbor distance.
+    def find_gen_knn(self, coords, k):
+        """Find K-nearest neighbors for genetic data using PyNNDescent.
 
         Args:
             dist_matrix (np.array): Distance matrix.
@@ -338,15 +352,23 @@ class GeoGeneticOutlierDetector:
         Returns:
             np.array: Indices of K-nearest neighbors.
         """
-        neighbors = NearestNeighbors(
-            n_neighbors=k, metric="precomputed", n_jobs=self.n_jobs
-        )
-        neighbors.fit(dist_matrix)
-        _, indices = neighbors.kneighbors(dist_matrix)
-        return indices
+        # As before, set the diagonal to infinity to ignore self-matching
+        # np.fill_diagonal(dist_matrix, np.finfo(np.float32).max)
 
-    def find_geo_knn(self, dist_matrix, k, min_nn_dist):
-        """Find K-nearest neighbors for geographic data considering minimum neighbor distance.
+        # Initialize NNDescent with the precomputed distance matrix
+        nnd = NNDescent(
+            coords,
+            metric="euclidean",
+            n_neighbors=k + 1,
+            n_jobs=self.n_jobs,
+        )
+        indices, distances = nnd.neighbor_graph
+
+        # Exclude the first column which is the point itself
+        return indices[:, 1 : k + 1], distances[:, 1 : k + 1]
+
+    def find_geo_knn(self, coords, k, min_nn_dist):
+        """Find K-nearest neighbors for geographic data considering minimum neighbor distance using PyNNDescent.
 
         Args:
             dist_matrix (np.array): Distance matrix.
@@ -356,35 +378,55 @@ class GeoGeneticOutlierDetector:
         Returns:
             np.array: Indices of K-nearest neighbors.
         """
-        n_samples = dist_matrix.shape[0]
-        neighbors = NearestNeighbors(
-            n_neighbors=k + 1, metric="precomputed", n_jobs=self.n_jobs
+        coords = np.flip(coords)
+
+        # Initialize NNDescent with the precomputed distance matrix
+        nnd = NNDescent(
+            coords,
+            metric="euclidean",
+            n_neighbors=k + 1,
+            n_jobs=self.n_jobs,
         )
-        neighbors.fit(dist_matrix)
-        distances, indices = neighbors.kneighbors(dist_matrix)
+        indices, distances = nnd.neighbor_graph
 
         # Exclude neighbors that are too close (less than min_nn_dist)
-        for i in range(n_samples):
-            valid_neighbors = distances[i] >= min_nn_dist
-            valid_neighbor_indices = indices[i, valid_neighbors]
+        valid_indices = distances >= min_nn_dist
+        result_indices = np.where(valid_indices, indices, -1)
 
-            # In case there are fewer than k valid neighbors, truncate or pad
-            # with -1
-            if len(valid_neighbor_indices) > k:
-                indices[i] = valid_neighbor_indices[
-                    1 : k + 1
-                ]  # Skip the first one as it's the point itself
-            else:
-                indices[i, : len(valid_neighbor_indices)] = valid_neighbor_indices[1:]
-                # Pad with -1 if fewer than k valid neighbors
-                indices[i, len(valid_neighbor_indices) :] = -1
+        # Truncate or pad the result_indices to ensure exactly k neighbors
+        # (excluding the point itself which is at index 0)
+        k_indices = result_indices[:, 1 : k + 1]
 
-        return indices
+        return k_indices, distances[:, 1 : k + 1]
+
+    def compute_d_statistic_for_k_range(self, args):
+        (
+            range_k,
+            coords,
+            dist_matrix,
+            w_power,
+            min_nn_dist,
+            is_genetic,
+            scale_factor,
+            find_knn_function,
+            predict_function,
+            calculate_statistic_function,
+        ) = args
+        all_D = []
+        for k in range_k:
+            # Assuming find_knn_function, predict_function, and calculate_statistic_function
+            # are provided as arguments and replicate the logic of the corresponding instance methods.
+            knn_indices = find_knn_function(dist_matrix, k, min_nn_dist)
+            predictions = predict_function(coords, dist_matrix, knn_indices, w_power)
+            D_statistic = calculate_statistic_function(
+                predictions, coords, is_genetic, scale_factor
+            )
+            all_D.append(np.sum(D_statistic))
+        return all_D
 
     def find_optimal_k(
         self,
         coords,
-        dist_matrix,
         klim,
         w_power,
         min_nn_dist,
@@ -412,11 +454,11 @@ class GeoGeneticOutlierDetector:
         for k in range(min_k, max_k + 1):
             if is_genetic:
                 # Genetic coords, geo dist matrix.
-                knn_indices = self.find_geo_knn(dist_matrix, k, min_nn_dist)
+                knn_indices, distances = self.find_geo_knn(coords, k, min_nn_dist)
 
                 # Genetic predictions.
                 predictions = self.predict_coords_knn(
-                    coords, dist_matrix, knn_indices, w_power
+                    coords, distances, knn_indices, w_power
                 )
 
                 # Geographic error.
@@ -425,11 +467,11 @@ class GeoGeneticOutlierDetector:
                 )
             else:
                 # Geo coords, genetic dist matrix.
-                knn_indices = self.find_gen_knn(dist_matrix, k)
+                knn_indices, distances = self.find_gen_knn(coords, k)
 
                 # Geographic predictions.
                 predictions = self.predict_coords_knn(
-                    coords, dist_matrix, knn_indices, w_power
+                    coords, distances, knn_indices, w_power
                 )
 
                 # Geographic error.
@@ -442,12 +484,69 @@ class GeoGeneticOutlierDetector:
         self.logger.info("Completed optimal K search.")
         return optimal_k
 
-    def predict_coords_knn(self, coords, dist_matrix, knn_indices, w_power):
-        """Predict coordinates data using weighted KNN based on distance matrix.
+    def find_optimal_k_parallel(
+        self,
+        coords,
+        dist_matrix,
+        klim,
+        w_power,
+        min_nn_dist,
+        is_genetic,
+        scale_factor,
+        n_processes=4,
+    ):
+        if self.verbose >= 2:
+            self.logger.info("Finding optimal K for Nearest Neighbors in parallel...")
+
+        n_processes = self.n_jobs
+
+        if n_processes == -1:
+            n_processes = os.cpu_count()
+
+        if n_processes < -1 or n_processes == 0:
+            raise ValueError(f"'n_jobs' must equal -1 or be > 0: {self.n_jobs}")
+
+        find_knn_func = self.find_geo_knn if is_genetic else self.find_gen_knn
+
+        min_k, max_k = klim
+        k_range = range(min_k, max_k + 1)
+        k_chunks = np.array_split(k_range, n_processes)
+
+        # Prepare arguments for each chunk
+        args = [
+            (
+                k_chunk,
+                coords,
+                dist_matrix,
+                w_power,
+                min_nn_dist,
+                is_genetic,
+                scale_factor,
+                find_knn_func,
+                self.predict_coords_knn,
+                self.calculate_statistic,
+            )
+            for k_chunk in k_chunks
+        ]
+
+        # Use multiprocessing Pool
+        with Pool(n_processes) as pool:
+            results = pool.map(self.compute_d_statistic_for_k_range, args)
+
+        # Flatten and combine results from all chunks
+        all_D = [d for sublist in results for d in sublist]
+        optimal_k = min_k + np.argmin(all_D)  # Adjust index to actual K value
+
+        if self.verbose >= 2:
+            self.logger.info("Completed optimal K search in parallel.")
+        return optimal_k
+
+    def predict_coords_knn(self, coords, knn_distances, knn_indices, w_power):
+        """Predict coordinates data using weighted KNN.
 
         Args:
             coords (np.array): Array of genetic or geographic coordinates.
-            dist_matrix (np.array): Precomputed distance matrix.
+            knn_distances (np.array): Distances to K-nearest neighbors.
             knn_indices (np.array): Indices of K-nearest neighbors.
             w_power (float): Power of distance weight in prediction.
 
@@ -457,12 +556,10 @@ class GeoGeneticOutlierDetector:
         predictions = np.zeros_like(coords)
 
         for i in range(len(coords)):
-            # Extract the distances and indices of the K-nearest neighbors
-            neighbor_distances = dist_matrix[i, knn_indices[i]]
+            neighbor_distances = knn_distances[i]
             neighbor_indices = knn_indices[i]
 
             # Compute weights inversely proportional to the distance
-            # Avoid division by zero by adding a small constant
             weights = 1 / (neighbor_distances + 1e-8) ** w_power
             normalized_weights = weights / np.sum(weights)
 
@@ -527,84 +624,127 @@ class GeoGeneticOutlierDetector:
         idtype,
         sig_level=0.05,
         maxk=50,
-        min_nn_dist=100,
+        w_power=2,
+        min_nn_dist=1000,
         scale_factor=100,
     ):
         """Iterative Outlier Detection via KNN for genetic and geographic data."""
+        min_nn_dist /= scale_factor
+
+        time_durations, optk_gen, optk_geo = self.search_nn_optk(
+            geo_coords, gen_coords, maxk, w_power, min_nn_dist, scale_factor
+        )
+
+        if self.verbose >= 1:
+            self.logger.info(
+                f"Optimal K for Genetic Regression: {optk_gen}, Time taken: {time_durations['find_optimal_k_genetic']} seconds"
+            )
+            self.logger.info(
+                f"Optimal K for Geographic Regression: {optk_geo}, Time taken: {time_durations['find_optimal_k_geographic']} seconds"
+            )
         outlier_flags_geo = np.zeros(len(geo_coords), dtype=bool)
         outlier_flags_gen = np.zeros(len(gen_coords), dtype=bool)
-        original_indices = np.arange(len(geo_coords))
 
         iteration = 0
+        allow_geo = True
+        allow_gen = True
         while True:
             iteration += 1
-            self.logger.info(f"Iteration {iteration} in multi-stage outlier detection.")
+            new_outliers_detected = False
 
-            if idtype == "genetic":
-                # Apply KNN regression and outlier detection for genetic data
-                filtered_gen_coords = gen_coords[~outlier_flags_gen]
-                gen_dist = self.calculate_genetic_distances(filtered_gen_coords)
-                current_outliers_gen = self.detect_genetic_outliers(
-                    filtered_gen_coords, gen_dist, maxk, sig_level
+            if self.verbose >= 1:
+                self.logger.info(
+                    f"\nIteration {iteration} of multi-stage outlier detection.\n"
                 )
 
-                # Update genetic outlier flags
-                outlier_flags_gen[original_indices[current_outliers_gen]] = True
+            # if idtype == "genetic":
+            #     filtered_gen_coords = gen_coords[~outlier_flags_gen]
+            #     gen_dist = self.calculate_genetic_distances(filtered_gen_coords)
+            #     current_outliers_gen = self.detect_genetic_outliers(
+            #         filtered_gen_coords, gen_dist, maxk, sig_level
+            #     )
 
-            elif idtype == "geographic":
-                # Apply KNN regression and outlier detection for geographic data
-                filtered_geo_coords = geo_coords[~outlier_flags_geo]
-                geo_dist = self.calculate_geographic_distances(
-                    filtered_geo_coords, scale_factor, min_nn_dist
-                )
-                current_outliers_geo = self.detect_geographic_outliers(
-                    filtered_geo_coords, geo_dist, maxk, sig_level
-                )
+            #     if current_outliers_gen.size:
+            #         new_outliers_detected = True
+            #         outlier_flags_gen[~outlier_flags_gen][current_outliers_gen] = True
 
-                # Update geographic outlier flags
-                outlier_flags_geo[original_indices[current_outliers_geo]] = True
+            # if idtype == "geographic":
+            #     filtered_geo_coords = geo_coords[~outlier_flags_geo]
+            #     geo_dist = self.calculate_geographic_distances(
+            #         filtered_geo_coords, scale_factor, min_nn_dist
+            #     )
+            #     current_outliers_geo = self.detect_geographic_outliers(
+            #         filtered_geo_coords, geo_dist, maxk, sig_level
+            #     )
 
-            elif idtype == "composite":
-                # Apply KNN regression and outlier detection for composite data
-                mask = np.logical_or(~outlier_flags_geo, ~outlier_flags_gen)
-                filtered_geo_coords = geo_coords[mask]
-                filtered_gen_coords = gen_coords[mask]
-                geo_dist = self.calculate_geographic_distances(
-                    filtered_geo_coords, scale_factor, min_nn_dist
-                )
-                gen_dist = self.calculate_genetic_distances(filtered_gen_coords)
+            #     if current_outliers_geo.size:
+            #         new_outliers_detected = True
+            #         outlier_flags_geo[~outlier_flags_geo][current_outliers_geo] = True
 
-                (
-                    current_outliers_geo,
-                    current_outliers_gen,
-                    p_values,
-                    gamma_params,
-                ) = self.detect_composite_outliers(
-                    filtered_geo_coords,
-                    filtered_gen_coords,
-                    geo_dist,
-                    gen_dist,
-                    maxk,
-                    sig_level,
-                    min_nn_dist,
-                )
+            (
+                time_durations,
+                d_stats,
+                gamma_params,
+                p_values,
+                current_outliers_geo,
+                current_outliers_gen,
+                filtered_indices,
+            ) = self.do_composite(
+                geo_coords,
+                gen_coords,
+                sig_level,
+                min_nn_dist,
+                scale_factor,
+                optk_gen,
+                optk_geo,
+                outlier_flags_geo,
+                outlier_flags_gen,
+                time_durations,
+            )
 
-                # Update composite outlier flags
-                outlier_flags_geo[mask][current_outliers_geo] = True
-                outlier_flags_gen[mask][current_outliers_gen] = True
+            # Map indices from filtered to original
+            if current_outliers_geo is not None and current_outliers_geo.size > 0:
+                actual_outlier_indices_geo = filtered_indices[current_outliers_geo]
 
-            # Check for termination condition
-            if idtype != "composite":
-                if not any(
-                    current_outliers_gen
-                    if idtype == "genetic"
-                    else current_outliers_geo
-                ):
-                    break
+                # Update the flags in the original arrays
+                outlier_flags_geo[actual_outlier_indices_geo] = True
+                new_outliers_detected = True
             else:
-                if not any(current_outliers_geo) and not any(current_outliers_gen):
-                    break
+                allow_geo = False
 
+            if current_outliers_gen is not None and current_outliers_gen.size > 0:
+                actual_outlier_indices_gen = filtered_indices[current_outliers_gen]
+                outlier_flags_gen[actual_outlier_indices_gen] = True
+                new_outliers_detected = True
+            else:
+                allow_gen = False
+
+            if not new_outliers_detected:
+                if self.verbose >= 1:
+                    self.logger.info("No new outliers detected. Terminating iteration.")
+                break
+
+            if not allow_gen and not allow_geo:
+                if self.verbose >= 1:
+                    self.logger.info("No new outliers detected. Terminating iteration.")
+                break
+
+            if self.verbose >= 2:
+                self.logger.info(f"Finished iteration {iteration}.")
+
+        if self.verbose >= 1:
+            self.logger.info("Completed multi-stage outlier detection.")
+
+        # Optional: Plotting Gamma distribution
+        start_time = time.time()
+        self.plot_gamma_dist(sig_level, d_stats, gamma_params)
+        end_time = time.time()
+        time_durations["plot_gamma_distribution"] = end_time - start_time
+
+        if self.verbose >= 2:
+            self.logger.info(
+                f"Plotted Gamma distributions. Time taken: {time_durations['plotting_gamma_distribution']} seconds"
+            )
         # Return the indices of the detected outliers
         if idtype == "composite":
             return np.where(outlier_flags_geo)[0], np.where(outlier_flags_gen)[0]
@@ -613,13 +753,112 @@ class GeoGeneticOutlierDetector:
         elif idtype == "geographic":
             return np.where(outlier_flags_geo)[0]
 
+    def do_composite(
+        self,
+        geo_coords,
+        gen_coords,
+        sig_level,
+        min_nn_dist,
+        scale_factor,
+        optk_gen,
+        optk_geo,
+        outlier_flags_geo,
+        outlier_flags_gen,
+        time_durations,
+    ):
+        non_outlier_mask = ~(outlier_flags_geo | outlier_flags_gen)
+
+        # Keep track of original indices
+        original_indices = np.arange(len(geo_coords))
+        filtered_indices = original_indices[non_outlier_mask]
+
+        filtered_geo_coords = geo_coords[non_outlier_mask]
+        filtered_gen_coords = gen_coords[non_outlier_mask]
+
+        (
+            current_outliers_geo,
+            current_outliers_gen,
+            time_durations,
+            d_stats,
+            p_values,
+            gamma_params,
+        ) = self.detect_composite_outliers(
+            filtered_geo_coords,
+            filtered_gen_coords,
+            optk_geo,
+            optk_gen,
+            time_durations,
+            w_power=2,
+            sig_level=sig_level,
+            min_nn_dist=min_nn_dist,
+            scale_factor=scale_factor,
+        )
+
+        # Return the filtered indices as well for mapping
+        return (
+            time_durations,
+            d_stats,
+            gamma_params,
+            p_values,
+            current_outliers_geo,
+            current_outliers_gen,
+            filtered_indices,
+        )
+
+    def search_nn_optk(
+        self, geo_coords, gen_coords, maxk, w_power, min_nn_dist, scale_factor
+    ):
+        time_durations = {}
+
+        # Step 1: Find optimal K for both genetic and geographic data
+        start_time = time.time()
+        optk_gen = self.find_optimal_k(
+            gen_coords,
+            (2, maxk),  # does k + 1
+            w_power,
+            min_nn_dist,
+            is_genetic=True,
+            scale_factor=scale_factor,
+        )
+
+        end_time = time.time()
+        time_durations["find_optimal_k_genetic"] = end_time - start_time
+
+        start_time = time.time()
+        optk_geo = self.find_optimal_k(
+            geo_coords,
+            (1, maxk),  # does k + 1
+            w_power,
+            min_nn_dist,
+            is_genetic=False,
+            scale_factor=scale_factor,
+        )
+        end_time = time.time()
+        time_durations["find_optimal_k_geographic"] = end_time - start_time
+        return time_durations, optk_gen, optk_geo
+
+    def plot_gamma_dist(
+        self, sig_level, d_stats, gamma_params, dtypes=["geographic", "genetic"]
+    ):
+        outdir = path.join(self.output_dir, "plots")
+        for dtype, gamma, dg in zip(dtypes, gamma_params, d_stats):
+            fn = path.join(outdir, f"{self.prefix}_gamma_{dtype}.png")
+            self.plotting.plot_gamma_distribution(
+                gamma[0],
+                gamma[1],
+                dg,
+                sig_level,
+                fn,
+                f"{dtype.capitalize()} Outlier Gamma Distribution",
+            )
+
     def detect_composite_outliers(
         self,
         geo_coords,
         gen_coords,
-        geo_dist,
-        gen_dist,
-        maxk=50,
+        optk_geo,
+        optk_gen,
+        time_durations,
         w_power=2,
         sig_level=0.05,
         min_nn_dist=100,
@@ -631,9 +870,9 @@ class GeoGeneticOutlierDetector:
         Args:
             geo_coords (np.array): Array of geographic coordinates.
             gen_coords (np.array): Array of genetic data coordinates.
-            geo_dist (np.array): Geographic distance matrix.
-            gen_dist (np.array): Genetic distance matrix.
-            maxk (int): Maximum number of neighbors to consider.
+            optk_geo (int): Optimal K for nearest neigbbors (geographic).
+            optk_gen (int): Optimal K for nearest neighbors (genetic).
+            time_durations (dict): Dictionary storing run times for each method.
             w_power (float): Power of distance weight in KNN prediction.
             sig_level (float): Significance level for detecting outliers.
             min_nn_dist (int): Minimum distance required to consider points.
@@ -645,48 +884,17 @@ class GeoGeneticOutlierDetector:
         Returns:
             tuple: Indices of detected outliers, p-values, and gamma parameters for geographic and genetic outliers.
         """
-
-        # Initialize a dictionary to store time durations
-        time_durations = {}
-
-        # Step 1: Find optimal K for both genetic and geographic data
-        start_time = time.time()
-        optk_gen = self.find_optimal_k(
-            gen_coords,
-            geo_dist,
-            (2, maxk),
-            w_power,
-            min_nn_dist,
-            is_genetic=True,
-            scale_factor=scale_factor,
-        )
-        optk_geo = self.find_optimal_k(
-            geo_coords,
-            gen_dist,
-            (2, maxk),
-            w_power,
-            min_nn_dist,
-            is_genetic=False,
-            scale_factor=scale_factor,
-        )
-        end_time = time.time()
-        time_durations["find_optimal_k"] = end_time - start_time
-        self.logger.info(
-            f"Optimal K for Genetic Regression: {optk_gen}, Time taken: {time_durations['find_optimal_k']} seconds"
-        )
-        self.logger.info(
-            f"Optimal K for Geographic Regression: {optk_geo}, Time taken: {time_durations['find_optimal_k']} seconds"
-        )
-
         # Step 2: Find KNN based on both distances
         start_time = time.time()
-        knn_indices_geo = self.find_geo_knn(geo_dist, optk_geo, min_nn_dist)
-        knn_indices_gen = self.find_gen_knn(gen_dist, optk_gen)
+        knn_indices_geo, geo_dist = self.find_geo_knn(geo_coords, optk_geo, min_nn_dist)
+        knn_indices_gen, gen_dist = self.find_gen_knn(gen_coords, optk_gen)
         end_time = time.time()
         time_durations["find_knn"] = end_time - start_time
-        self.logger.info(
-            f"Finding KNN indices, Time taken: {time_durations['find_knn']} seconds"
-        )
+
+        if self.verbose >= 2:
+            self.logger.info(
+                f"Finding KNN indices, Time taken: {time_durations['find_knn']} seconds"
+            )
 
         # Step 3: Predict using weighted KNN
         start_time = time.time()
@@ -698,9 +906,11 @@ class GeoGeneticOutlierDetector:
         )
         end_time = time.time()
         time_durations["predict_knn"] = end_time - start_time
-        self.logger.info(
-            f"Predicting using weighted KNN, Time taken: {time_durations['predict_knn']} seconds"
-        )
+
+        if self.verbose >= 2:
+            self.logger.info(
+                f"Predicting using weighted KNN, Time taken: {time_durations['predict_knn']} seconds"
+            )
 
         # Step 4: Calculate D statistics and detect outliers
         start_time = time.time()
@@ -712,15 +922,19 @@ class GeoGeneticOutlierDetector:
         )
         end_time = time.time()
         time_durations["calculate_statistic"] = end_time - start_time
-        self.logger.info(
-            f"Calculating D statistics, Time taken: {time_durations['calculate_statistic']} seconds"
-        )
+
+        if self.verbose >= 2:
+            self.logger.info(
+                f"Calculating D statistics, Time taken: {time_durations['calculate_statistic']} seconds"
+            )
 
         # Log r-squared values for predictions
         r2_gen = calculate_r2_knn(predicted_gen_data, gen_coords)
         r2_geo = calculate_r2_knn(predicted_geo_data, geo_coords)
-        self.logger.info(f"r-squared for genetic outlier detection: {r2_gen}")
-        self.logger.info(f"r-squared for geographic outlier detection: {r2_geo}")
+
+        if self.verbose >= 1:
+            self.logger.info(f"r-squared for genetic outlier detection: {r2_gen}")
+            self.logger.info(f"r-squared for geographic outlier detection: {r2_geo}")
 
         # Step 5: Fit Gamma distribution and detect outliers
         start_time = time.time()
@@ -729,9 +943,11 @@ class GeoGeneticOutlierDetector:
         )
         end_time = time.time()
         time_durations["fit_gamma_genetic"] = end_time - start_time
-        self.logger.info(
-            f"Fitting gamma distribution for genetic outliers, Time taken: {time_durations['fit_gamma_genetic']} seconds"
-        )
+
+        if self.verbose >= 2:
+            self.logger.info(
+                f"Fitting gamma distribution for genetic outliers, Time taken: {time_durations['fit_gamma_genetic']} seconds"
+            )
 
         start_time = time.time()
         outliers_geo, p_value_geo, gamma_params_geo = self.fit_gamma_mle(
@@ -739,39 +955,20 @@ class GeoGeneticOutlierDetector:
         )
         end_time = time.time()
         time_durations["fit_gamma_geographic"] = end_time - start_time
-        self.logger.info(
-            f"Fitting gamma distribution for geographic outliers, Time taken: {time_durations['fit_gamma_geographic']} seconds"
-        )
 
-        # Optional: Plotting Gamma distribution
-        start_time = time.time()
-        outdir = path.join(self.output_dir, "plots")
-        for dtype, gamma_params, d_statistic in zip(
-            ["genetic", "geographic"],
-            [gamma_params_gen, gamma_params_geo],
-            [dgen, dgeo],
-        ):
-            fn = path.join(outdir, f"{self.prefix}_gamma_{dtype}.png")
-            self.plotting.plot_gamma_distribution(
-                gamma_params[0],
-                gamma_params[1],
-                d_statistic,
-                sig_level,
-                fn,
-                f"{dtype.capitalize()} Outlier Gamma Distribution",
+        if self.verbose >= 2:
+            self.logger.info(
+                f"Fitted gamma distribution for geographic outliers. Time taken: {time_durations['fit_gamma_geographic']} seconds"
             )
-        end_time = time.time()
-        time_durations["plotting_gamma_distribution"] = end_time - start_time
-        self.logger.info(
-            f"Plotting Gamma distributions, Time taken: {time_durations['plotting_gamma_distribution']} seconds"
-        )
 
         # Return the results and the timing data
         return (
             outliers_geo,
             outliers_gen,
-            (p_value_geo, p_value_gen),
-            (gamma_params_geo, gamma_params_gen),
+            time_durations,
+            [dgeo, dgen],
+            [p_value_geo, p_value_gen],
+            [gamma_params_geo, gamma_params_gen],
         )
 
     def composite_outlier_detection(self, sig_level=0.05, maxk=50, min_nn_dist=100):
@@ -780,16 +977,16 @@ class GeoGeneticOutlierDetector:
         dgen = self.genetic_data
         dgeo = self.geographic_data
         outliers = {}
-        for idtype in ["composite"]:
-            outliers["geographic"], outliers["genetic"] = self.multi_stage_outlier_knn(
-                dgeo,
-                dgen,
-                idtype,
-                sig_level,
-                maxk=maxk,
-                min_nn_dist=min_nn_dist,
-                scale_factor=100,
-            )
+        outliers["geographic"], outliers["genetic"] = self.multi_stage_outlier_knn(
+            dgeo,
+            dgen,
+            "composite",
+            sig_level,
+            maxk=maxk,
+            w_power=2,
+            min_nn_dist=min_nn_dist,
+            scale_factor=100,
+        )
         self.logger.info("Outlier detection completed.")
         return outliers
 
