@@ -11,6 +11,7 @@ from sklearn.cluster import DBSCAN
 from sklearn.decomposition import PCA
 from sklearn.impute import SimpleImputer
 from sklearn.manifold import TSNE
+from sklearn.metrics import accuracy_score, f1_score
 from sklearn.model_selection import GridSearchCV, train_test_split
 from sklearn.neighbors import KernelDensity, NearestNeighbors
 from sklearn.preprocessing import MinMaxScaler, PolynomialFeatures
@@ -583,6 +584,7 @@ class DataStructure:
         train_samples = pd.Series(
             self.samples[self.indices["train_indices"]], name="SampleID"
         )
+
         train_samples.to_csv("data/test_train_samples.csv")
 
         outlier_detector = GeoGeneticOutlierDetector(
@@ -598,6 +600,7 @@ class DataStructure:
             show_plots=args.show_plots,
             seed=args.seed,
             debug=True,
+            verbose=args.verbose,
         )
 
         self.embed(args, n_components=None, alg="pca", return_values=False)
@@ -608,13 +611,12 @@ class DataStructure:
 
         outlier_geo_indices = outliers["geographic"]
         outlier_gen_indices = outliers["genetic"]
-        # print(len(outlier_gen_indices))
-        # print(len(outlier_geo_indices))
         print(len(outlier_geo_indices))
         print(len(outlier_gen_indices))
 
-        self.evaluate_outliers(train_samples, outlier_gen_indices, "genetic")
-        self.evaluate_outliers(train_samples, outlier_geo_indices, "geographic")
+        self.evaluate_outliers(
+            train_samples, outlier_geo_indices, outlier_gen_indices, "Composite"
+        )
 
         sys.exit()
 
@@ -663,34 +665,48 @@ class DataStructure:
         if args.verbose >= 1:
             self.logger.info("Data loading and preprocessing completed.")
 
-    def evaluate_outliers(self, train_samples, outlier_indices, dt):
-        y_pred = self.process_pred(train_samples, outlier_indices, "Pred")
-        y_true = self.process_truths(train_samples)
+    def evaluate_outliers(
+        self, train_samples, outlier_geo_indices, outlier_gen_indices, dt
+    ):
+        y_pred = self.process_pred(
+            train_samples, outlier_geo_indices, outlier_gen_indices, dt
+        )
+        y_true = self.process_truths(train_samples, dt)
         self.plotting.plot_confusion_matrix(y_true["Label"], y_pred["Label"], dt)
 
-    def process_truths(self, train_samples):
+        self.logger.info(
+            f"Accuracy: {accuracy_score(y_true['Label'], y_pred['Label'])}"
+        )
+        self.logger.info(f"F1 Score: {f1_score(y_true['Label'], y_pred['Label'])}")
+
+    def process_truths(self, train_samples, label_type):
         truths = pd.read_csv("data/real_outliers.csv", sep=" ")
-        truths["Label"] = 0
-        truths["Type"] = "True"
-        y_true = pd.DataFrame(columns=["ID", "Label", "Type"])
+        truths["method"] = truths["method"].str.replace('"', "")
+        truths["method"] = truths["method"].str.replace("'", "")
+        y_true = pd.DataFrame(columns=["ID"])
         y_true["ID"] = train_samples
-        y_true["Label"] = 0
+        y_true["Label"] = y_true["ID"].isin(truths["ID"]).astype(int)
         y_true["Type"] = "True"
-        y_true.loc[y_true["ID"].isin(truths["ID"]), "Label"] = 1
-        return y_true
+        return y_true.sort_values(by=["ID"])
 
-    def process_pred(self, train_samples, outlier_indices, type):
-        y = pd.DataFrame(columns=["ID", "Label", "Type"])
-        y["ID"] = train_samples
-        y["Label"] = 0
-        y["Type"] = type
-        y.iloc[outlier_indices, 1] = 1
-        y.sort_values(by=["ID"], ascending=True, inplace=True)
+    def process_pred(
+        self, train_samples, outlier_geo_indices, outlier_gen_indices, label_type
+    ):
+        # Create the y_pred DataFrame
+        y_pred = pd.DataFrame(columns=["ID"])
+        y_pred["ID"] = train_samples
+        y_pred[label_type] = 0
+        y_pred["Type"] = "Pred"
 
-        with open("data/outlier_sampids.txt", "w") as fout:
-            for out in y["ID"].to_numpy().tolist():
-                fout.write(out + "\n")
-        return y
+        # Convert outlier indices to IDs
+        outlier_geo_ids = train_samples.iloc[outlier_geo_indices]
+        outlier_gen_ids = train_samples.iloc[outlier_gen_indices]
+
+        outlier_ids = pd.concat([outlier_geo_ids, outlier_gen_ids])
+
+        # Mark the outliers in y_pred based on IDs
+        y_pred["Label"] = y_pred["ID"].isin(outlier_ids).astype(int)
+        return y_pred.sort_values(by=["ID"])
 
     def embed(
         self, args, n_components=None, alg="polynomial", degree=2, return_values=False
