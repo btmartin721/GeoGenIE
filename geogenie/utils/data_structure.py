@@ -612,11 +612,16 @@ class DataStructure:
         outlier_geo_indices = outliers["geographic"]
         outlier_gen_indices = outliers["genetic"]
         all_outliers = list(outlier_geo_indices) + list(outlier_gen_indices)
-        print(len(outlier_geo_indices))
-        print(len(outlier_gen_indices))
 
-        self.data["X_train"] = self.data["X_train"][all_outliers, :]
-        self.data["y_train"] = self.data["y_train"][all_outliers, :]
+        # Remove outliers.
+        mask = np.ones(self.data["X_train"].shape[0], bool)
+        mask[all_outliers] = 0
+        self.data["X_train"] = self.data["X_train"][mask]
+        self.data["y_train"] = self.data["y_train"][mask]
+
+        self.logger.info(
+            f"{self.data['X_train'].shape[0]} samples remaining after removing {len(all_outliers)} outliers."
+        )
 
         self.evaluate_outliers(
             train_samples, outlier_geo_indices, outlier_gen_indices, "Composite"
