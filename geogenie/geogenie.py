@@ -18,7 +18,7 @@ from geogenie.optimize.optuna_opt import Optimize
 from geogenie.plotting.plotting import PlotGenIE
 from geogenie.utils.callbacks import EarlyStopping
 from geogenie.utils.data_structure import DataStructure
-from geogenie.utils.scorers import haversine, calculate_r2
+from geogenie.utils.scorers import haversine, loc_r2
 
 
 class GeoGenIE:
@@ -341,7 +341,7 @@ class GeoGenIE:
         return torch.sqrt(torch.sum((y_pred - y_true) ** 2, axis=1)).mean()
 
     @staticmethod
-    def haversine_distance_torch(lat1, lon1, lat2, lon2):
+    def haversine_distance_torch(lon1, lat1, lon2, lat2):
         """
         Calculate the Haversine distance between two points on the earth in PyTorch.
         Args:
@@ -426,7 +426,7 @@ class GeoGenIE:
         rescaled_truth = rescale_predictions(ground_truth)
 
         # Evaluate predictions
-        r2_longlat = calculate_r2(rescaled_truth, rescaled_preds)
+        r2_long, r2_lat = loc_r2(rescaled_preds, rescaled_truth)
 
         def get_dist_metric(y_true, y_pred, func):
             """
@@ -450,7 +450,8 @@ class GeoGenIE:
         mean_dist = get_dist_metric(rescaled_truth, rescaled_preds, np.mean)
         median_dist = get_dist_metric(rescaled_truth, rescaled_preds, np.median)
         std_dist = get_dist_metric(rescaled_truth, rescaled_preds, np.std)
-        self.logger.info(f"R2(x,y) = {r2_longlat}")
+        self.logger.info(f"R2(x) = {r2_long}")
+        self.logger.info(f"R2(y) = {r2_lat}")
         self.logger.info(f"Mean Validation Error (Haversine Distance) = {mean_dist}")
         self.logger.info(
             f"Median Validation Error (Haversine Distance) = {median_dist}"
@@ -461,7 +462,8 @@ class GeoGenIE:
 
         # return the evaluation metrics along with the predictions
         metrics = {
-            "r2_longlat": r2_longlat,
+            "r2_long": r2_long,
+            "r2_lat": r2_lat,
             "mean_dist": mean_dist,
             "median_dist": median_dist,
             "stdev_dist": std_dist,
@@ -792,7 +794,7 @@ class GeoGenIE:
             f"{prefix}_train_history.png",
         )
 
-        geo_outdir = os.path.join(
+        geo_outfile = os.path.join(
             self.args.output_dir,
             "plots",
             f"{self.args.prefix}_geographic_error_{dataset}.png",
@@ -802,12 +804,10 @@ class GeoGenIE:
         self.plotting.plot_geographic_error_distribution(
             self.data_structure.norm.inverse_transform(y_true),
             self.data_structure.norm.inverse_transform(val_preds),
-            geo_outdir,
+            geo_outfile,
             self.args.fontsize,
             self.args.shapefile_url,
-            self.args.output_dir,
             buffer=0.5,
-            show=self.args.show_plots,
         )
 
         if self.args.verbose >= 1:
@@ -888,7 +888,7 @@ class GeoGenIE:
             self.data_structure.define_params(self.args)
             best_params = self.data_structure.params
 
-            criterion = nn.MSELoss()
+            criterion = GeoGenIE.haversine_loss
 
             if self.args.model_type == "transformer":
                 modelclass = SNPTransformer

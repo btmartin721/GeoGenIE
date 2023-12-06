@@ -2,6 +2,42 @@ import logging
 import sys
 from contextlib import contextmanager
 
+import numpy as np
+
+logger = logging.getLogger(__name__)
+
+
+def geo_coords_is_valid(coordinates):
+    """
+    Validates that a given NumPy array contains valid geographic coordinates.
+
+    Args:
+        coordinates (np.ndarray): A NumPy array of shape (n_samples, 2) where the first column is longitude and the second is latitude.
+
+    Raises:
+        ValueError: If the array shape is not (n_samples, 2), or if the longitude and latitude values are not in their respective valid ranges.
+
+    Returns:
+        bool: True if the validation passes, indicating the coordinates are valid.
+    """
+    # Check shape
+    if coordinates.shape[1] != 2:
+        msg = f"Array must be of shape (n_samples, 2): {coordinates.shape}"
+        logger.error(msg)
+        raise ValueError(msg)
+
+    # Validate longitude and latitude ranges
+    longitudes, latitudes = coordinates[:, 0], coordinates[:, 1]
+    if not np.all((-180 <= longitudes) & (longitudes <= 180)):
+        msg = f"Longitude values must be between -180 and 180 degrees: min, max = longitude: {np.min(longitudes)}, {np.max(longitudes)}"
+        logger.error(msg)
+        raise ValueError(msg)
+    if not np.all((-90 <= latitudes) & (latitudes <= 90)):
+        msg = f"Latitude values must be between -90 and 90 degrees: {np.min(latitudes)}, {np.max(latitudes)}"
+        logger.error(msg)
+        raise ValueError(msg)
+    return True
+
 
 class StreamToLogger:
     """

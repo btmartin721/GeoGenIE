@@ -1,7 +1,10 @@
 import logging
+import math
 from math import asin, cos, radians, sin, sqrt
 
+import numba
 import numpy as np
+from scipy.spatial.distance import cdist
 from sklearn.metrics import r2_score
 
 logger = logging.getLogger(__name__)
@@ -20,7 +23,7 @@ def calculate_r2_knn(predicted_data, actual_data):
     """
     correlation_matrix = np.corrcoef(predicted_data, actual_data)
     r_squared = correlation_matrix[0, 1] ** 2
-    return r_squared
+    return np.mean(r_squared)
 
 
 def calculate_r2(actual_coords, predicted_coords):
@@ -68,6 +71,12 @@ def get_r2(y_true, y_pred, idx):
     return r2_score(y_true[:, idx], y_pred[:, idx], multioutput="variance_weighted")
 
 
+def loc_r2(p2, testlocs2):
+    r2_long = np.corrcoef(p2[:, 0], testlocs2[:, 0])[0][1] ** 2
+    r2_lat = np.corrcoef(p2[:, 1], testlocs2[:, 1])[0][1] ** 2
+    return r2_long, r2_lat
+
+
 def haversine(lon1, lat1, lon2, lat2):
     """
     Calculate the great circle distance in kilometers between two points
@@ -85,6 +94,7 @@ def haversine(lon1, lat1, lon2, lat2):
     return c * r
 
 
+@numba.jit(fastmath=True, nopython=True)
 def haversine_distance(coord1, coord2):
     """
     Calculate the Haversine distance between two geographic coordinate points.
@@ -99,11 +109,31 @@ def haversine_distance(coord1, coord2):
     lon1, lat1 = coord1
     lon2, lat2 = coord2
 
-    dlat = np.radians(lat2 - lat1)
-    dlon = np.radians(lon2 - lon1)
-    a = np.sin(dlat / 2) * np.sin(dlat / 2) + np.cos(np.radians(lat1)) * np.cos(
-        np.radians(lat2)
-    ) * np.sin(dlon / 2) * np.sin(dlon / 2)
-    c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat / 2) * math.sin(dlat / 2) + math.cos(
+        math.radians(lat1)
+    ) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) * math.sin(dlon / 2)
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
     return radius * c
+
+
+def parallel_haversine(args):
+    geo_chunk, pred_geo_coords, haversine_distance, scalar = args
+    return (
+        np.diagonal(cdist(geo_chunk, pred_geo_coords, metric=haversine_distance))
+        / scalar
+    )
+
+
+def parallel_euclidean(args):
+    gen_chunk, gen_coords = args
+    return cdist(gen_chunk, gen_coords, metric="euclidean")
+
+
+def parallel_haversine_sklearn(args):
+    geo_chunk, sklearn_haversine, scale_factor = args
+    dist_matrix_chunk = sklearn_haversine(geo_chunk) * 6371.0
+    dist_matrix_chunk /= scale_factor
+    return dist_matrix_chunk
