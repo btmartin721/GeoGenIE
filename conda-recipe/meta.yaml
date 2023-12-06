@@ -13,11 +13,11 @@ source:
 
 requirements:
   host:
-    - python >=3.10
+    - python >=3.9
     - pip
     - setuptools
   run:
-    - python >=3.10
+    - python >=3.9
     - pip
     - setuptools
     - requests
@@ -36,9 +36,6 @@ requirements:
     - plotly
     - python-kaleido
     - botorch
-    - r-base >4.0
-    - r-ggoutlier
-    - rpy2
     - pysam
 
 build:
