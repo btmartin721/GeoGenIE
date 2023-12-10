@@ -14,9 +14,15 @@ from scipy.stats import gamma
 from shapely.geometry import Point
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, WhiteKernel
-from sklearn.metrics import ConfusionMatrixDisplay
+from sklearn.metrics import ConfusionMatrixDisplay, mean_squared_error
+from sklearn.preprocessing import MinMaxScaler
 
 from geogenie.utils.scorers import haversine
+from geogenie.utils.utils import (
+    rmse_to_distance,
+    custom_gpr_optimizer,
+    geo_coords_is_valid,
+)
 
 
 class PlotGenIE:
@@ -179,9 +185,13 @@ class PlotGenIE:
         # Fit Gaussian Process Regressor with a larger initial length scale and
         # no upper bound
         kernel = 1 * RBF(
-            length_scale=1.0, length_scale_bounds=(1e-2, 1e5)
-        ) + WhiteKernel(noise_level=1, noise_level_bounds=(1e-10, 1e5))
-        gp = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=25)
+            length_scale=1.0, length_scale_bounds=(1e-2, 1e6)
+        ) + WhiteKernel(noise_level=1, noise_level_bounds=(1e-10, 1e6))
+        gp = GaussianProcessRegressor(
+            kernel=kernel,
+            optimizer=custom_gpr_optimizer,
+            n_restarts_optimizer=25,
+        )
         gp.fit(actual_coords, haversine_errors)
 
         # Create a grid over the area of interest
@@ -223,6 +233,47 @@ class PlotGenIE:
 
         # Load and plot dynamic boundaries
         self.plot_map(actual_coords, url, self.output_dir, buffer, ax)
+
+        # Create a GeoDataFrame for actual coordinates
+        gdf_actual = gpd.GeoDataFrame(
+            geometry=[Point(xy) for xy in actual_coords], crs="EPSG:4326"
+        )
+
+        # Create a GeoDataFrame for predicted coordinates
+        gdf_predicted = gpd.GeoDataFrame(
+            geometry=[Point(xy) for xy in predicted_coords], crs="EPSG:4326"
+        )
+
+        # Transform to WGS 84
+        gdf_actual = gdf_actual.to_crs(epsg=4326)
+        gdf_predicted = gdf_predicted.to_crs(epsg=4326)
+
+        actual_coords_transformed = np.array(
+            [(point.x, point.y) for point in gdf_actual.geometry]
+        )
+
+        mms = MinMaxScaler(feature_range=(1000, 10000))
+
+        if len(haversine_errors.shape) > 1:
+            msg = f"Invalid shape for haversine_error: {haversine_errors.shape}"
+            self.logger.error(msg)
+            raise ValueError(msg)
+        dist_errors = mms.fit_transform(haversine_errors.reshape(-1, 1))
+
+        # Determine the scaling factor based on plot dimensions
+        plot_scaling_factor = (fig.get_size_inches()[0] * fig.get_dpi()) ** 2 / 10
+
+        # Calculate sizes for scatter plot (scaled by error)
+        point_sizes = 1 / (dist_errors + 1e-6) * plot_scaling_factor
+
+        # Plotting individual sample points
+        ax.scatter(
+            actual_coords_transformed[:, 0],
+            actual_coords_transformed[:, 1],
+            s=point_sizes,
+            c="black",
+            alpha=0.5,
+        )
 
         # Customization
         ax.set_title(
