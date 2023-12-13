@@ -1,20 +1,24 @@
 import logging
 import os
 import sys
+import warnings
+
+os.environ["PYTHONWARNINGS"] = "ignore::RuntimeWarning"
+warnings.filterwarnings(action="ignore", category=RuntimeWarning)
+
 
 import numpy as np
 import pandas as pd
+import torch
 from kneed import KneeLocator
 from pysam import VariantFile
 from sklearn.base import clone
-from sklearn.cluster import DBSCAN
 from sklearn.decomposition import PCA
 from sklearn.impute import SimpleImputer
-from sklearn.manifold import TSNE
+from sklearn.manifold import MDS, TSNE, LocallyLinearEmbedding
 from sklearn.metrics import accuracy_score, f1_score
 from sklearn.model_selection import GridSearchCV, train_test_split
-from sklearn.neighbors import KernelDensity, NearestNeighbors
-from sklearn.preprocessing import MinMaxScaler, PolynomialFeatures
+from sklearn.preprocessing import PolynomialFeatures, StandardScaler
 from torch import float as torchfloat
 from torch import tensor
 from torch.utils.data import DataLoader, TensorDataset
@@ -24,7 +28,12 @@ from geogenie.outliers.detect_outliers import GeoGeneticOutlierDetector
 from geogenie.plotting.plotting import PlotGenIE
 from geogenie.samplers.samplers import GeographicDensitySampler
 from geogenie.utils.gtseq2vcf import GTseqToVCF
-from geogenie.utils.utils import base_to_int, get_iupac_dict
+from geogenie.utils.utils import (
+    base_to_int,
+    get_iupac_dict,
+    LongLatToCartesianTransformer,
+    CustomDataset,
+)
 
 
 class DataStructure:
@@ -43,6 +52,7 @@ class DataStructure:
         self.genotypes, self.is_missing, self.genotypes_iupac = self._parse_genotypes()
         self.verbose = verbose
         self.samples_weight = None
+        self.data = {}
 
     def define_params(self, args):
         self._params = {
@@ -67,7 +77,7 @@ class DataStructure:
                 missing = []
                 alleles = []
                 for sample in record.samples.values():
-                    genotype = sample.get("GT", (None, None))
+                    genotype = sample.get("GT", (np.nan, np.nan))
                     genos.append(genotype)
                     missing.append(any(allele is None for allele in genotype))
                     alleles.append(sample.alleles)
@@ -77,9 +87,10 @@ class DataStructure:
                     self.map_alleles_to_iupac(alleles, get_iupac_dict())
                 )
         # Convert lists to NumPy arrays for efficient computation
-        genotypes_array = np.array(genotypes_list, dtype="object")
+        genotypes_array = np.array(genotypes_list, dtype=float)
         is_missing_array = np.array(is_missing_list, dtype=bool)
         genotypes_iupac_array = np.array(iupac_alleles, dtype="object")
+
         return genotypes_array, is_missing_array, genotypes_iupac_array
 
     def map_alleles_to_iupac(self, alleles, iupac_dict):
@@ -138,176 +149,70 @@ class DataStructure:
 
         return np.array(allele_counts)
 
-    def impute_missing(self, model_type, seed, af_threshold=0.5):
-        """Impute missing genotypes based on a given allele frequency threshold."""
-        if seed is not None:
-            np.random.seed(seed)
-        if self.verbose >= 1:
-            self.logger.info("Imputing missing values.")
-        # Example implementation (can be adapted)
-        for i in range(self.genotypes.shape[0]):
-            for j in range(self.genotypes.shape[1]):
-                if self.is_missing[i, j]:
-                    af = np.random.binomial(1, af_threshold, 2)
-                    self.genotypes[i, j] = tuple(af)
-        simputer = SimpleImputer(
-            strategy="most_frequent",
-            missing_values="N",
-        )
-        self.genotypes_iupac = simputer.fit_transform(
-            self.genotypes_iupac.T,
-        )
-        self.genotypes_iupac = self.genotypes_iupac.T
-        if self.verbose >= 1:
-            self.logger.info("Imputations successful.")
+    def impute_missing(
+        self,
+        X=None,
+        transform_only=False,
+        strat="most_frequent",
+        use_strings=False,
+    ):
+        """Impute missing genotypes based on allele frequency threshold.
 
-    def sort_samples(self, sample_data_filename, class_weights, popmap=None):
+        Args:
+            X (numpy.ndarray): Data to impute. If None, then uses self.genotypes_enc instead.
+            transform_only (bool): Whether to transform, but not fit.
+            strat (str): Strategy to use with SimpleImputer.
+            use_strings (bool): If True, uses 'N' as missing_values argument. Otherwise uses np.nan.
+        """
+        miss_val = "N" if use_strings else np.nan
+
+        if not transform_only:
+            self.simputer = SimpleImputer(strategy=strat, missing_values=miss_val)
+
+        if X is None:
+            X = self.genotypes_enc.copy()
+
+        if transform_only:
+            return self.simputer.transform(X)
+        return self.simputer.fit_transform(X)
+
+    def sort_samples(self, sample_data_filename):
         """Load sample_data and popmap and sort to match VCF file."""
         self.sample_data = pd.read_csv(sample_data_filename, sep="\t")
+
+        if self.sample_data.shape[1] != 3:
+            msg = f"'sample_data' must be a tab-delimited file with three columns: sampleID, x, and y. 'x' and 'y' should be longitude and latitude. However, we detected {self.sample_data.shape[1]} columns."
+            self.logger.error(msg)
+            raise ValueError(msg)
+
+        self.sample_data.columns = ["sampleID", "x", "y"]
         self.sample_data["sampleID2"] = self.sample_data["sampleID"]
         self.sample_data.set_index("sampleID", inplace=True)
         self.samples = np.array(self.samples).astype(str)
         self.sample_data = self.sample_data.reindex(np.array(self.samples))
 
-        if class_weights:
-            if not popmap:
-                raise FileNotFoundError(
-                    "popmap file must be provided if class_weights argument is "
-                    "provided."
-                )
-            else:
-                self.popmap_data = pd.read_csv(
-                    popmap, sep="\t", names=["sampleID", "populationID"]
-                )
-                self.popmap_data["sampleID2"] = self.popmap_data["sampleID"]
-                self.popmap_data.set_index("sampleID", inplace=True)
-                self.popmap_data = self.popmap_data.reindex(np.array(self.samples))
-        else:
-            self.popmap_data = None
-
         # Sample ordering check
-        self._check_sample_ordering(class_weights)
+        self._check_sample_ordering()
         self.locs = np.array(self.sample_data[["x", "y"]])
 
     def normalize_locs(self):
         """Normalize locations, ignoring NaN."""
         if self.verbose >= 1:
             self.logger.info("Normalizing coordinates.")
-        self.meanlong = np.nanmean(self.locs[:, 0])
-        self.sdlong = np.nanstd(self.locs[:, 0])
-        self.meanlat = np.nanmean(self.locs[:, 1])
-        self.sdlat = np.nanstd(self.locs[:, 1])
 
-        self.norm = MinMaxScaler()
-        self.data["y"] = self.norm.fit_transform(self.locs[self.indices["all_indices"]])
-        self.data["y_train"] = self.norm.fit_transform(self.data["y_train"])
-        self.data["y_test"] = self.norm.transform(self.data["y_test"])
-        self.data["y_val"] = self.norm.transform(self.data["y_val"])
+        self.norm = LongLatToCartesianTransformer()
+        self.y = self.norm.fit_transform(self.y)
 
         if self.verbose >= 1:
             self.logger.info("Done normalizing.")
 
-    def _estimate_eps(self, y, n_neighbors=5):
-        """
-        Estimate an initial eps value for DBSCAN based on the average distance
-        to the n-th nearest neighbor of each point.
-
-        Args:
-            y (numpy.ndarray): Array containing the 'x' and 'y' data (pre-normalized).
-            n_neighbors (int): Number of neighbors to consider for each point.
-
-        Returns:
-            float: Estimated eps value.
-        """
-        coords = y.copy()
-        nn = NearestNeighbors(n_neighbors=n_neighbors)
-        nn.fit(coords)
-        distances, _ = nn.kneighbors(coords)
-
-        # Use the average distance to the n-th nearest neighbor
-        return np.mean(distances[:, n_neighbors - 1])
-
-    def remove_outliers_dbscan(self, X, y, min_samples, args, dataset):
-        """
-        Remove outliers from a DataFrame using DBSCAN.
-
-        Args:
-            y (numpy.ndarray): Array containing the 'x' and 'y' data (pre-normalized).
-            eps (float): The maximum distance between two samples for one to be considered as in the neighborhood of the other.
-            min_samples (int): The number of samples in a neighborhood for a point to be considered as a core point.
-            args (argparse.Namespace): Command-line argument namespace.
-            dataset (str): One of "train", "test", "validation".
-
-        Returns:
-            numpy.ndarray: Mask with True values being non-outliers.
-            numpy.ndarray: Array with outliers removed.
-        """
-        if args.verbose >= 1:
-            self.logger.info(f"Removing potential outliers from {dataset} dataset...")
-
-        genomic_reduced = pd.DataFrame(X)
-        df_geo = pd.DataFrame(y, columns=["x", "y"])
-
-        # Standardize both genomic and geographic data
-        scaler = MinMaxScaler()
-        geo_scaled = scaler.fit_transform(df_geo)
-        genomic_scaled = scaler.fit_transform(genomic_reduced)
-
-        # Combine the datasets
-        combined_features = np.concatenate([geo_scaled, genomic_scaled], axis=1)
-
-        combined_unscaled_y = np.concatenate(
-            [df_geo.to_numpy(), genomic_scaled], axis=1
-        )
-
-        eps = self._estimate_eps(combined_features, n_neighbors=min_samples)
-        db = DBSCAN(eps=eps, min_samples=min_samples).fit(combined_features)
-
-        # Labels of -1 indicate outliers
-        mask = db.labels_ != -1
-
-        plotting = PlotGenIE(
-            "cpu",
-            args.output_dir,
-            args.prefix,
-            show_plots=args.show_plots,
-            fontsize=args.fontsize,
-        )
-
-        plotting.plot_dbscan_clusters(
-            combined_unscaled_y,
-            dataset,
-            db.labels_,
-            args.shapefile_url,
-            buffer=1.0,
-        )
-
-        if args.verbose >= 1:
-            self.logger.info(
-                f"Removed {np.count_nonzero(~mask)} outliers from {dataset} dataset."
-            )
-
-        return mask, df_geo[mask].to_numpy()
-
-    def _check_sample_ordering(self, class_weights):
-        """
-        Check for sample and population ordering.
-        """
-        # Check for sample ordering
+    def _check_sample_ordering(self):
+        """Validate sample ordering between 'sample_data' and VCF files."""
         for i, x in enumerate(self.samples):
             if self.sample_data["sampleID2"].iloc[i] != x:
-                raise ValueError(
-                    "Sample ordering failed! Check that sample IDs match the VCF."
-                )
-
-        # Check for population ordering
-        if class_weights and self.popmap_data is not None:
-            for i, x in enumerate(self.samples):
-                if self.popmap_data["sampleID2"].iloc[i] != x:
-                    raise ValueError(
-                        "Population ordering failed! Check that the popmap "
-                        "sample IDs match those in the VCF."
-                    )
+                msg = "Invalid sample ordering. sample IDs in 'sample_data' must match the order in the VCF file."
+                self.logger.error(msg)
+                raise ValueError(msg)
 
     def encode_sequence(self, seq):
         """Encode DNA sequence as integers.
@@ -323,13 +228,16 @@ class DataStructure:
         return [base_to_int().get(base, 4) for base in seq]
 
     def snps_to_012(self, min_mac=2, max_snps=None, return_values=True):
+        """Convert IUPAC SNPs to 012 encodings."""
         if self.verbose >= 1:
             self.logger.info("Converting SNPs to 012-encodings.")
 
-        self.genotypes_enc = np.sum(self.genotypes, axis=-1).astype("int8")
+        self.genotypes_enc = np.sum(
+            self.genotypes, axis=-1, where=~np.all(np.isnan(self.genotypes))
+        )
 
         allele_counts = np.apply_along_axis(
-            lambda x: np.bincount(x, minlength=3),
+            lambda x: np.bincount(x[~np.isnan(x)].astype(int), minlength=3),
             axis=1,
             arr=self.genotypes_enc,
         )
@@ -342,9 +250,12 @@ class DataStructure:
             self.logger.info("Input SNP data converted to 012-encodings.")
 
         if return_values:
-            return self.genotypes_enc
+            return self.genotypes_enc.T
+        else:
+            self.genotypes_enc = self.genotypes_enc.T
 
     def filter_gt(self, gt, min_mac, max_snps, allele_counts):
+        """Filter genotypes based on minor allele count and random subsets (max_snps)."""
         if min_mac > 1:
             mac = 2 * allele_counts[:, 2] + allele_counts[:, 1]
             gt = gt[mac >= min_mac, :]
@@ -358,6 +269,7 @@ class DataStructure:
         return gt
 
     def snps_to_int(self, min_mac=2, max_snps=None, return_values=True):
+        """Convert SNPs to integer encodings 0-14 (including IUPAC)."""
         snps = self.genotypes_iupac.tolist()
         snps = ["".join(x) for x in snps]
         snps = list(map(self.encode_sequence, snps))
@@ -380,40 +292,6 @@ class DataStructure:
 
         if return_values:
             return self.genotypes_enc
-
-    def snps_to_allele_counts(
-        self,
-        min_mac=1,
-        max_snps=None,
-        return_counts=True,
-    ):
-        """Filter and preprocess SNPs, then convert to allele counts."""
-        if self.verbose >= 1:
-            self.logger.info("Converting SNPs to allele counts.")
-
-        # Apply Minor Allele Count (MAC) filter
-        allele_counts = self.count_alleles()
-
-        mac_filter = allele_counts[:, 1] >= min_mac
-        filtered_genotypes = allele_counts[mac_filter]
-
-        # Optionally subsample SNPs
-        if max_snps is not None and max_snps < filtered_genotypes.shape[0]:
-            selected_indices = np.random.choice(
-                filtered_genotypes.shape[0], max_snps, replace=False
-            )
-            filtered_genotypes = filtered_genotypes[selected_indices]
-
-        # Convert genotypes to allele counts
-        allele_counts = filtered_genotypes
-
-        self.genotypes_enc = allele_counts
-
-        if self.verbose >= 1:
-            self.logger.info("Successfully converted allele counts.")
-
-        if return_counts:
-            return allele_counts
 
     def split_train_test(self, train_split, val_split, seed):
         """
@@ -438,129 +316,89 @@ class DataStructure:
                 "The difference between train_split and val_split must be >= 0."
             )
 
-        # Identify indices with non-NaN locations
-        train_val_indices = np.argwhere(~np.isnan(self.locs[:, 0])).flatten()
-        pred_indices = np.array(
-            [x for x in range(len(self.locs)) if x not in train_val_indices]
-        )
-
         # Split non-NaN samples into training + validation and test sets
-        train_val_indices, test_indices = train_test_split(
-            train_val_indices, train_size=train_split, random_state=seed
+        (
+            X_train_val,
+            X_test,
+            y_train_val,
+            y_test,
+            train_val_indices,
+            test_indices,
+        ) = train_test_split(
+            self.X,
+            self.y,
+            self.model_indices,
+            train_size=train_split,
+            random_state=seed,
         )
 
         # Split training data into actual training and validation sets
-        train_indices, val_indices = train_test_split(
-            train_val_indices, test_size=val_split, random_state=seed
+        X_train, X_val, y_train, y_val, train_indices, val_indices = train_test_split(
+            X_train_val,
+            y_train_val,
+            train_val_indices,
+            test_size=val_split,
+            random_state=seed,
         )
 
-        self.genotypes_enc = self.genotypes_enc.T
-
-        # Prepare genotype and location data for training, validation, testing,
-        # and prediction
-        # X_train = np.transpose(self.genotypes_enc[:, train_indices])
-        # X_val = np.transpose(self.genotypes_enc[:, val_indices])
-        # X_test = np.transpose(self.genotypes_enc[:, test_indices])
-        # X_pred = np.transpose(self.genotypes_enc[:, pred_indices])
-        X_train = self.genotypes_enc[train_indices, :]
-        X_val = self.genotypes_enc[val_indices, :]
-        X_test = self.genotypes_enc[test_indices, :]
-        X_pred = self.genotypes_enc[pred_indices, :]
-        X = self.genotypes_enc[train_val_indices, :]
-        y_train = self.locs[train_indices]
-        y_val = self.locs[val_indices]
-        y_test = self.locs[test_indices]
-
-        train_val_indices = train_val_indices
-        train_indices = train_indices
-        val_indices = val_indices
-        test_indices = test_indices
-        pred_indices = pred_indices
-
-        self.data = {
+        data = {
             "X_train": X_train,
             "X_val": X_val,
             "X_test": X_test,
-            "X_pred": X_pred,
-            "X": X,
+            "X_pred": self.X_pred,
+            "X": self.X,
             "y_train": y_train,
             "y_val": y_val,
             "y_test": y_test,
+            "y": self.y,
         }
+        self.data.update(data)
 
         self.indices = {
             "train_val_indices": train_val_indices,
             "train_indices": train_indices,
             "val_indices": val_indices,
             "test_indices": test_indices,
-            "pred_indices": pred_indices,
-            "all_indices": train_val_indices,
+            "pred_indices": self.pred_indices,
+            "true_indices": self.true_indices,
         }
 
         if self.verbose >= 1:
             self.logger.info("Created train, validation, and test datasets.")
 
-    def fetch(
-        self,
-        return_all=False,
-        key=None,
-        data_only=False,
-        indices_only=False,
-    ):
-        if data_only and indices_only:
-            raise ValueError(
-                "data_only and indices_only cannot both be defined.",
-            )
+    def map_outliers_through_filters(self, original_indices, filter_stages, outliers):
+        """
+        Maps outlier indices through multiple filtering stages back to the original dataset.
 
-        if return_all and data_only:
-            raise ValueError(
-                "get_all and data_only cannot both be defined.",
-            )
+        Args:
+            original_indices (np.array): Array of original indices before any filtering.
+            filter_stages (list of np.array): List of arrays of indices after each filtering stage.
+            outliers (np.array): Outlier indices in the most filtered dataset.
 
-        if return_all and indices_only:
-            raise ValueError(
-                "get_all and indices_only cannot both be defined.",
-            )
-
-        if return_all:
-            return self.data | self.indices  # merges the dicts.
-
-        if data_only and key is None:
-            return self.data
-        elif data_only and key is not None:
-            try:
-                return self.data[key]
-            except KeyError:
-                self.logger.error(f"Invalid key when fetching data: {key}")
-                raise KeyError(f"Invalid key when fetching data: {key}")
-        elif indices_only and key is None:
-            return self.indices
-        elif indices_only and key is not None:
-            try:
-                return self.indices[key]
-            except KeyError:
-                self.logger.error(f"Invalid key when fetching indices: {key}")
-                raise KeyError(f"Invalid key when fetching indices: {key}")
-        elif key is not None:
-            if key in self.data:
-                return self.data[key]
-            if key in self.indices:
-                return self.indices[key]
-        else:
-            return self.data | self.indices  # Merge the two dicts.
+        Returns:
+            np.array: Mapped outlier indices in the original dataset.
+        """
+        current_indices = outliers
+        for stage_indices in reversed(filter_stages):
+            current_indices = stage_indices[current_indices]
+        return original_indices[current_indices]
 
     def load_and_preprocess_data(self, args):
         """Wrapper method to load and preprocess data."""
+
+        self.plotting = PlotGenIE(
+            "cpu",
+            args.output_dir,
+            args.prefix,
+            show_plots=args.show_plots,
+            fontsize=args.fontsize,
+        )
 
         if self.verbose >= 1:
             self.logger.info("Loading and preprocessing input data...")
 
         # Load and sort sample data
-        self.sort_samples(args.sample_data, args.class_weights, args.popmap)
-
-        # Replace missing data
-        if args.impute_missing:
-            self.impute_missing(args.model_type, args.seed)
+        self.sort_samples(args.sample_data)
 
         if args.model_type in ["mlp", "gcn"]:
             self.snps_to_012(
@@ -575,23 +413,50 @@ class DataStructure:
                 return_values=False,
             )
 
-        self.split_train_test(args.train_split, args.val_split, args.seed)
-        self.normalize_locs()
-        X_train, _, __, ___, X = self.embed(
-            args, n_components=6, alg="pca", return_values=True
+        if self.genotypes_enc.shape[0] != self.locs.shape[0]:
+            msg = f"Invalid input shapes for genotypes and coorindates. The number of rows (samples) must be equal, but got: {self.genotypes_enc.shape}, {self.locs.shape}"
+            self.logger.error(msg)
+            raise ValueError(msg)
+
+        # Impute missing data and embed.
+        X = self.impute_missing(self.genotypes_enc)
+
+        X = self.embed(
+            args,
+            X=X,
+            alg=args.embedding_type,
+            full_dataset_only=True,
+            transform_only=False,
         )
 
-        train_samples = pd.Series(
-            self.samples[self.indices["train_indices"]], name="SampleID"
-        )
+        indices = np.arange(self.locs.shape[0])
+        self.pred_mask = ~np.isnan(self.locs).any(axis=1)
+        X = X[self.pred_mask, :]
+        y = self.locs[self.pred_mask, :]
+        index = self.samples[self.pred_mask]
 
-        train_samples.to_csv("data/test_train_samples.csv")
+        # Define true_indices and pred_indices
+        self.all_indices = indices
+        self.true_indices = indices[self.pred_mask]  # True if is not nan.
+        self.pred_indices = indices[~self.pred_mask]  # True if is nan.
 
+        # Store indices after filtering for nan
+        filter_stage_indices = [self.true_indices]
+
+        if args.verbose >= 1:
+            self.logger.info(
+                f"Found {np.sum(self.pred_mask)} known samples and {np.sum(~self.pred_mask)} samples to predict."
+            )
+
+        if X.shape[0] != y.shape[0]:
+            msg = f"Invalid input shapes for X and y. The number of rows (samples) must be equal, but got: {X.shape}, {y.shape}"
+            self.logger.error(msg)
+            raise ValueError(msg)
+
+        # Assuming GeoGeneticOutlierDetector is implemented elsewhere
         outlier_detector = GeoGeneticOutlierDetector(
-            pd.DataFrame(X_train, index=train_samples),
-            pd.DataFrame(
-                self.norm.inverse_transform(self.data["y_train"]), index=train_samples
-            ),
+            pd.DataFrame(X, index=index),
+            pd.DataFrame(y, index=index),
             output_dir=args.output_dir,
             prefix=args.prefix,
             n_jobs=args.n_jobs,
@@ -603,29 +468,56 @@ class DataStructure:
             verbose=args.verbose,
         )
 
-        self.embed(args, n_components=None, alg="pca", return_values=False)
-
         outliers = outlier_detector.composite_outlier_detection(
-            sig_level=0.025, maxk=50, min_nn_dist=100
+            sig_level=args.significance_level,
+            maxk=args.maxk,
+            min_nn_dist=args.min_nn_dist,
         )
 
-        outlier_geo_indices = outliers["geographic"]
-        outlier_gen_indices = outliers["genetic"]
-        all_outliers = list(outlier_geo_indices) + list(outlier_gen_indices)
+        all_outliers = np.concatenate((outliers["geographic"], outliers["genetic"]))
 
-        # Remove outliers.
-        mask = np.ones(self.data["X_train"].shape[0], bool)
-        mask[all_outliers] = 0
-        self.data["X_train"] = self.data["X_train"][mask]
-        self.data["y_train"] = self.data["y_train"][mask]
+        # Returns outiler indieces, remapped.
+        mapped_all_outliers = self.map_outliers_through_filters(
+            indices, filter_stage_indices, all_outliers
+        )
+
+        # Remove mapped outliers from your data
+        mask = np.ones(len(self.all_indices), dtype=bool)
+        mask[np.isin(self.all_indices, mapped_all_outliers)] = False
+        mask[np.isin(self.all_indices, self.pred_indices)] = False
+        pred_mask = np.zeros(len(self.all_indices), dtype=bool)
+        pred_mask[np.isin(self.all_indices, self.pred_indices)] = True
+
+        # Apply mask to true_indices and respective datasets
+        self.X = self.genotypes_enc[mask, :]
+        self.y = self.locs[mask, :]
+        self.X_pred = self.genotypes_enc[pred_mask, :]
+        self.model_indices = self.all_indices[mask]
 
         self.logger.info(
-            f"{self.data['X_train'].shape[0]} samples remaining after removing {len(all_outliers)} outliers."
+            f"{self.X.shape[0]} samples remaining after removing {len(all_outliers)} outliers."
         )
 
+        # Continue with the rest of your pipeline
         self.evaluate_outliers(
-            train_samples, outlier_geo_indices, outlier_gen_indices, "Composite"
+            index, outliers["geographic"], outliers["genetic"], "Composite"
         )
+        self.normalize_locs()
+        self.split_train_test(args.train_split, args.val_split, args.seed)
+
+        for k, v in self.data.items():
+            if k.startswith("X"):
+                tonly = False if k == "X_train" else True
+
+                # Impute missing values, eliminate data leakage.
+                self.data[k] = self.impute_missing(X=v, transform_only=tonly)
+
+                self.data[k] = self.embed(
+                    args,
+                    X=self.data[k],
+                    alg=args.embedding_type,
+                    transform_only=tonly,
+                )
 
         if args.verbose >= 1:
             self.logger.info("Data split into train, val, and test sets.")
@@ -675,6 +567,10 @@ class DataStructure:
     def evaluate_outliers(
         self, train_samples, outlier_geo_indices, outlier_gen_indices, dt
     ):
+        if not isinstance(train_samples, pd.Series):
+            train_samples = pd.Series(train_samples, name="ID")
+
+        """Evaluate and plot results from GeoGenOutlierDetector."""
         y_pred = self.process_pred(
             train_samples, outlier_geo_indices, outlier_gen_indices, dt
         )
@@ -687,6 +583,7 @@ class DataStructure:
         self.logger.info(f"F1 Score: {f1_score(y_true['Label'], y_pred['Label'])}")
 
     def process_truths(self, train_samples, label_type):
+        """Process true values."""
         truths = pd.read_csv("data/real_outliers.csv", sep=" ")
         truths["method"] = truths["method"].str.replace('"', "")
         truths["method"] = truths["method"].str.replace("'", "")
@@ -699,6 +596,7 @@ class DataStructure:
     def process_pred(
         self, train_samples, outlier_geo_indices, outlier_gen_indices, label_type
     ):
+        """Process predictions."""
         # Create the y_pred DataFrame
         y_pred = pd.DataFrame(columns=["ID"])
         y_pred["ID"] = train_samples
@@ -715,51 +613,167 @@ class DataStructure:
         y_pred["Label"] = y_pred["ID"].isin(outlier_ids).astype(int)
         return y_pred.sort_values(by=["ID"])
 
+    @np.errstate(all="warn")
     def embed(
-        self, args, n_components=None, alg="polynomial", degree=2, return_values=False
+        self,
+        args,
+        X=None,
+        alg="polynomial",
+        full_dataset_only=False,
+        transform_only=False,
     ):
+        """Embed SNP data using one of several dimensionality reduction techniques.
+
+        Args:
+            args (argparse.Namespace): User-supplied arguments.
+            X (numpy.ndarray): Data to embed. If is None, then self.genotypes_enc gets used instead.
+            alg (str): Algorithm to use. Valid arguments include: 'polynomial', 'pca', 'tsne', 'polynomial', 'mds', and 'none' (no embedding). Defaults to 'polynomial'.
+            return_values (bool): If True, returns the embddings. If False, sets embedding as class attributes, self.data and self.indices. Defaults to False.
+            full_dataset_only (bool): If True, only embed and return full dataset.
+
+        Warnings:
+            Setting 'polynomial_degree' > 2 can lead to extremely large computational overhead. Do so at your own risk!!!
+
+        Returns:
+            tuple(numpy.ndarray): train, test, validation, prediction, and full (unsplit) datasets. Only returns of return_values is True.
+
+        ToDo:
+            Make T-SNE plot.
+            Make MDS plot.
+        """
+        if X is None:
+            X = self.genotypes_enc.copy()
+
         if args.model_type != "transformer":
             do_embed = True
         else:
             do_embed = False
         if alg.lower() == "polynomial":
-            emb = PolynomialFeatures(degree)
+            emb = PolynomialFeatures(args.polynomial_degree)
         elif alg.lower() == "pca":
-            if n_components is None:
-                self.plotting = PlotGenIE(
-                    "cpu",
-                    args.output_dir,
-                    args.prefix,
-                    show_plots=args.show_plots,
-                    fontsize=args.fontsize,
-                )
-                n_components = self.get_num_pca_comp(self.data["X_train"], args)
-            emb = PCA(n_components=n_components, random_state=args.seed)
+            n_components = args.n_components
+            if args.n_components is None and not transform_only:
+                n_components = self.get_num_pca_comp(X)
+                emb = PCA(n_components=n_components, random_state=args.seed)
+
+                if n_components is None:
+                    self.logger.error(
+                        "n_componenets must be defined, but got NoneType."
+                    )
+                    raise TypeError("n_componenets must be defined, but got NoneType.")
         elif alg.lower() == "tsne":
-            emb = TSNE(n_components=n_components)
+            # TODO: Make T-SNE plot.
+            emb = TSNE(
+                n_components=args.n_components,
+                perplexity=args.perplexity,
+                random_state=args.seed,
+            )
+        elif alg.lower() == "mds":
+            # TODO: Make MDS plot.
+            emb = MDS(
+                n_components=args.n_components,
+                n_init=args.n_init,
+                n_jobs=args.n_jobs,
+                random_state=args.seed,
+                normalized_stress="auto",
+            )
+        elif alg.lower() == "lle":
+
+            class LocallyLinearEmbeddingWrapper(LocallyLinearEmbedding):
+                def predict(self, X):
+                    return self.transform(X)
+
+            def lle_reconstruction_scorer(estimator, X, y=None):
+                """
+                Compute the negative reconstruction error for an LLE model to use as a scorer.
+                GridSearchCV assumes that higher score values are better, so the reconstruction
+                error is negated.
+
+                Args:
+                    estimator (LocallyLinearEmbedding): Fitted LLE model.
+                    X (numpy.ndarray): Original high-dimensional data.
+
+                Returns:
+                    float: Negative reconstruction error.
+                """
+                return -estimator.reconstruction_error_
+
+            # Non-linear dimensionality reduction.
+            # default max_iter often doesn't converge.
+            emb = LocallyLinearEmbeddingWrapper(
+                method="modified", max_iter=1000, random_state=args.seed
+            )
+
+            param_grid = {
+                "n_neighbors": np.linspace(
+                    5, args.maxk, num=10, endpoint=True, dtype=int
+                ),
+                "n_components": np.linspace(
+                    2, args.maxk, num=10, endpoint=True, dtype=int
+                ),
+            }
+
+            grid = GridSearchCV(
+                emb,
+                param_grid=param_grid,
+                cv=5,
+                n_jobs=args.n_jobs,
+                verbose=0,
+                scoring=lle_reconstruction_scorer,
+                refit=True,
+                error_score=-np.inf,
+            )
+
         elif alg.lower() == "none":
+            # Use raw encoded data.
             do_embed = False
         else:
             raise ValueError(f"Invalid 'alg' value pasesed to 'embed()': {alg}")
 
-        if do_embed:
-            if return_values:
-                X = emb.fit_transform(self.data["X"])
-                emb = clone(emb)
-                X_train = emb.fit_transform(self.data["X_train"])
-                X_test = emb.transform(self.data["X_test"])
-                X_val = emb.transform(self.data["X_val"])
-                X_pred = emb.transform(self.data["X_pred"])
-                return X_train, X_test, X_val, X_pred, X
+        if not transform_only and do_embed:
+            self.ssc = StandardScaler()
+            X = self.ssc.fit_transform(X)
+            if alg.lower() == "lle":
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    grid.fit(X)
+                self.emb = grid.best_estimator_
+                if args.verbose >= 1:
+                    self.logger.info(
+                        f"Best parameters for LocallyLinearEmbedding: {grid.best_params_}"
+                    )
+                    self.logger.info(
+                        f"Best score for LocallyLinearEmbedding: {grid.best_score_}"
+                    )
             else:
-                self.data["X"] = emb.fit_transform(self.data["X"])
-                emb = clone(emb)
-                self.data["X_train"] = emb.fit_transform(self.data["X_train"])
-                self.data["X_test"] = emb.transform(self.data["X_test"])
-                self.data["X_val"] = emb.transform(self.data["X_val"])
-                self.data["X_pred"] = emb.transform(self.data["X_pred"])
+                self.emb = emb
 
-    def get_num_pca_comp(self, x, args):
+        if do_embed:
+            if full_dataset_only:
+                X = self.ssc.fit_transform(X)
+                X = self.emb.fit_transform(X)
+                return X
+
+            if not transform_only:
+                X = self.ssc.fit_transform(X)
+                X = self.emb.fit_transform(X)
+                return X
+
+            X = self.ssc.transform(X)
+            X = self.emb.transform(X)
+            return X
+        else:
+            return X.copy()
+
+    def get_num_pca_comp(self, x):
+        """Get optimal number of PCA components.
+
+        Args:
+            x (numpy.ndarray): Dataset to fit PCA to.
+
+        Returns:
+            int: Optimal number of principal components to use.
+        """
         pca = PCA().fit(x)
 
         vr = np.cumsum(pca.explained_variance_ratio_)
@@ -794,12 +808,11 @@ class DataStructure:
             y (numpy.ndarray or None): Target data (train, test, or validation). None for GNN.
             class_weights (bool): If True, calculates class weights for weighted sampling.
             batch_size (int): Batch size to use with model.
-            y_strat (dict): Mapping data used for class weights, if applicable.
-            indices (numpy.ndarray): Indices to use if 'class_weights' is True.
-            model_type (str): Type of the model ('gcn', 'transformer', 'mlp').
+            args (argparse.Namespace): User-supplied arguments.
+            model_type (str): Type of the model: 'gcn', 'transformer', or 'mlp'.
 
         Returns:
-            DataLoader: DataLoader object suitable for the specified model type.
+            torch.utils.data.DataLoader: DataLoader object suitable for the specified model type.
         """
         # For GNNs
         if model_type == "gcn":
@@ -819,17 +832,12 @@ class DataStructure:
 
         # For MLPs and Transformers
         else:
-            # Convert data to TensorDatasets
-            dataset = TensorDataset(
-                tensor(X, dtype=torchfloat),
-                tensor(y, dtype=torchfloat),
-            )
-
             # Custom sampler - density-based.
-            # weighted_sampler = self.get_sample_weights(y, class_weights, args)
             weighted_sampler = self.get_sample_weights(
                 self.norm.inverse_transform(y), class_weights, args
             )
+
+            dataset = CustomDataset(X, y, sample_weights=self.samples_weight)
 
             # Create DataLoaders
             return DataLoader(
@@ -839,38 +847,35 @@ class DataStructure:
             )
 
     def get_sample_weights(self, y, class_weights, args):
+        """Gets inverse sample_weights based on sampling density.
+
+        Only performed if 'class_weights' is True.
+
+        Uses scikit-learn KernelDensity with a grid search to estimate the optimal bandwidth for GeographicDensitySampler.
+
+        Args:
+            y (numpy.ndarray): Target values.
+            class_weights (bool): Whether to use weights.
+            args (argparse.Namespace): User-supplied arguments.
+        """
         # Initialize weighted sampler if class weights are used
         weighted_sampler = None
         if class_weights:
             if args.verbose >= 1:
                 self.logger.info("Estimating sampling density weights...")
-
-            # Define the grid of bandwidths to search over
-            bandwidths = np.linspace(0.01, 1.0, 30)
-
-            if args.verbose == 2:
-                self.logger.info("Searching for optimal kernel density bandwidth...")
-
-            # Grid search with cross-validation
-            grid = GridSearchCV(
-                KernelDensity(kernel="gaussian"),
-                {"bandwidth": bandwidths},
-                cv=5,
-                n_jobs=args.n_jobs,
-                verbose=args.verbose,
-            )
-            grid.fit(y)
-
-            if args.verbose == 2:
-                self.logger.info("Done searching bandwidth.")
-
-                # Optimal bandwidth
-            best_bandwidth = grid.best_estimator_.bandwidth
+                self.logger.info(
+                    "Searching for optimal kernel density bandwidth for geographic density sampler..."
+                )
 
             # Weight by sampling density.
             weighted_sampler = GeographicDensitySampler(
                 y,
-                bandwidth=best_bandwidth,
+                focus_regions=args.focus_regions,
+                use_kmeans=args.use_kmeans,
+                use_kde=args.use_kde,
+                w_power=args.w_power,
+                max_clusters=args.max_clusters,
+                max_neighbors=args.max_neighbors,
             )
 
             if args.verbose >= 1:
@@ -934,17 +939,3 @@ class DataStructure:
             value (dict): Dictionary to update params with.
         """
         self._params.update(value)
-
-    @property
-    def coord_scaler(self):
-        """Get dictionary with coordinate summary stats for scaling.
-
-        Returns:
-            dict: Coordinate Mean and StdDev (longitude and latitude).
-        """
-        return {
-            "meanlong": self.meanlong,
-            "meanlat": self.meanlat,
-            "sdlong": self.sdlong,
-            "sdlat": self.sdlat,
-        }

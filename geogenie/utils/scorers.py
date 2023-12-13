@@ -4,10 +4,29 @@ from math import asin, cos, radians, sin, sqrt
 
 import numba
 import numpy as np
-from scipy.spatial.distance import cdist
 from sklearn.metrics import r2_score
 
 logger = logging.getLogger(__name__)
+
+
+def haversine_distances_agg(y_true, y_pred, func):
+    """
+    Calculate the distance metric between y_true and y_pred using the specified aggregation function (e.g., np.mean or np.median)
+
+    Args:
+        y_true (numpy.ndarray): Array of true values (latitude, longitude).
+        y_pred (numpy.ndarray): Array of predicted values (latitude, longitude).
+        func (callable): Function to aggregate distances.
+
+    Returns:
+        float: Aggregated distance.
+    """
+    return func(
+        [
+            haversine(y_pred[x, 0], y_pred[x, 1], y_true[x, 0], y_true[x, 1])
+            for x in range(len(y_pred))
+        ]
+    )
 
 
 def calculate_r2_knn(predicted_data, actual_data):
@@ -26,55 +45,17 @@ def calculate_r2_knn(predicted_data, actual_data):
     return np.mean(r_squared)
 
 
-def calculate_r2(actual_coords, predicted_coords):
-    """
-    Calculate the coefficient of determination (r^2 value) for actual vs predicted coordinates.
-
-    This method is tailored to the use case for geographic coordinates.
-
-    Args:
-    actual_coords (np.array): A 2D array of actual coordinates (longitude, latitude).
-    predicted_coords (np.array): A 2D array of predicted coordinates (longitude, latitude).
-
-    Returns:
-    float: The calculated r^2 value.
-    """
-    # Checking if actual and predicted coordinates have the same shape
-    if actual_coords.shape != predicted_coords.shape:
-        logger.error(
-            f"The shape of actual and predicted coordinates must be the same, "
-            f"but got: {actual_coords.shape}, {predicted_coords.shape}"
-        )
-        raise ValueError(
-            f"The shape of actual and predicted coordinates must be the same, "
-            f"but got: {actual_coords.shape}, {predicted_coords.shape}"
-        )
-
-    # Mean of actual coordinates
-    mean_actual = np.mean(actual_coords, axis=0)
-
-    # Total sum of squares
-    total_sum_of_squares = np.sum((actual_coords - mean_actual) ** 2)
-
-    # Residual sum of squares
-    residual_sum_of_squares = np.sum((actual_coords - predicted_coords) ** 2)
-
-    # Calculating r^2
-    r2 = 1 - (residual_sum_of_squares / total_sum_of_squares)
-    return r2
-
-
-def get_r2(y_true, y_pred, idx):
+def calculate_r2_sklearn(y_true, y_pred, idx):
     """This is for the scikit-learn implementation of r2_score
 
     This is not the same as the calculate_r2 method."""
     return r2_score(y_true[:, idx], y_pred[:, idx], multioutput="variance_weighted")
 
 
-def loc_r2(p2, testlocs2):
-    r2_long = np.corrcoef(p2[:, 0], testlocs2[:, 0])[0][1] ** 2
-    r2_lat = np.corrcoef(p2[:, 1], testlocs2[:, 1])[0][1] ** 2
-    return r2_long, r2_lat
+def r2_multioutput(preds, targets):
+    r2_lon = np.corrcoef(preds[:, 0], targets[:, 0])[0][1] ** 2
+    r2_lat = np.corrcoef(preds[:, 1], targets[:, 1])[0][1] ** 2
+    return r2_lon, r2_lat
 
 
 def haversine(lon1, lat1, lon2, lat2):
@@ -94,7 +75,7 @@ def haversine(lon1, lat1, lon2, lat2):
     return c * r
 
 
-@numba.jit(fastmath=True, nopython=True)
+@numba.njit(fastmath=True)
 def haversine_distance(coord1, coord2):
     """
     Calculate the Haversine distance between two geographic coordinate points.
@@ -117,23 +98,3 @@ def haversine_distance(coord1, coord2):
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
     return radius * c
-
-
-def parallel_haversine(args):
-    geo_chunk, pred_geo_coords, haversine_distance, scalar = args
-    return (
-        np.diagonal(cdist(geo_chunk, pred_geo_coords, metric=haversine_distance))
-        / scalar
-    )
-
-
-def parallel_euclidean(args):
-    gen_chunk, gen_coords = args
-    return cdist(gen_chunk, gen_coords, metric="euclidean")
-
-
-def parallel_haversine_sklearn(args):
-    geo_chunk, sklearn_haversine, scale_factor = args
-    dist_matrix_chunk = sklearn_haversine(geo_chunk) * 6371.0
-    dist_matrix_chunk /= scale_factor
-    return dist_matrix_chunk

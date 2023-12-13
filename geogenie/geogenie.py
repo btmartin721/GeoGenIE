@@ -11,6 +11,7 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from sklearn.metrics import mean_squared_error
 
 from geogenie.models.models import GeoRegressionGNN, MLPRegressor, SNPTransformer
 from geogenie.optimize.boostrap import Bootstrap
@@ -18,7 +19,9 @@ from geogenie.optimize.optuna_opt import Optimize
 from geogenie.plotting.plotting import PlotGenIE
 from geogenie.utils.callbacks import EarlyStopping
 from geogenie.utils.data_structure import DataStructure
-from geogenie.utils.scorers import haversine, loc_r2
+from geogenie.utils.loss import WeightedHaversineLoss, WeightedRMSELoss
+from geogenie.utils.scorers import haversine, r2_multioutput, haversine_distances_agg
+from geogenie.utils.utils import rmse_to_distance, geo_coords_is_valid
 
 
 class GeoGenIE:
@@ -35,7 +38,6 @@ class GeoGenIE:
         self.genotypes = None
         self.samples = None
         self.sample_data = None
-        self.popmap_data = None
         self.locs = None
 
         if self.args.gpu_number is not None:
@@ -139,7 +141,7 @@ class GeoGenIE:
         lr_scheduler_patience=8,
         objective_mode=False,
         verbose=False,
-        grad_clip=True,
+        grad_clip=False,
     ):
         """
         Train the PyTorch model with given parameters.
@@ -189,6 +191,13 @@ class GeoGenIE:
         if verbose:
             self.logger.info("\n\n")
 
+        if self.args.class_weights:
+            sample_weights = torch.tensor(
+                self.data_structure.samples_weight,
+                dtype=torch.float32,
+                device=self.device,
+            )
+
         for epoch in range(epochs):
             try:
                 start_time = time.time()  # Start time for the epoch
@@ -198,7 +207,11 @@ class GeoGenIE:
                 if self.args.model_type == "gcn":
                     optimizer.zero_grad()
                     outputs = model(train_loader)
-                    loss = criterion(outputs, self.data_structure.train_dataset[1])
+                    loss = criterion(
+                        outputs,
+                        self.data_structure.train_dataset[1],
+                        sample_weight=sample_weights,
+                    )
                     loss.backward()
                     optimizer.step()
                     train_losses.append(loss.item())
@@ -208,7 +221,9 @@ class GeoGenIE:
                     with torch.no_grad():
                         outputs = model(val_loader)
                         val_loss = criterion(
-                            outputs, self.data_structure.val_dataset[1]
+                            outputs,
+                            self.data_structure.val_dataset[1],
+                            sample_weight=sample_weights,
                         )
 
                         val_losses.append(val_loss.item())
@@ -218,16 +233,23 @@ class GeoGenIE:
                         if self.args.model_type == "gcn":
                             data = batch
                         else:
-                            data, targets = batch
+                            if len(batch) == 3:
+                                data, targets, sample_weight = batch
+                            else:
+                                data, targets = batch
                         if self.args.model_type == "transformer":
                             data = data.long()
 
                         if self.args.model_type != "gcn":
                             data = data.to(model.device)
                             targets = targets.to(model.device)
+
+                            if self.args.class_weights:
+                                sample_weight = sample_weight.to(model.device)
+
                         optimizer.zero_grad()
                         outputs = model(data)
-                        loss = criterion(outputs, targets)
+                        loss = criterion(outputs, targets, sample_weight=sample_weight)
                         loss.backward()
 
                         if grad_clip and self.args.model_type == "mlp":
@@ -247,15 +269,25 @@ class GeoGenIE:
                             if self.args.model_type == "gcn":
                                 data = batch
                             else:
-                                data, targets = batch
+                                if len(batch) == 3:
+                                    data, targets, sample_weight = batch
+                                else:
+                                    data, targets = batch
                             if self.args.model_type == "transformer":
                                 data = data.long()
 
                             if self.args.model_type != "gcn":
                                 data = data.to(model.device)
                                 targets = targets.to(model.device)
+
+                                if self.args.class_weights:
+                                    sample_weight = sample_weight.to(model.device)
                             outputs = model(data)
-                            val_loss = criterion(outputs, targets)
+                            val_loss = criterion(
+                                outputs,
+                                targets,
+                                sample_weight=sample_weight,
+                            )
                             total_val_loss += val_loss.item()
                     avg_val_loss = total_val_loss / len(val_loader)
                     val_losses.append(avg_val_loss)
@@ -407,13 +439,22 @@ class GeoGenIE:
         predictions = []
         ground_truth = []
         with torch.no_grad():
-            for data, target in data_loader:
-                if self.args.model_type == "transformer":
-                    data = data.long()
-                data = data.to(device)
-                output = model(data)
-                predictions.append(output.cpu().numpy())
-                ground_truth.append(target.numpy())
+            if self.args.class_weights:
+                for data, target, sample_weight in data_loader:
+                    if self.args.model_type == "transformer":
+                        data = data.long()
+                    data = data.to(device)
+                    output = model(data)
+                    predictions.append(output.cpu().numpy())
+                    ground_truth.append(target.numpy())
+            else:
+                for data, target in data_loader:
+                    if self.args.model_type == "transformer":
+                        data = data.long()
+                    data = data.to(device)
+                    output = model(data)
+                    predictions.append(output.cpu().numpy())
+                    ground_truth.append(target.numpy())
 
         predictions = np.concatenate(predictions, axis=0)
         ground_truth = np.concatenate(ground_truth, axis=0)
@@ -422,47 +463,27 @@ class GeoGenIE:
             return self.data_structure.norm.inverse_transform(y)
 
         # Rescale predictions and ground truth to original scale
-        rescaled_preds = rescale_predictions(predictions)
-        rescaled_truth = rescale_predictions(ground_truth)
+        predictions = rescale_predictions(predictions)
+        ground_truth = rescale_predictions(ground_truth)
+
+        geo_coords_is_valid(predictions)
+        geo_coords_is_valid(ground_truth)
 
         # Evaluate predictions
-        r2_long, r2_lat = loc_r2(rescaled_preds, rescaled_truth)
+        r2_lon, r2_lat = r2_multioutput(predictions, ground_truth)
+        mean_dist = haversine_distances_agg(ground_truth, predictions, np.mean)
+        median_dist = haversine_distances_agg(ground_truth, predictions, np.median)
+        std_dist = haversine_distances_agg(ground_truth, predictions, np.std)
 
-        def get_dist_metric(y_true, y_pred, func):
-            """
-            Calculate the distance metric between y_true and y_pred using the specified function.
-
-            Args:
-            y_true (numpy.ndarray): Array of true values (latitude, longitude).
-            y_pred (numpy.ndarray): Array of predicted values (latitude, longitude).
-            func (function): Function to aggregate distances.
-
-            Returns:
-            float: Aggregated distance.
-            """
-            return func(
-                [
-                    haversine(y_pred[x, 0], y_pred[x, 1], y_true[x, 0], y_true[x, 1])
-                    for x in range(len(y_pred))
-                ]
-            )
-
-        mean_dist = get_dist_metric(rescaled_truth, rescaled_preds, np.mean)
-        median_dist = get_dist_metric(rescaled_truth, rescaled_preds, np.median)
-        std_dist = get_dist_metric(rescaled_truth, rescaled_preds, np.std)
-        self.logger.info(f"R2(x) = {r2_long}")
+        self.logger.info(f"R2(x) = {r2_lon}")
         self.logger.info(f"R2(y) = {r2_lat}")
-        self.logger.info(f"Mean Validation Error (Haversine Distance) = {mean_dist}")
-        self.logger.info(
-            f"Median Validation Error (Haversine Distance) = {median_dist}"
-        )
-        self.logger.info(
-            f"Standard deviation for Error (Haversine Distance) = {std_dist}"
-        )
+        self.logger.info(f"Validation Distance Error (km) = {mean_dist}")
+        self.logger.info(f"Median Validation Error (km) = {median_dist}")
+        self.logger.info(f"Standard deviation for Error (km) = {std_dist}")
 
         # return the evaluation metrics along with the predictions
         metrics = {
-            "r2_long": r2_long,
+            "r2_long": r2_lon,
             "r2_lat": r2_lat,
             "mean_dist": mean_dist,
             "median_dist": median_dist,
@@ -563,7 +584,7 @@ class GeoGenIE:
                 0.5,
                 self.args.patience // 6,
                 verbose=self.args.verbose,
-                grad_clip=True,
+                grad_clip=False,
             )
 
             self.logger.info(
@@ -634,7 +655,7 @@ class GeoGenIE:
             show_progress_bar=False,
             n_startup_trials=10,
             verbose=self.args.verbose,
-            grad_clip=True,
+            grad_clip=False,
         )
 
         best_trial, study = opt.perform_optuna_optimization(
@@ -731,7 +752,6 @@ class GeoGenIE:
         prefix = self.args.prefix
 
         middir = dataset
-        indices = self.data_structure.indices[f"{dataset}_indices"]
         if dataset.startswith("val"):
             middir = dataset + "idation" if dataset.endswith("val") else dataset
             loader = self.data_structure.val_loader
@@ -745,6 +765,9 @@ class GeoGenIE:
             return_truths=True,
         )
 
+        geo_coords_is_valid(val_preds)
+        geo_coords_is_valid(y_true)
+
         # Save validation results to file
         val_metric_outfile = os.path.join(
             outdir, middir, f"{prefix}_{middir}_metrics.json"
@@ -756,13 +779,15 @@ class GeoGenIE:
 
         val_preds_df = self.write_pred_locations(
             val_preds,
-            indices,
+            self.data_structure.indices[f"{dataset}_indices"],
             self.data_structure.sample_data,
             val_preds_outfile,
         )
 
         with open(val_metric_outfile, "w") as fout:
-            json.dump(val_metrics, fout, indent=2)
+            json.dump(
+                {k: v.astype("float64") for k, v in val_metrics.items()}, fout, indent=2
+            )
 
         if self.args.verbose >= 1:
             self.logger.info("Validation metrics saved.")
@@ -802,12 +827,12 @@ class GeoGenIE:
         # Plot training history
         self.plotting.plot_history(train_losses, val_losses, hist_outdir)
         self.plotting.plot_geographic_error_distribution(
-            self.data_structure.norm.inverse_transform(y_true),
-            self.data_structure.norm.inverse_transform(val_preds),
+            y_true,
+            val_preds,
             geo_outfile,
             self.args.fontsize,
             self.args.shapefile_url,
-            buffer=0.5,
+            buffer=0.1,
         )
 
         if self.args.verbose >= 1:
@@ -821,13 +846,13 @@ class GeoGenIE:
         outdir = self.args.output_dir
         prefix = self.args.prefix
 
-        # Convert X_pred to a PyTorch tensor and move it to the correct
-        # device (GPU or CPU)
-
         if self.args.model_type == "transformer":
             dtype = torch.long
         else:
-            dtype = torch.float
+            dtype = torch.float32
+
+        # Convert X_pred to a PyTorch tensor and move it to the correct
+        # device (GPU or CPU)
         pred_tensor = torch.tensor(self.data_structure.data["X_pred"], dtype=dtype).to(
             device
         )
@@ -836,9 +861,6 @@ class GeoGenIE:
             # Make predictions
             pred_locations_scaled = model(pred_tensor)
 
-        pred_locations = pred_locations_scaled.cpu().numpy()
-
-        # rescale the predictions back to the original range
         pred_locations = self.data_structure.norm.inverse_transform(
             pred_locations_scaled.cpu().numpy()
         )
@@ -851,7 +873,7 @@ class GeoGenIE:
 
         real_preds = self.write_pred_locations(
             pred_locations,
-            self.data_structure.indices["pred_indices"],
+            self.data_structure.pred_indices,
             self.data_structure.sample_data,
             pred_outfile,
         )
@@ -888,7 +910,7 @@ class GeoGenIE:
             self.data_structure.define_params(self.args)
             best_params = self.data_structure.params
 
-            criterion = GeoGenIE.haversine_loss
+            criterion = WeightedRMSELoss()
 
             if self.args.model_type == "transformer":
                 modelclass = SNPTransformer

@@ -18,7 +18,7 @@ class MLPRegressor(nn.Module):
         nlayers=10,
         dropout_prop=0.2,
         device="cpu",
-        output_width=2,
+        output_width=3,
         min_width=3,
         factor=0.5,
         **kwargs,

@@ -39,7 +39,7 @@ class Optimize:
         n_jobs,
         lr_scheduler_factor=0.5,
         lr_scheduler_patience=8,
-        grad_clip=True,
+        grad_clip=False,
         show_progress_bar=False,
         n_startup_trials=10,
         show_plots=False,
@@ -86,12 +86,9 @@ class Optimize:
         dataset = self.train_loader.dataset
 
         # Optuna hyperparameters
-        lr = trial.suggest_categorical(
-            "lr",
-            [1e-6, 5e-6, 1e-5, 5e-5, 1e-4, 5e-4, 1e-3, 5e-3, 1e-2, 5e-2, 1e-1, 5e-1],
-        )
+        lr = trial.suggest_float("lr", 0.0, 0.5)
         width = trial.suggest_int(
-            "width", 8, self.train_loader.dataset.tensors[0].shape[1] - 1
+            "width", 2, self.train_loader.dataset.tensors[0].shape[1] - 1
         )
         nlayers = trial.suggest_int("nlayers", 2, 20)
         dropout_prop = trial.suggest_float("dropout_prop", 0.0, 0.5)
@@ -180,10 +177,21 @@ class Optimize:
         model.eval()
         total_loss = 0.0
         with torch.no_grad():
-            for inputs, labels in val_loader:
-                inputs, labels = inputs.to(self.device), labels.to(self.device)
+            for batch in val_loader:
+                if len(batch) == 3:
+                    inputs, labels, sample_weights = batch
+                    inputs, labels, sample_weights = (
+                        inputs.to(self.device),
+                        labels.to(self.device),
+                        sample_weights.to(self.device),
+                    )
+
+                else:
+                    inputs, labels = batch
+                    inputs, labels = inputs.to(self.device), labels.to(self.device)
+                    sample_weights = None
                 outputs = model(inputs)
-                loss = criterion(outputs, labels)
+                loss = criterion(outputs, labels, sample_weight=sample_weights)
                 total_loss += loss.item()
         return total_loss / len(val_loader)
 

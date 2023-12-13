@@ -1,7 +1,5 @@
 import logging
-import os
 import time
-from multiprocessing import Pool
 from os import path
 
 import numpy as np
@@ -10,8 +8,6 @@ from pynndescent import NNDescent
 from scipy.optimize import minimize
 from scipy.spatial.distance import cdist
 from scipy.stats import gamma
-from sklearn.metrics.pairwise import haversine_distances as sklearn_haversine
-from sklearn.neighbors import NearestNeighbors
 
 from geogenie.plotting.plotting import PlotGenIE
 from geogenie.utils.scorers import calculate_r2_knn, haversine_distance
