@@ -51,7 +51,7 @@ def validate_positive_int(value):
     """Validate that the provided value is a positive integer."""
     ivalue = int(value)
     if ivalue <= 0:
-        raise argparse.ArgumentTypeError(f"{value} is an invalid positive int value")
+        raise argparse.ArgumentTypeError(f"{value} must be a positive integer.")
     return ivalue
 
 
@@ -59,7 +59,7 @@ def validate_positive_float(value):
     """Validate that the provided value is a positive float."""
     fvalue = float(value)
     if fvalue <= 0:
-        raise argparse.ArgumentTypeError(f"{value} is an invalid positive float value")
+        raise argparse.ArgumentTypeError(f"{value} must be a positive float.")
     return fvalue
 
 
@@ -95,7 +95,7 @@ def validate_gpu_number(value):
         try:
             gpu_number = int(value)
             if gpu_number < 0:
-                raise ValueError("'gpu_number' must be > 0")
+                raise ValueError("'gpu_number' must be >= 0")
         except Exception:
             raise argparse.ArgumentTypeError(f"{value} is not a valid GPU number.")
         if not is_available():
@@ -360,9 +360,60 @@ def setup_parser():
         default=100,
         help="Iterations for parameter optimization. Used with 'do_gridsearch'. Optuna recommends between 100-1000. Default: 100.",
     )
+    training_group.add_argument(
+        "--alpha",
+        default=0.5,
+        type=validate_positive_float,
+        help="Factor to scale havesine loss by.",
+    )
+    training_group.add_argument(
+        "--beta",
+        default=0.5,
+        type=validate_positive_float,
+        help="Factor to scale mean and StdDev by in loss function.",
+    )
+    training_group.add_argument(
+        "--gamma",
+        default=0.5,
+        type=validate_positive_float,
+        help="Factor to scale r-squared by in loss function.",
+    )
+    training_group.add_argument(
+        "--lr_scheduler_patience",
+        default=8,
+        type=validate_positive_int,
+        help="Learning rate scheduler patience.",
+    )
+    training_group.add_argument(
+        "--lr_scheduler_factor",
+        type=validate_positive_float,
+        default=0.5,
+        help="Factor to reduce learning rate scheduler by.",
+    )
+    training_group.add_argument(
+        "--factor",
+        type=validate_positive_float,
+        default=0.5,
+        help="Factor to scale neural network widths by.",
+    )
+    training_group.add_argument(
+        "--grad_clip",
+        action="store_true",
+        help="If true, does gradient clipping to reduce overfitting.",
+    )
 
     # Geographic Density Sampler Arguments
     geo_sampler_group = parser.add_argument_group("Geographic Density Sampler")
+    geo_sampler_group.add_argument(
+        "--use_weighted",
+        type=str,
+        help="Use inverse-weighted probability sampling to calculate sample weights based on sampling density; use the sample weights in the loss function, or both. Valid options include: 'sampler', 'loss', 'both', or 'none'. Default: 'none'.",
+    )
+    geo_sampler_group.add_argument(
+        "--use_synthetic_oversampling",
+        action="store_true",
+        help="Use synthetic oversampling of low-density regions to get better predictions.",
+    )
     geo_sampler_group.add_argument(
         "--use_kmeans",
         action="store_true",
@@ -402,6 +453,12 @@ def setup_parser():
         "Arguments for outlier detection based on IBD.",
         description="Parameters to adjust for the 'outlier_detection_group. This will perform outlier detection and remove significant outliers from the training and validation data.",
     )
+    outlier_detection_group.add_argument(
+        "--detect_outliers",
+        action="store_true",
+        help="Perform outlier detection to remove outliers.",
+    )
+
     outlier_detection_group.add_argument(
         "--min_nn_dist",
         type=validate_positive_int,
@@ -595,8 +652,13 @@ def setup_parser():
             logger.error(msg)
             parser.error(msg)
 
-    if args.n_components is None and args.embedding_type in ["tsne", "mds", "lle"]:
+    if args.n_components is None and args.embedding_type in ["tsne", "mds"]:
         msg = f"n_components must either be 2 or 3 if using 'tsne' or 'mds', but got NoneType."
+        logger.error(msg)
+        parser.error(msg)
+
+    if args.use_weighted not in ["sampler", "loss", "both", "none"]:
+        msg = f"Invalid option passed to 'use_weighted': {args.use_weighted}"
         logger.error(msg)
         parser.error(msg)
 
