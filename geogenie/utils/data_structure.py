@@ -481,7 +481,7 @@ class DataStructure:
             buffer=0.1,
             show_plots=args.show_plots,
             seed=args.seed,
-            debug=True,
+            debug=False,
             verbose=args.verbose,
         )
 
