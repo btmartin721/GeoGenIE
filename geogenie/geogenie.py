@@ -806,7 +806,7 @@ class GeoGenIE:
             loader = self.data_structure.test_loader
 
         val_errordist_outfile = os.path.join(
-            outdir, middir, f"{prefix}_{middir}_error_distributions.png"
+            outdir, "plots", f"{prefix}_{middir}_error_distributions.png"
         )
 
         val_preds, val_metrics, y_true = self.predict_locations(
