@@ -7,22 +7,20 @@ import matplotlib.colors as colors
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import scipy.stats as stats
 import seaborn as sns
 import wget
+from matplotlib.cm import ScalarMappable
 from optuna import visualization
 from scipy.stats import gamma
 from shapely.geometry import Point
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, WhiteKernel
-from sklearn.metrics import ConfusionMatrixDisplay, mean_squared_error
+from sklearn.metrics import ConfusionMatrixDisplay
 from sklearn.preprocessing import MinMaxScaler
 
 from geogenie.utils.scorers import haversine
-from geogenie.utils.utils import (
-    rmse_to_distance,
-    custom_gpr_optimizer,
-    geo_coords_is_valid,
-)
+from geogenie.utils.utils import custom_gpr_optimizer
 
 
 class PlotGenIE:
@@ -79,12 +77,12 @@ class PlotGenIE:
         max_loss = max(np.max(train_loss), np.max(val_loss))
         min_loss = min(np.min(train_loss), np.min(val_loss))
 
-        if max_loss / min_loss > 10:  # Threshold for log scale
-            plt.yscale("log")
-            plt.ylabel("Log Loss", fontsize=self.fontsize)
-            plt.ylim(bottom=max(min_loss, 1e-5))  # Avoid log(0) error
-        else:
-            plt.ylabel("Loss", fontsize=self.fontsize)
+        # if max_loss / min_loss > 10:  # Threshold for log scale
+        # plt.yscale("log")
+        # plt.ylabel("Log Loss", fontsize=self.fontsize)
+        # plt.ylim(bottom=max(min_loss, 1e-5))  # Avoid log(0) error
+        # else:
+        plt.ylabel("Loss", fontsize=self.fontsize)
 
         plt.legend()
         plt.savefig(filename, facecolor="white", bbox_inches="tight")
@@ -170,9 +168,9 @@ class PlotGenIE:
         actual_coords,
         predicted_coords,
         outfile,
-        fontsize,
         url,
         buffer=0.1,
+        marker_scale_factor=3,
     ):
         # Calculate Haversine error for each pair of points
         haversine_errors = np.array(
@@ -216,14 +214,16 @@ class PlotGenIE:
         # Plot the interpolated errors with corrected color normalization
         fig, ax = plt.subplots(figsize=(12, 12))
 
-        # Correct the normalization range based on the actual error values
-        vmin, vmax = np.min(haversine_errors), np.max(haversine_errors)
-
-        norm = colors.Normalize(vmin=vmin, vmax=vmax)
+        # Define colormap and normalization
+        cmap = plt.get_cmap("coolwarm")
+        norm = colors.Normalize(
+            vmin=np.min(haversine_errors), vmax=np.max(haversine_errors)
+        )
 
         contour = ax.contourf(
-            grid_x, grid_y, error_predictions, levels=1000, cmap="coolwarm", norm=norm
+            grid_x, grid_y, error_predictions, levels=1000, cmap=cmap, norm=norm
         )
+
         cbar = plt.colorbar(
             contour,
             ax=ax,
@@ -252,57 +252,50 @@ class PlotGenIE:
             [(point.x, point.y) for point in gdf_actual.geometry]
         )
 
-        mms = MinMaxScaler(feature_range=(1000, 10000))
-
         if len(haversine_errors.shape) > 1:
             msg = f"Invalid shape for haversine_error: {haversine_errors.shape}"
             self.logger.error(msg)
             raise ValueError(msg)
-        dist_errors = mms.fit_transform(haversine_errors.reshape(-1, 1))
 
-        # Determine the scaling factor based on plot dimensions
-        plot_scaling_factor = (fig.get_size_inches()[0] * fig.get_dpi()) ** 2 / 10
-
-        # Calculate sizes for scatter plot (scaled by error)
-        point_sizes = 1 / (dist_errors + 1e-6) * plot_scaling_factor
-
-        # Plotting individual sample points
-        ax.scatter(
+        # Plot KDE layer
+        scatter = ax.scatter(
             actual_coords_transformed[:, 0],
             actual_coords_transformed[:, 1],
-            s=point_sizes,
-            c="black",
+            s=plt.rcParams["lines.markersize"] ** marker_scale_factor,
+            c="darkorchid",
             alpha=0.5,
+            label="Sampling Density",
         )
 
         # Customization
         ax.set_title(
             "Kriging of Haversine Prediction Errors",
-            fontsize=fontsize,
+            fontsize=self.fontsize,
         )
-        ax.set_xlabel("Longitude", fontsize=fontsize)
-        ax.set_ylabel("Latitude", fontsize=fontsize)
-        ax.xaxis.set_tick_params(labelsize=fontsize)
-        ax.yaxis.set_tick_params(labelsize=fontsize)
+        ax.set_xlabel("Longitude", fontsize=self.fontsize)
+        ax.set_ylabel("Latitude", fontsize=self.fontsize)
+        ax.xaxis.set_tick_params(labelsize=self.fontsize)
+        ax.yaxis.set_tick_params(labelsize=self.fontsize)
         for t in cbar.ax.get_yticklabels():
-            t.set_fontsize(fontsize)
+            t.set_fontsize(self.fontsize)
 
-        cbar.ax.set_ylabel("Prediction Error (km)", fontsize=fontsize)
+        cbar.ax.set_ylabel("Prediction Error (km)", fontsize=self.fontsize)
+
+        # Add legend
+        plt.legend(loc="upper right", fontsize=self.fontsize)
+
+        # Ensure correct scale and aspect ratio
+        ax.set_aspect("equal", "box")
 
         if self.show_plots:
             plt.show()
-        fig.savefig(outfile, facecolor="white", bbox_inches="tight")
+        fig.savefig(outfile, facecolor="white")
 
     def plot_map(self, actual_coords, url, output_dir, buffer, ax):
         # Ensure coordinates are valid
         if np.any(np.isnan(actual_coords)) or np.any(np.isinf(actual_coords)):
             self.logger.error("Invalid coordinates detected.")
             raise ValueError("Invalid coordinates in actual_coords.")
-
-        gdf = gpd.GeoDataFrame(
-            geometry=gpd.points_from_xy(actual_coords[:, 0], actual_coords[:, 1]),
-            crs="EPSG:4326",
-        )
 
         outshp = os.path.join(output_dir, "shapefile")
         mapfile = os.path.join(outshp, url.split("/")[-1])
@@ -327,8 +320,6 @@ class PlotGenIE:
         x_max += buffer
         y_max += buffer
 
-        cdf = pd.DataFrame(actual_coords, columns=["Longitude", "Latitude"])
-
         # Plotting
         mapdata = mapdata.clip([x_min, y_min, x_max, y_max])
 
@@ -341,6 +332,146 @@ class PlotGenIE:
         )
 
         return ax
+
+    def plot_error_distribution(self, errors, is_lon=True):
+        """
+        Plot the distribution of errors using a histogram, box plot, and Q-Q plot.
+
+        Args:
+            errors (np.array): An array of prediction errors.
+            is_lon (bool): True if is longitide, False if is latitude.
+
+        Returns:
+            None: Plots the error distribution.
+        """
+        plt.figure(figsize=(18, 6))
+
+        # Colormap and normalization
+        cmap = plt.get_cmap("coolwarm")
+        norm = colors.Normalize(vmin=np.min(errors), vmax=np.max(errors))
+
+        # Remove grid
+        sns.set(style="white")
+
+        # Histogram (Density Plot with Gradient)
+        plt.subplot(1, 3, 1)
+        # Compute KDE
+        kde = stats.gaussian_kde(errors)
+        x_values = np.linspace(np.min(errors), np.max(errors), 1000)
+        kde_values = kde(x_values)
+
+        mms = MinMaxScaler()
+        kde_values = np.squeeze(mms.fit_transform(kde_values.reshape(-1, 1)))
+
+        # Create Line Plot for the KDE
+        plt.plot(x_values, kde_values, color="black")
+
+        # Add Gradient Fill
+        for i in range(len(x_values) - 1):
+            plt.fill_between(
+                x_values[i : i + 2],
+                kde_values[i : i + 2],
+                color=cmap(norm(x_values[i])),
+            )
+
+        plt.title("Prediction Error Density", fontsize=self.fontsize)
+        plt.xlabel("Haversine Error (km)", fontsize=self.fontsize)
+        plt.ylabel("Frequency", fontsize=self.fontsize)
+
+        # Box Plot
+        plt.subplot(1, 3, 2)
+        bplot = plt.boxplot(
+            errors,
+            vert=False,
+            notch=True,
+            bootstrap=1000,
+            patch_artist=True,
+            showfliers=True,
+        )
+        plt.title("Prediction Error Box Plot", fontsize=self.fontsize)
+        plt.xlabel("Haversine Error (km)", fontsize=self.fontsize)
+        plt.ylabel("")
+
+        for patch, color in zip(bplot["boxes"], ["darkorchid"]):
+            patch.set_facecolor(color)
+
+        # Q-Q Plot
+        plt.subplot(1, 3, 3)
+        stats.probplot(errors, dist="norm", plot=plt, rvalue=True, fit=True)
+        plt.title("Quantile x Quantile Error", fontsize=self.fontsize)
+        plt.xlabel("Theoretical Quantiles", fontsize=self.fontsize)
+        plt.ylabel("Actual Quantiles", fontsize=self.fontsize)
+
+        outfile = os.path.join(
+            self.output_dir, "plots", f"{self.prefix}_error_distributions.png"
+        )
+
+        if self.show_plots:
+            plt.show()
+        plt.savefig(outfile, facecolor="white")
+        plt.close()
+
+    def plot_kde_error_regression(self, actual_coords, predicted_coords):
+        """
+        Plot a regression between KDE density and prediction error.
+
+        Args:
+            actual_coords (np.array): Array of actual coordinates.
+            predicted_coords (np.array): Array of predicted coordinates.
+        """
+
+        # Calculate Haversine error for each pair of points
+        haversine_errors = np.array(
+            [
+                haversine(act[0], act[1], pred[0], pred[1])
+                for act, pred in zip(actual_coords, predicted_coords)
+            ]
+        )
+
+        # Compute KDE
+        kde = stats.gaussian_kde(haversine_errors)
+        kde_values = kde.evaluate(haversine_errors)
+
+        mms = MinMaxScaler()
+        kde_values = np.squeeze(mms.fit_transform(kde_values.reshape(-1, 1)))
+
+        # Create a DataFrame for plotting
+        data = np.column_stack((kde_values, haversine_errors))
+
+        # Plotting using seaborn
+        sns.set(style="white")
+        plt.figure(figsize=(10, 6))
+
+        r2 = stats.pearsonr(data[:, 0], data[:, 1])[0] ** 2
+
+        # Regression plot
+        ax = sns.regplot(
+            x=data[:, 0],
+            y=data[:, 1],
+            scatter=True,
+            scatter_kws={"color": "darkorchid", "alpha": 0.5},
+            line_kws={"color": "darkorchid", "lw": 3},
+            robust=True,
+            n_boot=1000,
+            label=r"$R^2:{0:.2f}$".format(r2),
+        )
+
+        ax.legend(fontsize=self.fontsize)
+
+        ax.set_xlabel("Sampling Density", fontsize=self.fontsize)
+        ax.set_ylabel("Prediction Error", fontsize=self.fontsize)
+        ax.set_title(
+            "Regression of Kernel Density vs Prediction Error", fontsize=self.fontsize
+        )
+
+        if self.show_plots:
+            plt.show()
+        plt.savefig(
+            os.path.join(
+                self.output_dir, "plots", f"{self.prefix}_density_x_error.png"
+            ),
+            facecolor="white",
+        )
 
     def plot_pca_curve(self, x, vr, knee):
         plt.figure()
