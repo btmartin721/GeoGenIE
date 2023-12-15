@@ -21,7 +21,7 @@ from geogenie.samplers.samplers import GeographicDensitySampler
 from geogenie.utils.callbacks import EarlyStopping
 from geogenie.utils.data_structure import DataStructure
 from geogenie.utils.loss import MultiobjectiveHaversineLoss
-from geogenie.utils.scorers import haversine_distances_agg, kstest, r2_multioutput
+from geogenie.utils.scorers import haversine_distances_agg, kstest, calculate_rmse
 from geogenie.utils.utils import geo_coords_is_valid
 from geogenie.utils.scorers import haversine
 
@@ -462,7 +462,7 @@ class GeoGenIE:
         geo_coords_is_valid(ground_truth)
 
         # Evaluate predictions
-        r2_lon, r2_lat = r2_multioutput(predictions, ground_truth)
+        rmse = calculate_rmse(predictions, ground_truth)
         mean_dist = haversine_distances_agg(ground_truth, predictions, np.mean)
         median_dist = haversine_distances_agg(ground_truth, predictions, np.median)
         std_dist = haversine_distances_agg(ground_truth, predictions, np.std)
@@ -471,8 +471,7 @@ class GeoGenIE:
         # underestimations
         ks, pval, skew = kstest(ground_truth, predictions)
 
-        self.logger.info(f"R2(x) = {r2_lon}")
-        self.logger.info(f"R2(y) = {r2_lat}")
+        self.logger.info(f"Root Mean Squared Error (km) = {rmse}")
         self.logger.info(f"Validation Distance Error (km) = {mean_dist}")
         self.logger.info(f"Median Validation Error (km) = {median_dist}")
         self.logger.info(f"Standard deviation for Error (km) = {std_dist}")
@@ -498,8 +497,7 @@ class GeoGenIE:
 
         # return the evaluation metrics along with the predictions
         metrics = {
-            "r2_long": r2_lon,
-            "r2_lat": r2_lat,
+            "root_mean_squared_error": rmse,
             "mean_dist": mean_dist,
             "median_dist": median_dist,
             "stdev_dist": std_dist,
