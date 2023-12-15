@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import scipy.stats as stats
 from sklearn.manifold import LocallyLinearEmbedding
-from sklearn.metrics import median_absolute_error, r2_score
+from sklearn.metrics import mean_squared_error, r2_score
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +122,7 @@ def haversine_distances_agg(y_true, y_pred, func):
     Args:
         y_true (numpy.ndarray): Array of true values (latitude, longitude).
         y_pred (numpy.ndarray): Array of predicted values (latitude, longitude).
-        func (callable): Function to aggregate distances.
+        func (callable): Function to aggregate distances. e.g., np.mean
 
     Returns:
         float: Aggregated distance.
@@ -162,6 +162,13 @@ def r2_multioutput(preds, targets):
     r2_lon = np.corrcoef(preds[:, 0], targets[:, 0])[0][1] ** 2
     r2_lat = np.corrcoef(preds[:, 1], targets[:, 1])[0][1] ** 2
     return r2_lon, r2_lat
+
+
+def calculate_rmse(preds, targets):
+    haversine_errors = haversine_distances_agg(targets, preds, np.array)
+    return mean_squared_error(
+        np.zeros_like(haversine_errors), haversine_errors, squared=False
+    )
 
 
 def haversine(lon1, lat1, lon2, lat2):
