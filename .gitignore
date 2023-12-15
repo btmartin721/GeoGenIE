@@ -37,3 +37,4 @@ test_coords_*.txt
 test_eigen.csv
 scratch_paper.py
 data/test_*
+real_test*
