@@ -6,9 +6,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-
-from sklearn.model_selection import KFold
-
 import torch
 from optuna import create_study, pruners, samplers
 from optuna.logging import (
@@ -16,11 +13,14 @@ from optuna.logging import (
     enable_default_handler,
     enable_propagation,
 )
+from sklearn.model_selection import KFold
 from torch import optim
-from torch.utils.data import DataLoader
-from torch.utils.data import Subset
+from torch.utils.data import DataLoader, Subset
 
 from geogenie.plotting.plotting import PlotGenIE
+from geogenie.samplers.samplers import GeographicDensitySampler
+from geogenie.utils.loss import MultiobjectiveHaversineLoss
+from geogenie.utils.utils import CustomDataset
 
 
 class Optimize:
@@ -29,6 +29,8 @@ class Optimize:
         train_loader,
         val_loader,
         test_loader,
+        sample_weights,
+        weighted_sampler,
         device,
         max_epochs,
         patience,
@@ -37,9 +39,6 @@ class Optimize:
         sqldb,
         n_trials,
         n_jobs,
-        lr_scheduler_factor=0.5,
-        lr_scheduler_patience=8,
-        grad_clip=False,
         show_progress_bar=False,
         n_startup_trials=10,
         show_plots=False,
@@ -49,12 +48,11 @@ class Optimize:
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.test_loader = test_loader
+        self.sample_weights = sample_weights
+        self.weighted_sampler = weighted_sampler
         self.device = device
         self.max_epochs = max_epochs
         self.patience = patience
-        self.lr_scheduler_factor = lr_scheduler_factor
-        self.lr_scheduler_patience = lr_scheduler_patience
-        self.grad_clip = grad_clip
         self.prefix = prefix
         self.output_dir = output_dir
         self.sqldb = sqldb
@@ -73,6 +71,29 @@ class Optimize:
         self.cv_results = pd.DataFrame(
             columns=["trial", "average_loss", "std_dev"],
         )
+
+    def map_sampler_indices(self, full_sampler_indices, subset_indices):
+        """
+        Map subset indices to the corresponding indices in the full dataset sampler.
+
+        Args:
+            full_sampler_indices (list): The indices used in the full dataset sampler.
+            subset_indices (list): The indices of the desired subset.
+
+        Returns:
+            list: Mapped indices for the subset sampler.
+        """
+        # Create a mapping from full dataset indices to subset indices
+        index_mapping = {full_index: i for i, full_index in enumerate(subset_indices)}
+
+        # Map the sampler indices to the subset indices
+        mapped_indices = [
+            index_mapping.get(full_index)
+            for full_index in full_sampler_indices
+            if full_index in index_mapping
+        ]
+
+        return mapped_indices
 
     def objective_function(self, trial, criterion, ModelClass, train_func):
         """Optuna hyperparameter tuning.
@@ -93,32 +114,93 @@ class Optimize:
         nlayers = trial.suggest_int("nlayers", 2, 20)
         dropout_prop = trial.suggest_float("dropout_prop", 0.0, 0.5)
         l2_weight = trial.suggest_float("l2_weight", 1e-6, 1e-1, log=True)
+        alpha = trial.suggest_float("alpha", 0.2, 1.0)
+        beta = trial.suggest_float("beta", 0.2, 1.0)
+        gamma = trial.suggest_float("gamma", 0.2, 1.0)
+        lr_scheduler_patience = trial.suggest_int("lr_scheduler_patience", 10, 100)
+        lr_scheduler_factor = trial.suggest_float("lr_scheduler_factor", 0.1, 1.0)
+        width_factor = trial.suggest_float("factor", 0.2, 1.0)
+        use_kmeans = trial.suggest_categorical("use_kmeans", [False, True])
+        use_kde = trial.suggest_categorical("use_kde", [False, True])
+        w_power = trial.suggest_int("w_power", 1, 10)
+        use_weighted = trial.suggest_categorical(
+            "use_weighted", ["loss", "sampler", "both"]
+        )
+        max_clusters = trial.suggest_int("max_clusters", 5, 100)
+        max_neighbors = trial.suggest_int("max_neighbors", 5, 100)
+
+        grad_clip = trial.suggest_categorical("grad_clip", [False, True])
 
         # K-Fold Cross-Validation
         num_folds = 5
-        kfold = KFold(n_splits=num_folds, shuffle=True)
+        kfold = KFold(n_splits=num_folds, shuffle=False)
         fold_losses = []  # Store losses for each fold
+        gwrs = []
         total_loss = 0.0
 
-        for _, (train_idx, val_idx) in enumerate(kfold.split(dataset)):
+        kwargs = {"batch_size": self.train_loader.batch_size}
+
+        for train_idx, val_idx in kfold.split(dataset):
             # Create train and validation subsets for this fold
             train_subset = Subset(dataset, train_idx)
             val_subset = Subset(dataset, val_idx)
 
-            train_loader = DataLoader(
-                train_subset, batch_size=self.train_loader.batch_size, shuffle=True
+            # Initialize lists to store features and labels
+            subset_features = []
+            subset_labels = []
+
+            if use_weighted in ["loss", "both"]:
+                subset_weights = []
+            else:
+                subset_weights = torch.ones(len(train_subset), dtype=torch.float32)
+            # Iterate over the subset and extract features and labels
+            for data in train_subset:
+                features, labels, sample_weights = data
+                subset_features.append(features)
+                subset_labels.append(labels)
+
+                if use_weighted in ["loss", "both"]:
+                    subset_weights.append(sample_weights)
+
+            subset_features = torch.stack(subset_features).to(torch.float32)
+            subset_labels = torch.stack(subset_labels).to(torch.float32)
+
+            if not isinstance(subset_weights, torch.Tensor):
+                subset_weights = torch.stack(subset_weights).to(torch.float32)
+
+            # Get subset of weighted sampler.
+            weighted_sampler = GeographicDensitySampler(
+                pd.DataFrame(subset_labels.numpy(), columns=["x", "y"]),
+                use_kmeans=use_kmeans,
+                use_kde=use_kde,
+                w_power=w_power,
+                max_clusters=max_clusters,
+                max_neighbors=max_neighbors,
+                objective_mode=True,
             )
+
+            train_subset_dataset = CustomDataset(
+                subset_features, subset_labels, weighted_sampler.weights
+            )
+
+            if use_weighted in ["sampler", "both"]:
+                kwargs["sampler"] = weighted_sampler
+            else:
+                kwargs["shuffle"] = True
+            train_loader = DataLoader(train_subset_dataset, **kwargs)
+
             val_loader = DataLoader(
-                val_subset, batch_size=self.train_loader.batch_size, shuffle=False
+                val_subset, batch_size=kwargs["batch_size"], shuffle=False
             )
 
             # Model, loss, and optimizer
             model = ModelClass(
-                input_size=dataset.tensors[0].shape[1],
+                input_size=dataset.features.shape[1],
                 width=width,
                 nlayers=nlayers,
                 dropout_prop=dropout_prop,
                 device=self.device,
+                factor=width_factor,
             ).to(self.device)
 
             optimizer = optim.Adam(
@@ -127,32 +209,39 @@ class Optimize:
                 weight_decay=l2_weight,
             )
 
+            criterion = MultiobjectiveHaversineLoss(alpha, beta, gamma)
+
             # Train model
             trained_model = train_func(
                 train_loader,
                 val_loader,
                 model,
-                trial,
                 criterion,
                 optimizer,
-                self.lr_scheduler_factor,
-                self.lr_scheduler_patience,
+                trial,
+                lr_scheduler_factor,
+                lr_scheduler_patience,
                 objective_mode=True,
-                grad_clip=self.grad_clip,
+                grad_clip=grad_clip,
             )
 
             # Evaluate on validation set
-            fold_loss = self.evaluate_model(
-                self.val_loader,
+            fold_loss, gwr = self.evaluate_model(
+                val_loader,
                 trained_model,
                 criterion,
+                weighted_sampler,
             )
             fold_losses.append(fold_loss)
+            gwrs.append(gwr)
             total_loss += fold_loss
 
         # Calculate average loss and standard deviation
         average_loss = np.mean(fold_losses)
         std_dev = np.std(fold_losses)
+
+        average_gwr = np.mean(gwrs)
+        std_dev_gwr = np.std(gwrs)
 
         # Create a new row as a DataFrame
         new_row = pd.DataFrame(
@@ -161,6 +250,8 @@ class Optimize:
                     "trial": trial.number,
                     "average_loss": average_loss,
                     "std_dev": std_dev,
+                    "average_gwr": average_gwr,
+                    "std_dev_gwr": std_dev_gwr,
                 },
             ]
         )
@@ -173,9 +264,10 @@ class Optimize:
 
         return average_loss
 
-    def evaluate_model(self, val_loader, model, criterion):
+    def evaluate_model(self, val_loader, model, criterion, weighted_sampler):
         model.eval()
         total_loss = 0.0
+        total_gwr = 0.0
         with torch.no_grad():
             for batch in val_loader:
                 if len(batch) == 3:
@@ -192,8 +284,12 @@ class Optimize:
                     sample_weights = None
                 outputs = model(inputs)
                 loss = criterion(outputs, labels, sample_weight=sample_weights)
+                gwr = weighted_sampler.perform_gwr(
+                    outputs.numpy(), labels.numpy(), sample_weights.numpy()
+                )
                 total_loss += loss.item()
-        return total_loss / len(val_loader)
+                total_gwr += gwr
+        return total_loss / len(val_loader), gwr / len(val_loader)
 
     def perform_optuna_optimization(self, criterion, ModelClass, train_func):
         """
