@@ -43,7 +43,7 @@ class GeoGenIE:
         self.locs = None
 
         if self.args.gpu_number is not None:
-            os.environ["CUDA_VISIBLE_DEVICES"] = self.args.gpu_number
+            os.environ["CUDA_VISIBLE_DEVICES"] = str(self.args.gpu_number)
             self.device = torch.device(
                 "cuda" if torch.cuda.is_available() else "cpu",
             )
@@ -948,7 +948,7 @@ class GeoGenIE:
             torch.manual_seed(self.args.seed)
 
         if self.args.gpu_number is not None:
-            os.environ["CUDA_VISIBLE_DEVICES"] = self.args.gpu_number
+            os.environ["CUDA_VISIBLE_DEVICES"] = str(self.args.gpu_number)
             device = torch.device(
                 "cuda" if torch.cuda.is_available() else "cpu",
             )
