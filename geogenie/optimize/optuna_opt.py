@@ -124,7 +124,7 @@ class Optimize:
         use_kde = trial.suggest_categorical("use_kde", [False, True])
         w_power = trial.suggest_int("w_power", 1, 10)
         use_weighted = trial.suggest_categorical(
-            "use_weighted", ["loss", "sampler", "both"]
+            "use_weighted", ["loss", "sampler", "both", "none"]
         )
         max_clusters = trial.suggest_int("max_clusters", 5, 100)
         max_neighbors = trial.suggest_int("max_neighbors", 5, 100)
