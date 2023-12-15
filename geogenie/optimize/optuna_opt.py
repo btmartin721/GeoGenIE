@@ -39,6 +39,7 @@ class Optimize:
         sqldb,
         n_trials,
         n_jobs,
+        args,
         show_progress_bar=False,
         n_startup_trials=10,
         show_plots=False,
@@ -58,6 +59,7 @@ class Optimize:
         self.sqldb = sqldb
         self.n_trials = n_trials
         self.n_jobs = n_jobs
+        self.args = args
         self.show_progress_bar = show_progress_bar
         self.n_startup_trials = n_startup_trials
         self.verbose = verbose
@@ -107,9 +109,9 @@ class Optimize:
         dataset = self.train_loader.dataset
 
         # Optuna hyperparameters
-        lr = trial.suggest_float("lr", 0.0, 0.5)
+        lr = trial.suggest_float("lr", 1e-6, 0.5, log=True)
         width = trial.suggest_int(
-            "width", 2, self.train_loader.dataset.tensors[0].shape[1] - 1
+            "width", 8, self.train_loader.dataset.tensors[0].shape[1] - 1
         )
         nlayers = trial.suggest_int("nlayers", 2, 20)
         dropout_prop = trial.suggest_float("dropout_prop", 0.0, 0.5)
@@ -123,9 +125,16 @@ class Optimize:
         use_kmeans = trial.suggest_categorical("use_kmeans", [False, True])
         use_kde = trial.suggest_categorical("use_kde", [False, True])
         w_power = trial.suggest_int("w_power", 1, 10)
-        use_weighted = trial.suggest_categorical(
-            "use_weighted", ["loss", "sampler", "both", "none"]
-        )
+
+        if self.args.force_no_weighting:
+            use_weighted = trial.suggest_categorical("use_weighted", ["none"])
+        else:
+            l = (
+                ["loss", "sampler", "both"]
+                if self.args.force_weighted_opt
+                else ["loss", "sampler", "both", "none"]
+            )
+            use_weighted = trial.suggest_categorical("use_weighted", l)
         max_clusters = trial.suggest_int("max_clusters", 5, 100)
         max_neighbors = trial.suggest_int("max_neighbors", 5, 100)
 
@@ -209,7 +218,9 @@ class Optimize:
                 weight_decay=l2_weight,
             )
 
-            criterion = MultiobjectiveHaversineLoss(alpha, beta, gamma)
+            criterion = MultiobjectiveHaversineLoss(
+                alpha, beta, gamma, composite_loss=self.args.composite_loss
+            )
 
             # Train model
             trained_model = train_func(
@@ -319,7 +330,7 @@ class Optimize:
         # Optuna Optimization setup
         sampler = samplers.TPESampler(
             n_startup_trials=self.n_startup_trials,
-            n_ei_candidates=self.patience // 2,
+            n_ei_candidates=24,
         )
         pruner = pruners.MedianPruner()
         Path(self.sqldb).mkdir(parents=True, exist_ok=True)
