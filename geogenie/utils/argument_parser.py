@@ -401,6 +401,21 @@ def setup_parser():
         action="store_true",
         help="If true, does gradient clipping to reduce overfitting.",
     )
+    training_group.add_argument(
+        "--composite_loss",
+        action="store_true",
+        help="Whether to use composite loss (if toggled) or Haversine Error. Default: Havesine error.",
+    )
+    training_group.add_argument(
+        "--force_weighted_opt",
+        action="store_true",
+        help="Do not allow non-weighted sampling in parameter optimization. Default: allow wegihted sampling.",
+    )
+    training_group.add_argument(
+        "--force_no_weighting",
+        action="store_true",
+        help="If True, does not use sample weighting.",
+    )
 
     # Geographic Density Sampler Arguments
     geo_sampler_group = parser.add_argument_group("Geographic Density Sampler")
@@ -447,6 +462,11 @@ def setup_parser():
         "--focus_regions",
         action=EvaluateAction,
         help="Provide geographic regions of interest to focus sampling density weights on. E.g., '[(lon_min1, lon_max1, lat_min1, lat_max1), ...]'.",
+    )
+    geo_sampler_group.add_argument(
+        "--normalize_sample_weights",
+        action="store_true",
+        help="Whether to normalize density-based sample weights. Default: Do not normalize.",
     )
 
     outlier_detection_group = parser.add_argument_group(
@@ -661,5 +681,10 @@ def setup_parser():
         msg = f"Invalid option passed to 'use_weighted': {args.use_weighted}"
         logger.error(msg)
         parser.error(msg)
+
+    if args.force_no_weighting and args.force_weighted_opt:
+        msg = "'force_no_weighting' and 'force_weighted_opt' cannot both be defined."
+        logger.error(msg)
+        raise ValueError(msg)
 
     return args
