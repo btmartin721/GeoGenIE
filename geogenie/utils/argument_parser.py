@@ -103,7 +103,7 @@ def validate_gpu_number(value):
 
     else:
         gpu_number = value  # None, if no GPU is used
-    return gpu_number
+    return str(gpu_number)
 
 
 def validate_n_jobs(value):
