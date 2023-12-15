@@ -7,12 +7,13 @@ import torch.nn as nn
 
 
 class MultiobjectiveHaversineLoss(nn.Module):
-    def __init__(self, alpha=0.5, beta=0.5, gamma=0.5):
+    def __init__(self, alpha=0.5, beta=0.5, gamma=0.5, composite_loss=False):
         super(MultiobjectiveHaversineLoss, self).__init__()
         self.alpha = alpha  # Weight for Haversine loss
         self.beta = beta  # Weight for mean and stddev
         self.gamma = gamma  # Weight for R-squared
         self.logger = logging.getLogger(__name__)
+        self.composite_loss = composite_loss
 
     def haversine_loss(self, predictions, targets, sample_weight):
         R = 6371.0  # Earth radius in kilometers
@@ -67,45 +68,45 @@ class MultiobjectiveHaversineLoss(nn.Module):
             )
             sample_weight = torch.ones(len(predictions))
 
-        # Mean and standard deviation for longitude and latitude
-        # Returns a tuple of (stddev, mean).
-        std_lon, mean_lon = torch.std_mean(lon_pred)
-        std_lat, mean_lat = torch.std_mean(lat_pred)
-
-        # Robust scaling of the mean and standard deviation
-        scaled_mean_lon = self.robust_scale(mean_lon)
-        scaled_std_lon = self.robust_scale(std_lon)
-        scaled_mean_lat = self.robust_scale(mean_lat)
-        scaled_std_lat = self.robust_scale(std_lat)
-
-        # R-squared for longitude and latitude
-        r_squared_lon = self.pearson_correlation(lon_pred, lon_true) ** 2
-        r_squared_lat = self.pearson_correlation(lat_pred, lat_true) ** 2
-
-        # Apply a transformation to the Haversine loss to encourage a gamma-like distribution
-        # transformed_haversine_loss = torch.exp(
-        #     -self.haversine_loss(predictions, targets, sample_weight)
-        # )
-
         transformed_haversine_loss = self.haversine_loss(
             predictions, targets, sample_weight
         )
 
-        # Combine the metrics for longitude and latitude
-        # Note: You might want to transform these as well, depending on your specific requirements
-        custom_loss_lon = (
-            self.beta * (scaled_mean_lon + scaled_std_lon) - self.gamma * r_squared_lon
-        )
-        custom_loss_lat = (
-            self.beta * (scaled_mean_lat + scaled_std_lat) - self.gamma * r_squared_lat
-        )
+        if self.composite_loss:
+            # Mean and standard deviation for longitude and latitude
+            # Returns a tuple of (stddev, mean).
+            std_lon, mean_lon = torch.std_mean(lon_pred)
+            std_lat, mean_lat = torch.std_mean(lat_pred)
 
-        # Combine transformed Haversine loss with other components
-        total_loss = (
-            self.alpha * transformed_haversine_loss
-            + (1 - self.alpha) * (custom_loss_lon + custom_loss_lat) / 2
-        )
+            # Robust scaling of the mean and standard deviation
+            scaled_mean_lon = self.robust_scale(mean_lon)
+            scaled_std_lon = self.robust_scale(std_lon)
+            scaled_mean_lat = self.robust_scale(mean_lat)
+            scaled_std_lat = self.robust_scale(std_lat)
 
+            # R-squared for longitude and latitude
+            r_squared_lon = self.pearson_correlation(lon_pred, lon_true) ** 2
+            r_squared_lat = self.pearson_correlation(lat_pred, lat_true) ** 2
+
+            # Combine the metrics for longitude and latitude
+            # Note: You might want to transform these as well, depending on your specific requirements
+            custom_loss_lon = (
+                self.beta * (scaled_mean_lon + scaled_std_lon)
+                - self.gamma * r_squared_lon
+            )
+            custom_loss_lat = (
+                self.beta * (scaled_mean_lat + scaled_std_lat)
+                - self.gamma * r_squared_lat
+            )
+
+            # Combine transformed Haversine loss with other components
+            total_loss = (
+                self.alpha * transformed_haversine_loss
+                + (1 - self.alpha) * (custom_loss_lon + custom_loss_lat) / 2
+            )
+
+        else:
+            total_loss = transformed_haversine_loss
         return total_loss
 
 
