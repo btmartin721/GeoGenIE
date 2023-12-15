@@ -28,11 +28,11 @@ from geogenie.outliers.detect_outliers import GeoGeneticOutlierDetector
 from geogenie.plotting.plotting import PlotGenIE
 from geogenie.samplers.samplers import GeographicDensitySampler
 from geogenie.utils.gtseq2vcf import GTseqToVCF
+from geogenie.utils.scorers import LocallyLinearEmbeddingWrapper
 from geogenie.utils.utils import (
-    base_to_int,
-    get_iupac_dict,
-    LongLatToCartesianTransformer,
     CustomDataset,
+    LongLatToCartesianTransformer,
+    get_iupac_dict,
 )
 
 
@@ -54,14 +54,11 @@ class DataStructure:
         self.samples_weight = None
         self.data = {}
 
+        self.mask = np.ones_like(self.samples, dtype=bool)
+        self.simputer = SimpleImputer(strategy="most_frequent", missing_values=np.nan)
+
     def define_params(self, args):
-        self._params = {
-            "width": args.width,
-            "nlayers": args.nlayers,
-            "dropout_prop": args.dropout_prop,
-            "learning_rate": args.learning_rate,
-            "l2_reg": args.l2_reg,
-        }
+        self._params = vars(args)
 
     def _parse_genotypes(self):
         """Parse genotypes from the VCF file and store them in a NumPy array.
@@ -149,31 +146,18 @@ class DataStructure:
 
         return np.array(allele_counts)
 
-    def impute_missing(
-        self,
-        X=None,
-        transform_only=False,
-        strat="most_frequent",
-        use_strings=False,
-    ):
+    def impute_missing(self, X, transform_only=False):
         """Impute missing genotypes based on allele frequency threshold.
 
         Args:
-            X (numpy.ndarray): Data to impute. If None, then uses self.genotypes_enc instead.
+            X (numpy.ndarray): Data to impute.
             transform_only (bool): Whether to transform, but not fit.
             strat (str): Strategy to use with SimpleImputer.
             use_strings (bool): If True, uses 'N' as missing_values argument. Otherwise uses np.nan.
         """
-        miss_val = "N" if use_strings else np.nan
-
-        if not transform_only:
-            self.simputer = SimpleImputer(strategy=strat, missing_values=miss_val)
-
-        if X is None:
-            X = self.genotypes_enc.copy()
-
         if transform_only:
             return self.simputer.transform(X)
+        self.simputer = clone(self.simputer)
         return self.simputer.fit_transform(X)
 
     def sort_samples(self, sample_data_filename):
@@ -195,12 +179,13 @@ class DataStructure:
         self._check_sample_ordering()
         self.locs = np.array(self.sample_data[["x", "y"]])
 
-    def normalize_locs(self):
+    def normalize_target(self, placeholder=False):
         """Normalize locations, ignoring NaN."""
         if self.verbose >= 1:
             self.logger.info("Normalizing coordinates.")
 
-        self.norm = LongLatToCartesianTransformer()
+        # Turn off placeholder to actually do transformation.
+        self.norm = LongLatToCartesianTransformer(placeholder=placeholder)
         self.y = self.norm.fit_transform(self.y)
 
         if self.verbose >= 1:
@@ -213,19 +198,6 @@ class DataStructure:
                 msg = "Invalid sample ordering. sample IDs in 'sample_data' must match the order in the VCF file."
                 self.logger.error(msg)
                 raise ValueError(msg)
-
-    def encode_sequence(self, seq):
-        """Encode DNA sequence as integers.
-
-        4 corresponds to default value for "N".
-
-        Args:
-            seq (str): Whole sequence, not delimited.
-
-        Returns:
-            list: Integer-encoded IUPAC genotypes.
-        """
-        return [base_to_int().get(base, 4) for base in seq]
 
     def snps_to_012(self, min_mac=2, max_snps=None, return_values=True):
         """Convert IUPAC SNPs to 012 encodings."""
@@ -268,31 +240,6 @@ class DataStructure:
 
         return gt
 
-    def snps_to_int(self, min_mac=2, max_snps=None, return_values=True):
-        """Convert SNPs to integer encodings 0-14 (including IUPAC)."""
-        snps = self.genotypes_iupac.tolist()
-        snps = ["".join(x) for x in snps]
-        snps = list(map(self.encode_sequence, snps))
-        snps_enc = np.array(snps, dtype="int8")
-
-        gt_012 = np.sum(self.genotypes, axis=-1).astype("int8")
-
-        allele_counts = np.apply_along_axis(
-            lambda x: np.bincount(x, minlength=3),
-            axis=1,
-            arr=gt_012,
-        )
-
-        self.genotypes_enc = self.filter_gt(
-            snps_enc,
-            min_mac,
-            max_snps,
-            allele_counts,
-        )
-
-        if return_values:
-            return self.genotypes_enc
-
     def split_train_test(self, train_split, val_split, seed):
         """
         Split data into training, validation, and testing sets, handling NaN values in locations.
@@ -313,7 +260,7 @@ class DataStructure:
 
         if train_split - val_split <= 0:
             raise ValueError(
-                "The difference between train_split and val_split must be >= 0."
+                "The difference between train_split - val_split must be >= 0."
             )
 
         # Split non-NaN samples into training + validation and test sets
@@ -327,7 +274,7 @@ class DataStructure:
         ) = train_test_split(
             self.X,
             self.y,
-            self.model_indices,
+            self.true_idx,
             train_size=train_split,
             random_state=seed,
         )
@@ -400,27 +347,24 @@ class DataStructure:
         # Load and sort sample data
         self.sort_samples(args.sample_data)
 
-        if args.model_type in ["mlp", "gcn"]:
+        if args.model_type.lower() == "mlp":
             self.snps_to_012(
                 min_mac=args.min_mac,
                 max_snps=args.max_SNPs,
                 return_values=False,
             )
-        elif args.model_type == "transformer":
-            self.snps_to_int(
-                min_mac=args.min_mac,
-                max_snps=args.max_SNPs,
-                return_values=False,
+        else:
+            raise NotImplementedError(
+                f"Only mlp model is currently implemented, but got: {args.model_type}"
             )
 
-        if self.genotypes_enc.shape[0] != self.locs.shape[0]:
-            msg = f"Invalid input shapes for genotypes and coorindates. The number of rows (samples) must be equal, but got: {self.genotypes_enc.shape}, {self.locs.shape}"
-            self.logger.error(msg)
-            raise ValueError(msg)
+        # Make sure features and target have same number of rows.
+        self.validate_feature_target_len()
 
         # Impute missing data and embed.
         X = self.impute_missing(self.genotypes_enc)
 
+        # Do embedding (e.g., PCA, LLE)
         X = self.embed(
             args,
             X=X,
@@ -429,18 +373,14 @@ class DataStructure:
             transform_only=False,
         )
 
-        indices = np.arange(self.locs.shape[0])
-        self.pred_mask = ~np.isnan(self.locs).any(axis=1)
-        X = X[self.pred_mask, :]
-        y = self.locs[self.pred_mask, :]
-        index = self.samples[self.pred_mask]
-
         # Define true_indices and pred_indices
+        self.pred_mask = ~np.isnan(self.locs).any(axis=1)
+
+        X, indices, y, index = self.setup_index_masks(X)
         self.all_indices = indices
         self.true_indices = indices[self.pred_mask]  # True if is not nan.
         self.pred_indices = indices[~self.pred_mask]  # True if is nan.
 
-        # Store indices after filtering for nan
         filter_stage_indices = [self.true_indices]
 
         if args.verbose >= 1:
@@ -453,7 +393,84 @@ class DataStructure:
             self.logger.error(msg)
             raise ValueError(msg)
 
-        # Assuming GeoGeneticOutlierDetector is implemented elsewhere
+        if args.detect_outliers:
+            all_outliers = self.run_outlier_detection(
+                args, X, indices, y, index, filter_stage_indices
+            )
+
+        # Here X has not been imputed.
+        self.X, self.y, self.X_pred, self.true_idx = self.extract_datasets()
+
+        if args.detect_outliers:
+            self.logger.info(
+                f"{self.X.shape[0]} samples remaining after removing {len(all_outliers)} outliers."
+            )
+
+        # placeholder=True makes it not do transform.
+        self.normalize_target(placeholder=True)
+        self.split_train_test(args.train_split, args.val_split, args.seed)
+
+        for k, v in self.data.items():
+            if k.startswith("X"):
+                tonly = False if k == "X_train" else True
+
+                # Impute missing values, eliminate data leakage.
+                imputed = self.impute_missing(v, transform_only=tonly)
+
+                self.data[k] = self.embed(
+                    args,
+                    X=imputed,
+                    alg=args.embedding_type,
+                    transform_only=tonly,
+                )
+
+        if args.verbose >= 1:
+            self.logger.info("Data split into train, val, and test sets.")
+            self.logger.info("Creating DataLoader objects.")
+
+        # Creating DataLoaders
+        self.train_loader = self.call_create_dataloaders(
+            self.data["X_train"], self.data["y_train"], args, False
+        )
+        self.val_loader = self.call_create_dataloaders(
+            self.data["X_val"], self.data["y_val"], args, True
+        )
+        self.test_loader = self.call_create_dataloaders(
+            self.data["X_test"], self.data["y_test"], args, True
+        )
+
+        if args.verbose >= 1:
+            self.logger.info("DataLoaders created succesfully.")
+            self.logger.info("Data loading and preprocessing completed.")
+
+    def extract_datasets(self):
+        self.mask[np.isin(self.all_indices, self.pred_indices)] = False
+        pred_mask = np.zeros(len(self.all_indices), dtype=bool)
+        pred_mask[np.isin(self.all_indices, self.pred_indices)] = True
+
+        return (
+            self.genotypes_enc[self.mask, :],
+            self.locs[self.mask, :],
+            self.genotypes_enc[pred_mask, :],
+            self.all_indices[self.mask],
+        )
+
+    def validate_feature_target_len(self):
+        if self.genotypes_enc.shape[0] != self.locs.shape[0]:
+            msg = f"Invalid input shapes for genotypes and coorindates. The number of rows (samples) must be equal, but got: {self.genotypes_enc.shape}, {self.locs.shape}"
+            self.logger.error(msg)
+            raise ValueError(msg)
+
+    def setup_index_masks(self, X):
+        indices = np.arange(self.locs.shape[0])
+        X = X[self.pred_mask, :]
+        y = self.locs[self.pred_mask, :]
+        index = self.samples[self.pred_mask]
+
+        # Store indices after filtering for nan
+        return X, indices, y, index
+
+    def run_outlier_detection(self, args, X, indices, y, index, filter_stage_indices):
         outlier_detector = GeoGeneticOutlierDetector(
             pd.DataFrame(X, index=index),
             pd.DataFrame(y, index=index),
@@ -482,136 +499,18 @@ class DataStructure:
         )
 
         # Remove mapped outliers from your data
-        mask = np.ones(len(self.all_indices), dtype=bool)
-        mask[np.isin(self.all_indices, mapped_all_outliers)] = False
-        mask[np.isin(self.all_indices, self.pred_indices)] = False
-        pred_mask = np.zeros(len(self.all_indices), dtype=bool)
-        pred_mask[np.isin(self.all_indices, self.pred_indices)] = True
+        self.mask[np.isin(self.all_indices, mapped_all_outliers)] = False
 
-        # Apply mask to true_indices and respective datasets
-        self.X = self.genotypes_enc[mask, :]
-        self.y = self.locs[mask, :]
-        self.X_pred = self.genotypes_enc[pred_mask, :]
-        self.model_indices = self.all_indices[mask]
+        return all_outliers
 
-        self.logger.info(
-            f"{self.X.shape[0]} samples remaining after removing {len(all_outliers)} outliers."
-        )
-
-        # Continue with the rest of your pipeline
-        self.evaluate_outliers(
-            index, outliers["geographic"], outliers["genetic"], "Composite"
-        )
-        self.normalize_locs()
-        self.split_train_test(args.train_split, args.val_split, args.seed)
-
-        for k, v in self.data.items():
-            if k.startswith("X"):
-                tonly = False if k == "X_train" else True
-
-                # Impute missing values, eliminate data leakage.
-                self.data[k] = self.impute_missing(X=v, transform_only=tonly)
-
-                self.data[k] = self.embed(
-                    args,
-                    X=self.data[k],
-                    alg=args.embedding_type,
-                    transform_only=tonly,
-                )
-
-        if args.verbose >= 1:
-            self.logger.info("Data split into train, val, and test sets.")
-            self.logger.info("Creating DataLoader objects.")
-
-        # Creating DataLoaders
-        self.train_loader = self.create_dataloaders(
-            self.data["X_train"],
-            self.data["y_train"],
-            args.class_weights,
+    def call_create_dataloaders(self, X, y, args, is_val):
+        return self.create_dataloaders(
+            X,
+            y,
             args.batch_size,
             args,
-            model_type=args.model_type,
+            is_val=is_val,
         )
-
-        # Creating DataLoaders
-        self.val_loader = self.create_dataloaders(
-            self.data["X_val"],
-            self.data["y_val"],
-            False,
-            args.batch_size,
-            args,
-            model_type=args.model_type,
-        )
-
-        # Creating DataLoaders
-        self.test_loader = self.create_dataloaders(
-            self.data["X_test"],
-            self.data["y_test"],
-            False,
-            args.batch_size,
-            args,
-            model_type=args.model_type,
-        )
-
-        if args.model_type == "gcn":
-            self.train_loader, self.train_dataset = self.train_loader
-            self.val_loader, self.val_dataset = self.val_loader
-            self.test_loader, self.test_dataset = self.test_loader
-
-        if args.verbose >= 1:
-            self.logger.info("DataLoaders created succesfully.")
-
-        if args.verbose >= 1:
-            self.logger.info("Data loading and preprocessing completed.")
-
-    def evaluate_outliers(
-        self, train_samples, outlier_geo_indices, outlier_gen_indices, dt
-    ):
-        if not isinstance(train_samples, pd.Series):
-            train_samples = pd.Series(train_samples, name="ID")
-
-        """Evaluate and plot results from GeoGenOutlierDetector."""
-        y_pred = self.process_pred(
-            train_samples, outlier_geo_indices, outlier_gen_indices, dt
-        )
-        y_true = self.process_truths(train_samples, dt)
-        self.plotting.plot_confusion_matrix(y_true["Label"], y_pred["Label"], dt)
-
-        self.logger.info(
-            f"Accuracy: {accuracy_score(y_true['Label'], y_pred['Label'])}"
-        )
-        self.logger.info(f"F1 Score: {f1_score(y_true['Label'], y_pred['Label'])}")
-
-    def process_truths(self, train_samples, label_type):
-        """Process true values."""
-        truths = pd.read_csv("data/real_outliers.csv", sep=" ")
-        truths["method"] = truths["method"].str.replace('"', "")
-        truths["method"] = truths["method"].str.replace("'", "")
-        y_true = pd.DataFrame(columns=["ID"])
-        y_true["ID"] = train_samples
-        y_true["Label"] = y_true["ID"].isin(truths["ID"]).astype(int)
-        y_true["Type"] = "True"
-        return y_true.sort_values(by=["ID"])
-
-    def process_pred(
-        self, train_samples, outlier_geo_indices, outlier_gen_indices, label_type
-    ):
-        """Process predictions."""
-        # Create the y_pred DataFrame
-        y_pred = pd.DataFrame(columns=["ID"])
-        y_pred["ID"] = train_samples
-        y_pred[label_type] = 0
-        y_pred["Type"] = "Pred"
-
-        # Convert outlier indices to IDs
-        outlier_geo_ids = train_samples.iloc[outlier_geo_indices]
-        outlier_gen_ids = train_samples.iloc[outlier_gen_indices]
-
-        outlier_ids = pd.concat([outlier_geo_ids, outlier_gen_ids])
-
-        # Mark the outliers in y_pred based on IDs
-        y_pred["Label"] = y_pred["ID"].isin(outlier_ids).astype(int)
-        return y_pred.sort_values(by=["ID"])
 
     @np.errstate(all="warn")
     def embed(
@@ -678,26 +577,6 @@ class DataStructure:
                 normalized_stress="auto",
             )
         elif alg.lower() == "lle":
-
-            class LocallyLinearEmbeddingWrapper(LocallyLinearEmbedding):
-                def predict(self, X):
-                    return self.transform(X)
-
-            def lle_reconstruction_scorer(estimator, X, y=None):
-                """
-                Compute the negative reconstruction error for an LLE model to use as a scorer.
-                GridSearchCV assumes that higher score values are better, so the reconstruction
-                error is negated.
-
-                Args:
-                    estimator (LocallyLinearEmbedding): Fitted LLE model.
-                    X (numpy.ndarray): Original high-dimensional data.
-
-                Returns:
-                    float: Negative reconstruction error.
-                """
-                return -estimator.reconstruction_error_
-
             # Non-linear dimensionality reduction.
             # default max_iter often doesn't converge.
             emb = LocallyLinearEmbeddingWrapper(
@@ -719,9 +598,9 @@ class DataStructure:
                 cv=5,
                 n_jobs=args.n_jobs,
                 verbose=0,
-                scoring=lle_reconstruction_scorer,
+                scoring=LocallyLinearEmbeddingWrapper.lle_reconstruction_scorer,
                 refit=True,
-                error_score=-np.inf,
+                error_score=-np.inf,  # metric is maximized.
             )
 
         elif alg.lower() == "none":
@@ -795,10 +674,9 @@ class DataStructure:
         self,
         X,
         y,
-        class_weights,
         batch_size,
         args,
-        model_type="mlp",
+        is_val=False,
     ):
         """
         Create dataloaders for training, testing, and validation datasets.
@@ -814,39 +692,23 @@ class DataStructure:
         Returns:
             torch.utils.data.DataLoader: DataLoader object suitable for the specified model type.
         """
-        # For GNNs
-        if model_type == "gcn":
-            if not isinstance(X, list):
-                try:
-                    X = X.tolist()
-                except Exception:
-                    raise ValueError(
-                        "For GNNs, X should be a list of PyG Data objects",
-                    )
-            # Convert data to TensorDatasets
-            dataset = TensorDataset(
-                tensor(X, dtype=torchfloat), tensor(y, dtype=torchfloat)
-            )
+        # Custom sampler - density-based.
+        weighted_sampler = self.get_sample_weights(self.norm.inverse_transform(y), args)
 
-            return GeoDataLoader(X, batch_size=batch_size, shuffle=True), dataset
+        if self.samples_weight is None:
+            self.samples_weight = torch.ones(y.shape[0], dtype=torch.float32)
 
-        # For MLPs and Transformers
+        dataset = CustomDataset(X, y, sample_weights=self.samples_weight)
+
+        # Create DataLoader
+        kwargs = {"batch_size": batch_size}
+        if args.use_weighted in ["sampler", "both"]:
+            kwargs["sampler"] = weighted_sampler
         else:
-            # Custom sampler - density-based.
-            weighted_sampler = self.get_sample_weights(
-                self.norm.inverse_transform(y), class_weights, args
-            )
+            kwargs["shuffle"] = False if is_val else True
+        return DataLoader(dataset, **kwargs)
 
-            dataset = CustomDataset(X, y, sample_weights=self.samples_weight)
-
-            # Create DataLoaders
-            return DataLoader(
-                dataset,
-                batch_size=batch_size,
-                sampler=weighted_sampler,
-            )
-
-    def get_sample_weights(self, y, class_weights, args):
+    def get_sample_weights(self, y, args):
         """Gets inverse sample_weights based on sampling density.
 
         Only performed if 'class_weights' is True.
@@ -859,8 +721,8 @@ class DataStructure:
             args (argparse.Namespace): User-supplied arguments.
         """
         # Initialize weighted sampler if class weights are used
-        weighted_sampler = None
-        if class_weights:
+        self.weighted_sampler = None
+        if args.use_weighted in ["sampler", "loss", "both"]:
             if args.verbose >= 1:
                 self.logger.info("Estimating sampling density weights...")
                 self.logger.info(
@@ -869,7 +731,7 @@ class DataStructure:
 
             # Weight by sampling density.
             weighted_sampler = GeographicDensitySampler(
-                y,
+                pd.DataFrame(y, columns=["x", "y"]),
                 focus_regions=args.focus_regions,
                 use_kmeans=args.use_kmeans,
                 use_kde=args.use_kde,
@@ -881,9 +743,10 @@ class DataStructure:
             if args.verbose >= 1:
                 self.logger.info("Done estimating sample weights.")
 
+            self.weighted_sampler = weighted_sampler
             self.samples_weight = weighted_sampler.weights
             self.samples_weight_indices = weighted_sampler.indices
-        return weighted_sampler
+        return self.weighted_sampler
 
     def read_gtseq(
         self,
