@@ -26,7 +26,9 @@ class CustomDataset(Dataset):
         if not isinstance(labels, torch.Tensor):
             labels = torch.tensor(labels, dtype=torch.float32)
 
-        if sample_weights is not None:
+        if sample_weights is None:
+            sample_weights = torch.ones(len(features), dtype=torch.float32)
+        else:
             if not isinstance(sample_weights, torch.Tensor):
                 sample_weights = torch.tensor(sample_weights, dtype=torch.float32)
 
@@ -54,14 +56,7 @@ class CustomDataset(Dataset):
             tuple: (feature, label, sample_weight) for the specified index.
         """
 
-        if self.sample_weights is None:
-            return self.features[idx], self.labels[idx]
-        else:
-            return (
-                self.features[idx],
-                self.labels[idx],
-                self.sample_weights[idx],
-            )
+        return self.features[idx], self.labels[idx], self.sample_weights[idx]
 
 
 class LongLatToCartesianTransformer(BaseEstimator, TransformerMixin):
@@ -70,9 +65,10 @@ class LongLatToCartesianTransformer(BaseEstimator, TransformerMixin):
 
     Attributes:
         radius (float): The radius of the Earth in kilometers.
+        placeholder (bool): If True, doesn't actually do transformation. Makes it to where I can turn on and off target normalization easily for development.
     """
 
-    def __init__(self, radius=6371):
+    def __init__(self, radius=6371, placeholder=False):
         """
         Initialize the transformer with the Earth's radius.
 
@@ -80,6 +76,7 @@ class LongLatToCartesianTransformer(BaseEstimator, TransformerMixin):
             radius (float, optional): The radius of the Earth in kilometers. Defaults to 6371.
         """
         self.radius = radius
+        self.placeholder = placeholder
 
     def fit(self, X, y=None):
         """Fit method for compatibility with scikit-learn. Does nothing."""
@@ -95,6 +92,9 @@ class LongLatToCartesianTransformer(BaseEstimator, TransformerMixin):
         Returns:
             np.ndarray: Cartesian coordinates. Shape (n_samples, 3).
         """
+
+        if self.placeholder:
+            return X.copy()
         lon_rad = np.radians(X[:, 0])
         lat_rad = np.radians(X[:, 1])
 
@@ -114,6 +114,9 @@ class LongLatToCartesianTransformer(BaseEstimator, TransformerMixin):
         Returns:
             np.ndarray: Longitude and latitude values. Shape (n_samples, 2).
         """
+        if self.placeholder:
+            return X.copy()
+
         x, y, z = X[:, 0], X[:, 1], X[:, 2]
         lat = np.degrees(np.arcsin(z / self.radius))
         lon = np.degrees(np.arctan2(y, x))
@@ -164,6 +167,9 @@ def geo_coords_is_valid(coordinates):
     Returns:
         bool: True if the validation passes, indicating the coordinates are valid.
     """
+    if isinstance(coordinates, torch.Tensor):
+        coordinates = coordinates.numpy()
+
     # Check shape
     if coordinates.shape[1] != 2:
         msg = f"Array must be of shape (n_samples, 2): {coordinates.shape}"
@@ -172,6 +178,7 @@ def geo_coords_is_valid(coordinates):
 
     # Validate longitude and latitude ranges
     longitudes, latitudes = coordinates[:, 0], coordinates[:, 1]
+
     if not np.all((-180 <= longitudes) & (longitudes <= 180)):
         msg = f"Longitude values must be between -180 and 180 degrees: min, max = longitude: {np.min(longitudes)}, {np.max(longitudes)}"
         logger.error(msg)
