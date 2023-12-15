@@ -333,13 +333,13 @@ class PlotGenIE:
 
         return ax
 
-    def plot_error_distribution(self, errors, is_lon=True):
+    def plot_error_distribution(self, errors, outfile):
         """
         Plot the distribution of errors using a histogram, box plot, and Q-Q plot.
 
         Args:
             errors (np.array): An array of prediction errors.
-            is_lon (bool): True if is longitide, False if is latitude.
+            outfile (str): Output file path.
 
         Returns:
             None: Plots the error distribution.
@@ -402,22 +402,19 @@ class PlotGenIE:
         plt.xlabel("Theoretical Quantiles", fontsize=self.fontsize)
         plt.ylabel("Actual Quantiles", fontsize=self.fontsize)
 
-        outfile = os.path.join(
-            self.output_dir, "plots", f"{self.prefix}_error_distributions.png"
-        )
-
         if self.show_plots:
             plt.show()
         plt.savefig(outfile, facecolor="white")
         plt.close()
 
-    def plot_kde_error_regression(self, actual_coords, predicted_coords):
+    def plot_kde_error_regression(self, actual_coords, predicted_coords, outfile):
         """
         Plot a regression between KDE density and prediction error.
 
         Args:
             actual_coords (np.array): Array of actual coordinates.
             predicted_coords (np.array): Array of predicted coordinates.
+            outfile (str): Output file path.
         """
 
         # Calculate Haversine error for each pair of points
@@ -466,12 +463,7 @@ class PlotGenIE:
 
         if self.show_plots:
             plt.show()
-        plt.savefig(
-            os.path.join(
-                self.output_dir, "plots", f"{self.prefix}_density_x_error.png"
-            ),
-            facecolor="white",
-        )
+        plt.savefig(outfile, facecolor="white")
 
     def plot_pca_curve(self, x, vr, knee):
         plt.figure()
