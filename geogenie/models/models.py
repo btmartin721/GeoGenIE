@@ -1,4 +1,5 @@
 import logging
+
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
@@ -18,7 +19,7 @@ class MLPRegressor(nn.Module):
         nlayers=10,
         dropout_prop=0.2,
         device="cpu",
-        output_width=3,
+        output_width=2,
         min_width=3,
         factor=0.5,
         **kwargs,
