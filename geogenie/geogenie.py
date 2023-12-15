@@ -421,6 +421,7 @@ class GeoGenIE:
         model,
         data_loader,
         device,
+        outfile,
         return_truths=False,
     ):
         """
@@ -493,7 +494,7 @@ class GeoGenIE:
             ]
         )
 
-        self.plotting.plot_error_distribution(haversine_errors)
+        self.plotting.plot_error_distribution(haversine_errors, outfile)
 
         # return the evaluation metrics along with the predictions
         metrics = {
@@ -616,6 +617,7 @@ class GeoGenIE:
             alpha=best_params["alpha"],
             beta=best_params["beta"],
             gamma=best_params["gamma"],
+            composite_loss=self.args.composite_loss,
         )
 
         return criterion, optimizer
@@ -803,10 +805,15 @@ class GeoGenIE:
         else:
             loader = self.data_structure.test_loader
 
+        val_errordist_outfile = os.path.join(
+            outdir, middir, f"{prefix}_{middir}_error_distributions.png"
+        )
+
         val_preds, val_metrics, y_true = self.predict_locations(
             model,
             loader,
             device,
+            val_errordist_outfile,
             return_truths=True,
         )
 
@@ -869,6 +876,13 @@ class GeoGenIE:
             "plots",
             f"{self.args.prefix}_geographic_error_{dataset}.png",
         )
+
+        reg_outfile = os.path.join(
+            self.args.output_dir,
+            "plots",
+            f"{self.args.prefix}_kde_error_regression_{dataset}.png",
+        )
+
         # Plot training history
         self.plotting.plot_history(train_losses, val_losses, hist_outdir)
         self.plotting.plot_geographic_error_distribution(
@@ -880,7 +894,7 @@ class GeoGenIE:
             marker_scale_factor=3,
         )
 
-        self.plotting.plot_kde_error_regression(y_true, val_preds)
+        self.plotting.plot_kde_error_regression(y_true, val_preds, reg_outfile)
 
         if self.args.verbose >= 1:
             self.logger.info("Training history plotted.")
@@ -957,7 +971,9 @@ class GeoGenIE:
             self.data_structure.define_params(self.args)
             best_params = self.data_structure.params
 
-            criterion = MultiobjectiveHaversineLoss()
+            criterion = MultiobjectiveHaversineLoss(
+                composite_loss=self.args.composite_loss
+            )
             modelclass = MLPRegressor
 
             if self.args.model_type.lower() != "mlp":
