@@ -327,7 +327,7 @@ class GeographicDensitySampler(Sampler):
 
         if self.normalize:
             mms = MinMaxScaler()
-            weights = mms.fit_transform(weights)
+            weights = np.squeeze(mms.fit_transform(weights.reshape(-1, 1)))
         return weights
 
     def calculate_adaptive_bandwidth(self, k_neighbors):
