@@ -483,6 +483,7 @@ class DataStructure:
             seed=args.seed,
             debug=False,
             verbose=args.verbose,
+            normalize=args.normalize,
         )
 
         outliers = outlier_detector.composite_outlier_detection(
