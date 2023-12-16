@@ -5,15 +5,11 @@ import numpy as np
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from sklearn.neighbors import KernelDensity, NearestNeighbors
+from sklearn.preprocessing import MinMaxScaler
 from torch.utils.data import Sampler
 
-from geogenie.utils.utils import geo_coords_is_valid
 from geogenie.utils.scorers import haversine
-
-
-import numpy as np
-from sklearn.cluster import KMeans
-from sklearn.neighbors import NearestNeighbors
+from geogenie.utils.utils import geo_coords_is_valid
 
 
 def SD_KMSMOTE(X_minority, k=5, K_clusters=5, total_synthetic_samples=1000):
@@ -74,11 +70,6 @@ def SD_KMSMOTE(X_minority, k=5, K_clusters=5, total_synthetic_samples=1000):
                 new_samples.append(new_sample)
 
     return np.vstack([X_minority, np.vstack(new_samples)])
-
-
-# Example usage
-# X_minority = ... # Load your minority class data here
-# balanced_data = SD_KMSMOTE(X_minority)
 
 
 def cluster_minority_samples(
@@ -181,6 +172,7 @@ class GeographicDensitySampler(Sampler):
         max_neighbors=10,
         indices=None,
         objective_mode=False,
+        normalize=False,
     ):
         """
         Args:
@@ -193,6 +185,7 @@ class GeographicDensitySampler(Sampler):
             max_neighbors (int): Maximum number of neighbors to try for adaptive bandwidth.
             indices (numpy.ndarray): Indices to use. If None, the uses all indices.
             objective_mode (bool): Whether to use objective mode with Optuna search. If True, use_kde and use_kmeans can both be False, but sample_weights will be all 1.0.
+            normalize (bool): Whether to normalize the sample weights. Defaults to False.
         """
         self.logger = logging.getLogger(__name__)
 
@@ -211,6 +204,7 @@ class GeographicDensitySampler(Sampler):
         self.max_clusters = max_clusters
         self.max_neighbors = max_neighbors
         self.objective_mode = objective_mode
+        self.normalize = normalize
 
         if indices is None:
             self.indices = np.arange(data.shape[0])
@@ -330,6 +324,10 @@ class GeographicDensitySampler(Sampler):
 
         if not self.objective_mode:
             self.logger.info("Done estimating sample weights.")
+
+        if self.normalize:
+            mms = MinMaxScaler()
+            weights = mms.fit_transform(weights)
         return weights
 
     def calculate_adaptive_bandwidth(self, k_neighbors):
