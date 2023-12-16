@@ -483,7 +483,6 @@ class DataStructure:
             seed=args.seed,
             debug=False,
             verbose=args.verbose,
-            normalize=args.normalize,
         )
 
         outliers = outlier_detector.composite_outlier_detection(
@@ -739,6 +738,7 @@ class DataStructure:
                 w_power=args.w_power,
                 max_clusters=args.max_clusters,
                 max_neighbors=args.max_neighbors,
+                normalize=args.normalize_sample_weights,
             )
 
             if args.verbose >= 1:
