@@ -706,6 +706,7 @@ class GeoGenIE:
             self.args.sqldb,
             self.args.n_iter,
             self.args.n_jobs,
+            self.args,
             show_progress_bar=False,
             n_startup_trials=10,
             verbose=self.args.verbose,
