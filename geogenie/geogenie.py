@@ -626,12 +626,13 @@ class GeoGenIE:
         if best_params["use_weighted"] in ["sampler", "loss", "both"]:
             weighted_sampler = GeographicDensitySampler(
                 pd.DataFrame(train_loader.dataset.labels, columns=["x", "y"]),
-                None,
-                best_params["use_kmeans"],
-                best_params["use_kde"],
-                best_params["w_power"],
-                best_params["max_clusters"],
-                best_params["max_neighbors"],
+                focus_regions=None,
+                use_kmeans=best_params["use_kmeans"],
+                use_kde=best_params["use_kde"],
+                w_power=best_params["w_power"],
+                max_clusters=best_params["max_clusters"],
+                max_neighbors=best_params["max_neighbors"],
+                normalize=best_params["normalize"],
             )
 
             sample_weights = weighted_sampler.weights
