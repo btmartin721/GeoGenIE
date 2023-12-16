@@ -125,6 +125,7 @@ class Optimize:
         use_kmeans = trial.suggest_categorical("use_kmeans", [False, True])
         use_kde = trial.suggest_categorical("use_kde", [False, True])
         w_power = trial.suggest_int("w_power", 1, 10)
+        normalize = trial.suggest_categorical("normalize", [False, True])
 
         if self.args.force_no_weighting:
             use_weighted = trial.suggest_categorical("use_weighted", ["none"])
@@ -186,6 +187,7 @@ class Optimize:
                 max_clusters=max_clusters,
                 max_neighbors=max_neighbors,
                 objective_mode=True,
+                normalize=normalize,
             )
 
             train_subset_dataset = CustomDataset(
