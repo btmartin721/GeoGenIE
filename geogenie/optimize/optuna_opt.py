@@ -132,19 +132,20 @@ class Optimize:
         w_power = trial.suggest_int("w_power", 1, 10)
         normalize = trial.suggest_categorical("normalize", [False, True])
 
-        min_bins = min(len(dataset) // 5, 10)
-        max_bins = min(50, len(dataset) // 5 + 10)
-
-        n_bins = trial.suggest_int("n_bins", min_bins, max_bins)
-
         if self.args.force_no_weighting:
             use_weighted = trial.suggest_categorical("use_weighted", ["none"])
         else:
             l = (
-                ["both"]
+                [self.args.use_weighted]
                 if self.args.force_weighted_opt
                 else ["loss", "sampler", "both", "none"]
             )
+
+            # l = (
+            #     ["both"]
+            #     if self.args.force_weighted_opt
+            #     else ["loss", "sampler", "both", "none"]
+            # )
             use_weighted = trial.suggest_categorical("use_weighted", l)
         max_clusters = trial.suggest_int("max_clusters", 5, 100)
         max_neighbors = trial.suggest_int("max_neighbors", 5, 100)
