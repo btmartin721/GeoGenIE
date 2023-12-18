@@ -32,7 +32,7 @@ class MultiobjectiveHaversineLoss(nn.Module):
         distance = R * c
         weighted_distance = distance * sample_weight
         # weighted_distance = torch.log1p(weighted_distance)  # lognormal
-        return weighted_distance.mean()
+        return weighted_distance.mean(), weighted_distance.std()
 
     def pearson_correlation(self, x, y):
         mean_x = torch.mean(x)
@@ -68,7 +68,7 @@ class MultiobjectiveHaversineLoss(nn.Module):
             )
             sample_weight = torch.ones(len(predictions))
 
-        transformed_haversine_loss = self.haversine_loss(
+        transformed_haversine_loss, weighted_std_dev = self.haversine_loss(
             predictions, targets, sample_weight
         )
 
@@ -106,7 +106,13 @@ class MultiobjectiveHaversineLoss(nn.Module):
             )
 
         else:
-            total_loss = transformed_haversine_loss
+            if not torch.any(torch.isnan(weighted_std_dev)):
+                return (
+                    self.alpha * transformed_haversine_loss
+                    + (1 - self.alpha) * weighted_std_dev
+                )
+            else:
+                return transformed_haversine_loss
         return total_loss
 
 

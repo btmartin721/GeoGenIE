@@ -189,10 +189,13 @@ class GeographicDensitySampler(Sampler):
         """
         self.logger = logging.getLogger(__name__)
 
-        if not any([objective_mode, use_kmeans, use_kde, focus_regions]):
-            msg = "Either KMeans, KernelDensity, or Focus Regions must be used with 'GeographicDensitySampler' if objective_mode is False."
-            self.logger.error(msg)
-            raise AssertionError(msg)
+        if not any([use_kmeans, use_kde, focus_regions]):
+            if objective_mode:
+                use_kde = True
+            else:
+                msg = "Either KMeans, KernelDensity, or Focus Regions must be used with 'GeographicDensitySampler' if objective_mode is False."
+                self.logger.error(msg)
+                raise AssertionError(msg)
 
         geo_coords_is_valid(data.to_numpy())
 

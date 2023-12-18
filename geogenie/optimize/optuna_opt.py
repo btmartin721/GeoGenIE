@@ -5,6 +5,7 @@ import pickle
 from pathlib import Path
 
 import numpy as np
+import optuna
 import pandas as pd
 import torch
 from optuna import create_study, pruners, samplers
@@ -13,7 +14,7 @@ from optuna.logging import (
     enable_default_handler,
     enable_propagation,
 )
-from sklearn.model_selection import KFold
+from sklearn.model_selection import KFold, StratifiedKFold
 from torch import optim
 from torch.utils.data import DataLoader, Subset
 
@@ -109,16 +110,20 @@ class Optimize:
         dataset = self.train_loader.dataset
 
         # Optuna hyperparameters
-        lr = trial.suggest_float("lr", 1e-6, 0.5, log=True)
+        lr = trial.suggest_float("lr", 1e-4, 0.5, log=True)
         width = trial.suggest_int(
             "width", 8, self.train_loader.dataset.tensors[0].shape[1] - 1
         )
         nlayers = trial.suggest_int("nlayers", 2, 20)
         dropout_prop = trial.suggest_float("dropout_prop", 0.0, 0.5)
         l2_weight = trial.suggest_float("l2_weight", 1e-6, 1e-1, log=True)
-        alpha = trial.suggest_float("alpha", 0.2, 1.0)
-        beta = trial.suggest_float("beta", 0.2, 1.0)
-        gamma = trial.suggest_float("gamma", 0.2, 1.0)
+
+        if self.args.composite_loss:
+            alpha = trial.suggest_float("alpha", 0.2, 1.0)
+            beta = trial.suggest_float("beta", 0.2, 1.0)
+            gamma = trial.suggest_float("gamma", 0.2, 1.0)
+        else:
+            alpha, beta, gamma = 0.5, 0.5, 0.5
         lr_scheduler_patience = trial.suggest_int("lr_scheduler_patience", 10, 100)
         lr_scheduler_factor = trial.suggest_float("lr_scheduler_factor", 0.1, 1.0)
         width_factor = trial.suggest_float("factor", 0.2, 1.0)
@@ -127,11 +132,16 @@ class Optimize:
         w_power = trial.suggest_int("w_power", 1, 10)
         normalize = trial.suggest_categorical("normalize", [False, True])
 
+        min_bins = min(len(dataset) // 5, 10)
+        max_bins = min(50, len(dataset) // 5 + 10)
+
+        n_bins = trial.suggest_int("n_bins", min_bins, max_bins)
+
         if self.args.force_no_weighting:
             use_weighted = trial.suggest_categorical("use_weighted", ["none"])
         else:
             l = (
-                ["loss", "sampler", "both"]
+                ["both"]
                 if self.args.force_weighted_opt
                 else ["loss", "sampler", "both", "none"]
             )
@@ -143,10 +153,23 @@ class Optimize:
 
         # K-Fold Cross-Validation
         num_folds = 5
-        kfold = KFold(n_splits=num_folds, shuffle=False)
+
+        kfold = KFold(n_splits=num_folds)
+        # kfold = self.stratified_weighted_multioutput_kfold(
+        #     dataset.features,
+        #     dataset.labels,
+        #     dataset.sample_weights,
+        #     n_bins=n_bins,
+        #     n_splits=num_folds,
+        # )
+
         fold_losses = []  # Store losses for each fold
         gwrs = []
         total_loss = 0.0
+
+        if use_weighted in ["sampler", "both"]:
+            if not any([use_kmeans, use_kde]):
+                raise optuna.exceptions.TrialPruned()
 
         kwargs = {"batch_size": self.train_loader.batch_size}
 
@@ -275,7 +298,52 @@ class Optimize:
             ignore_index=True,
         )
 
+        if np.isnan(average_loss):
+            raise optuna.exceptions.TrialPruned()
+        if average_loss is None:
+            raise optuna.exceptions.TrialPruned()
+
         return average_loss
+
+    def stratified_weighted_multioutput_kfold(
+        self, X, y, weights, n_splits=5, n_bins=10
+    ):
+        """
+        Performs stratified K-Fold for multioutput regression data using inverse sample weights.
+
+        Args:
+            X (numpy.ndarray or pandas.DataFrame): Feature matrix.
+            y (numpy.ndarray or pandas.DataFrame): Multioutput target matrix (e.g., longitude and latitude).
+            weights (numpy.ndarray or pandas.Series): Inverse sample weights.
+            n_splits (int): Number of folds. Default is 5.
+            n_bins (int): Number of bins for stratification. Default is 10.
+
+        Returns:
+            List of tuples: Each tuple contains the train and test indices for each fold.
+        """
+        # Convert tensors to NumPy arrays for compatibility
+        X_np = X.numpy()
+        y_np = y.numpy()
+        weights_np = weights.numpy()
+
+        # Calculate composite metric, e.g., Euclidean distance from a central point (0,0)
+        composite_metric = np.sqrt(y_np[:, 0] ** 2 + y_np[:, 1] ** 2)
+
+        # Apply weights
+        weighted_metric = composite_metric * weights_np
+
+        # Bin the weighted composite metric
+        y_binned = pd.qcut(weighted_metric, q=n_bins, labels=False, duplicates="drop")
+
+        # Initialize StratifiedKFold
+        skf = StratifiedKFold(n_splits=n_splits, random_state=self.args.seed)
+
+        # Generate indices for each split
+        fold_indices = [
+            (train_idx, test_idx) for train_idx, test_idx in skf.split(X, y_binned)
+        ]
+
+        return fold_indices
 
     def evaluate_model(self, val_loader, model, criterion, weighted_sampler):
         model.eval()
@@ -335,11 +403,14 @@ class Optimize:
             n_ei_candidates=24,
         )
         pruner = pruners.MedianPruner()
-        Path(self.sqldb).mkdir(parents=True, exist_ok=True)
 
-        storage_path = f"sqlite:///{self.sqldb}/{self.prefix}_optuna.db"
-        if self.verbose >= 1:
-            self.logger.info(f"Writing Optuna data to database: {storage_path}")
+        if self.sqldb is None:
+            storage_path = None
+        else:
+            Path(self.sqldb).mkdir(parents=True, exist_ok=True)
+            storage_path = f"sqlite:///{self.sqldb}/{self.prefix}_optuna.db"
+            if self.verbose >= 1:
+                self.logger.info(f"Writing Optuna data to database: {storage_path}")
 
         study = create_study(
             direction="minimize",

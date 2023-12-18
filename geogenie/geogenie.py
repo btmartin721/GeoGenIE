@@ -624,6 +624,7 @@ class GeoGenIE:
 
     def get_sample_weights(self, train_loader, best_params):
         if best_params["use_weighted"] in ["sampler", "loss", "both"]:
+            objective_mode = True if self.args.do_gridsearch else False
             weighted_sampler = GeographicDensitySampler(
                 pd.DataFrame(train_loader.dataset.labels, columns=["x", "y"]),
                 focus_regions=None,
@@ -633,6 +634,7 @@ class GeoGenIE:
                 max_clusters=best_params["max_clusters"],
                 max_neighbors=best_params["max_neighbors"],
                 normalize=best_params["normalize"],
+                objective_mode=objective_mode,
             )
 
             sample_weights = weighted_sampler.weights
