@@ -20,7 +20,7 @@ from geogenie.plotting.plotting import PlotGenIE
 from geogenie.samplers.samplers import GeographicDensitySampler
 from geogenie.utils.callbacks import EarlyStopping
 from geogenie.utils.data_structure import DataStructure
-from geogenie.utils.loss import MultiobjectiveHaversineLoss
+from geogenie.utils.loss import MultiobjectiveHaversineLoss, WeightedRMSELoss
 from geogenie.utils.scorers import haversine_distances_agg, kstest, calculate_rmse
 from geogenie.utils.utils import geo_coords_is_valid
 from geogenie.utils.scorers import haversine
@@ -613,12 +613,14 @@ class GeoGenIE:
         # Define the criterion and optimizer
         optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=l2)
 
-        criterion = MultiobjectiveHaversineLoss(
-            alpha=best_params["alpha"],
-            beta=best_params["beta"],
-            gamma=best_params["gamma"],
-            composite_loss=self.args.composite_loss,
-        )
+        criterion = WeightedRMSELoss()
+
+        # criterion = MultiobjectiveHaversineLoss(
+        #     alpha=best_params["alpha"],
+        #     beta=best_params["beta"],
+        #     gamma=best_params["gamma"],
+        #     composite_loss=self.args.composite_loss,
+        # )
 
         return criterion, optimizer
 
@@ -975,9 +977,11 @@ class GeoGenIE:
             self.data_structure.define_params(self.args)
             best_params = self.data_structure.params
 
-            criterion = MultiobjectiveHaversineLoss(
-                composite_loss=self.args.composite_loss
-            )
+            criterion = WeightedRMSELoss()
+
+            # criterion = MultiobjectiveHaversineLoss(
+            #     composite_loss=self.args.composite_loss
+            # )
             modelclass = MLPRegressor
 
             if self.args.model_type.lower() != "mlp":
