@@ -20,7 +20,7 @@ from torch.utils.data import DataLoader, Subset
 
 from geogenie.plotting.plotting import PlotGenIE
 from geogenie.samplers.samplers import GeographicDensitySampler
-from geogenie.utils.loss import MultiobjectiveHaversineLoss
+from geogenie.utils.loss import MultiobjectiveHaversineLoss, WeightedRMSELoss
 from geogenie.utils.utils import CustomDataset
 
 
@@ -118,12 +118,6 @@ class Optimize:
         dropout_prop = trial.suggest_float("dropout_prop", 0.0, 0.5)
         l2_weight = trial.suggest_float("l2_weight", 1e-6, 1e-1, log=True)
 
-        if self.args.composite_loss:
-            alpha = trial.suggest_float("alpha", 0.2, 1.0)
-            beta = trial.suggest_float("beta", 0.2, 1.0)
-            gamma = trial.suggest_float("gamma", 0.2, 1.0)
-        else:
-            alpha, beta, gamma = 0.5, 0.5, 0.5
         lr_scheduler_patience = trial.suggest_int("lr_scheduler_patience", 10, 100)
         lr_scheduler_factor = trial.suggest_float("lr_scheduler_factor", 0.1, 1.0)
         width_factor = trial.suggest_float("factor", 0.2, 1.0)
@@ -244,9 +238,11 @@ class Optimize:
                 weight_decay=l2_weight,
             )
 
-            criterion = MultiobjectiveHaversineLoss(
-                alpha, beta, gamma, composite_loss=self.args.composite_loss
-            )
+            criterion = WeightedRMSELoss()
+
+            # criterion = MultiobjectiveHaversineLoss(
+            #     alpha, beta, gamma, composite_loss=self.args.composite_loss
+            # )
 
             # Train model
             trained_model = train_func(
