@@ -1,16 +1,13 @@
 *.egg-info/
 *.egg-info
-*wtd*
-*phase6*
 geogenie_test/
+*DONTUSE*
 .DS_Store
 __pycache__/
 config_testing.yaml
 build/
 .venv/
 *.vcf
-*.vcf.gz
-*.vcf.gz.tbi
 *.db
 *_sample_data.txt
 *.pkl
