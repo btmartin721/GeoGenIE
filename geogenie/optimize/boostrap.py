@@ -31,6 +31,8 @@ class Bootstrap:
         verbose=1,
         show_plots=False,
         fontsize=18,
+        filetype="png",
+        dpi=300,
     ):
         """Class to run model with bootstrapping to estimate validation error.
 
@@ -75,7 +77,13 @@ class Bootstrap:
         self.logger = logging.getLogger(__name__)
 
         self.plotting = PlotGenIE(
-            device, output_dir, prefix, show_plots=show_plots, fontsize=fontsize
+            device,
+            output_dir,
+            prefix,
+            show_plots=show_plots,
+            fontsize=fontsize,
+            filetype=filetype,
+            dpi=dpi,
         )
 
     def bootstrap_training_generator(self, ModelClass, train_func, criterion):

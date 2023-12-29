@@ -1,14 +1,120 @@
 import logging
+import os
+import signal
 import sys
 from contextlib import contextmanager
 
 import numpy as np
-import scipy.optimize
 import torch
 from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.cluster import OPTICS, KMeans
 from torch.utils.data import Dataset
 
+from geogenie.utils.exceptions import TimeoutException
+
 logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def time_limit(seconds):
+    """Context manager to terminate execution of anything within the context. If ``seconds`` are exceeded in terms of execution time, then the code within the context gets skipped."""
+
+    def signal_handler(signum, frame):
+        raise TimeoutException("Timed out!")
+
+    signal.signal(signal.SIGALRM, signal_handler)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+
+
+def validate_is_numpy(features, labels, sample_weights):
+    """Ensure that features, labels, and sample_weights are numpy arrays and not PyTorch Tensors."""
+    if isinstance(features, torch.Tensor):
+        features = features.numpy()
+    if isinstance(labels, torch.Tensor):
+        labels = labels.numpy()
+    if isinstance(sample_weights, torch.Tensor):
+        sample_weights = sample_weights.numpy()
+    return features, labels, sample_weights
+
+
+@contextmanager
+def suppress_output():
+    """
+    A context manager to suppress standard output and standard error.
+
+    Usage:
+        with suppress_output():
+            # Code that generates output to be suppressed
+
+    This temporarily redirects sys.stdout and sys.stderr to os.devnull.
+    """
+
+    original_stdout = sys.stdout
+    original_stderr = sys.stderr
+
+    with open(os.devnull, "w") as devnull:
+        sys.stdout = devnull
+        sys.stderr = devnull
+        try:
+            yield
+        finally:
+            sys.stdout = original_stdout
+            sys.stderr = original_stderr
+
+
+def assign_to_bins(
+    df,
+    long_col,
+    lat_col,
+    n_bins,
+    args,
+    method="optics",
+    min_samples=None,
+    random_state=None,
+):
+    """
+    Assign longitude and latitude coordinates to bins based on K-Means or DBSCAN clustering.
+
+    Args:
+        df (pd.DataFrame): DataFrame containing longitude and latitude columns.
+        long_col (str): Name of the column containing longitude values.
+        lat_col (str): Name of the column containing latitude values.
+        n_bins (int): Number of bins (clusters) for KMeans or minimum samples for OPTICS.
+        method (str): Clustering method ('kmeans' or 'optics'). Defaults to 'optics'.
+        min_samples (int): Minimum number of samples for OPTICS. Defaults to None (4).
+        random_state (int or RandomState): Random seed or state for reproducibility. Defaults to None (new seed each time).
+
+    Returns:
+        np.ndarray: Numpy array with bin indices indicating the bin assignment.
+    """
+
+    if method not in ["kmeans", "optics"]:
+        msg = f"Invalid 'method' parameter passed to 'assign_to_bin()': {method}"
+        logger.error(msg)
+        raise ValueError(msg)
+
+    if method == "kmeans":
+        coordinates = df[[long_col, lat_col]].to_numpy()
+        model = KMeans(
+            n_clusters=n_bins, random_state=random_state, n_init="auto", max_iter=1000
+        )
+    else:
+        coordinates = df[[lat_col, long_col]].to_numpy()
+        if min_samples is None:
+            min_samples = 4
+
+        model = OPTICS(min_samples=min_samples, metric="haversine", n_jobs=args.n_jobs)
+
+    model.fit(coordinates)
+    bins = model.labels_  # NOTE: -1 indicates noise points with OPTICS
+
+    if method == "kmeans":
+        return bins, model.cluster_centers_
+    return bins, None
 
 
 class CustomDataset(Dataset):
@@ -19,7 +125,13 @@ class CustomDataset(Dataset):
         Args:
             features (Tensor): Input features.
             labels (Tensor): Labels corresponding to the features.
-            sample_weights (Tensor): Weights for each sample.
+            sample_weights (Tensor): Weights for each sample. If None, then a sample_weights tensor is still created, but all weights will be equal to 1.0 (equal weighting). Defaults to None.
+
+        Attributes:
+            features (torch.Tensor): Input features.
+            labels (torch.Tensor): Labels corresponding to features.
+            sample_weights (torch.Tensor): Sample weights of shape (n_samples,).
+            tensors (tuple): Tuple consisting of (features, labels, sample_weights).
         """
         if not isinstance(features, torch.Tensor):
             features = torch.tensor(features, dtype=torch.float32)
@@ -65,7 +177,7 @@ class LongLatToCartesianTransformer(BaseEstimator, TransformerMixin):
 
     Attributes:
         radius (float): The radius of the Earth in kilometers.
-        placeholder (bool): If True, doesn't actually do transformation. Makes it to where I can turn on and off target normalization easily for development.
+        placeholder (bool): If True, does not actually do transformation. Makes it to where target normalization can easily be toggled for development purposed.
     """
 
     def __init__(self, radius=6371, placeholder=False):
@@ -122,36 +234,6 @@ class LongLatToCartesianTransformer(BaseEstimator, TransformerMixin):
         lon = np.degrees(np.arctan2(y, x))
 
         return np.column_stack((lon, lat))
-
-
-def custom_gpr_optimizer(obj_func, initial_theta, bounds):
-    """
-    Custom optimizer using scipy.optimize.minimize with increased maxiter.
-
-    Args:
-        obj_func (callable): The objective function.
-        initial_theta (array-like): Initial guess for the parameters.
-        bounds (list of tuples): Bounds for the parameters.
-
-    Returns:
-        tuple: Optimized parameters and function value at the optimum.
-    """
-    # Call scipy.optimize.minimize with the necessary parameters
-    opt_res = scipy.optimize.minimize(
-        obj_func,
-        initial_theta,
-        method="L-BFGS-B",
-        jac=True,  # True if obj_func returns the gradient as well
-        bounds=bounds,
-        options={"maxiter": 15000, "eps": 1e-3},
-    )
-
-    # Check the result and return the optimized parameters
-    if not opt_res.success:
-        logger.warning(RuntimeWarning("Optimization failed: " + opt_res.message))
-
-    theta_opt, func_min = opt_res.x, opt_res.fun
-    return theta_opt, func_min
 
 
 def geo_coords_is_valid(coordinates):
@@ -244,6 +326,7 @@ class StreamToLogger:
 
 @contextmanager
 def redirect_logging(logger):
+    """Redirects logging by manipulating sys.stdout and sys.stderr."""
     old_stdout = sys.stdout
     old_stderr = sys.stderr
     try:

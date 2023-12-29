@@ -12,3 +12,7 @@ class ResourceAllocationError(Exception):
     def __init__(self, message="Specified resource is not available."):
         self.message = message
         super().__init__(self.message)
+
+
+class TimeoutException(Exception):
+    pass

@@ -341,3 +341,50 @@ class WeightedHaversineLoss(nn.Module):
             loss *= sample_weight
 
         return loss.mean()
+
+
+def euclidean_distance_loss(y_true, y_pred):
+    """Custom PyTorch loss function."""
+    return torch.sqrt(torch.sum((y_pred - y_true) ** 2, axis=1)).mean()
+
+
+def haversine_distance_torch(lon1, lat1, lon2, lat2):
+    """
+    Calculate the Haversine distance between two points on the earth in PyTorch.
+    Args:
+        lat1, lon1, lat2, lon2: latitude and longitude of two points in radians.
+    Returns:
+        Distance in kilometers.
+    """
+    R = 6371.0  # Earth radius in kilometers
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+
+    a = (
+        torch.sin(dlat / 2.0) ** 2
+        + torch.cos(lat1) * torch.cos(lat2) * torch.sin(dlon / 2.0) ** 2
+    )
+    c = 2 * torch.atan2(torch.sqrt(a), torch.sqrt(1 - a))
+
+    return R * c
+
+
+def haversine_loss(pred, target, eps=1e-6):
+    lon1, lat1 = torch.split(pred, 1, dim=1)
+    lon2, lat2 = torch.split(target, 1, dim=1)
+    r = 6371  # Radius of Earth in kilometers
+
+    phi1, phi2 = torch.deg2rad(lat1), torch.deg2rad(lat2)
+    delta_phi = torch.deg2rad(lat2 - lat1)
+    delta_lambda = torch.deg2rad(lon2 - lon1)
+
+    a = (
+        torch.sin(delta_phi / 2) ** 2
+        + torch.cos(phi1) * torch.cos(phi2) * torch.sin(delta_lambda / 2) ** 2
+    )
+    a = torch.clamp(a, min=0, max=1)  # Clamp 'a' to avoid sqrt of negative number
+
+    c = 2 * torch.atan2(torch.sqrt(a), torch.sqrt(1 - a + eps))
+    distance = r * c  # Compute the distance
+
+    return torch.mean(distance)

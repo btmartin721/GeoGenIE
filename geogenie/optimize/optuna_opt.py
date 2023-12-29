@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import pickle
+import time
 from pathlib import Path
 
 import numpy as np
@@ -14,17 +15,67 @@ from optuna.logging import (
     enable_default_handler,
     enable_propagation,
 )
-from sklearn.model_selection import KFold, StratifiedKFold
+from sklearn.model_selection import StratifiedKFold
 from torch import optim
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader
 
 from geogenie.plotting.plotting import PlotGenIE
-from geogenie.samplers.samplers import GeographicDensitySampler
-from geogenie.utils.loss import MultiobjectiveHaversineLoss, WeightedRMSELoss
+from geogenie.utils.loss import WeightedRMSELoss
 from geogenie.utils.utils import CustomDataset
 
 
 class Optimize:
+    """
+    A class designed to handle the optimization of machine learning models.
+
+    This class facilitates the process of training, validating, and testing machine learning models. It manages data loaders for different datasets, sample weights, and various parameters for model training and optimization. Additionally, it integrates functionalities for plotting  and logging the progress and results of the optimization process.
+
+    Attributes:
+        train_loader (DataLoader): DataLoader for the training dataset.
+        val_loader (DataLoader): DataLoader for the validation dataset.
+        test_loader (DataLoader): DataLoader for the testing dataset.
+        sample_weights (numpy.ndarray): Array of sample weights.
+        weighted_sampler (Sampler): Sampler that applies sample weights.
+        device (str): The device (e.g., 'cpu', 'cuda') used for training.
+        max_epochs (int): Maximum number of epochs for training.
+        patience (int): Patience for early stopping.
+        prefix (str): Prefix used for naming output files.
+        output_dir (str): Directory for saving output files.
+        sqldb (str): SQL database path used for storing trial data.
+        n_trials (int): Number of trials for optimization.
+        n_jobs (int): Number of jobs to run in parallel.
+        args (Namespace): Arguments provided for model configurations.
+        show_progress_bar (bool): Flag to show or hide the progress bar during optimization.
+        n_startup_trials (int): Number of initial trials to perform before applying pruning logic.
+        verbose (int): Verbosity level.
+        logger (Logger): Logger for logging information.
+        plotting (PlotGenIE): Plotting utility for generating plots.
+        cv_results (DataFrame): DataFrame to store cross-validation results.
+
+    Args:
+        train_loader (DataLoader): DataLoader for the training dataset.
+        val_loader (DataLoader): DataLoader for the validation dataset.
+        test_loader (DataLoader): DataLoader for the testing dataset.
+        sample_weights (numpy.ndarray): Array of sample weights.
+        weighted_sampler (Sampler): Sampler that applies sample weights.
+        device (str): The device (e.g., 'cpu', 'cuda') used for training.
+        max_epochs (int): Maximum number of epochs for training.
+        patience (int): Patience for early stopping.
+        prefix (str): Prefix used for naming output files.
+        output_dir (str): Directory for saving output files.
+        sqldb (str): SQL database path used for storing trial data.
+        n_trials (int): Number of trials for optimization.
+        n_jobs (int): Number of jobs to run in parallel.
+        args (Namespace): Arguments provided for model configurations.
+        show_progress_bar (bool, optional): Flag to show or hide the progress bar. Defaults to False.
+        n_startup_trials (int, optional): Number of initial trials. Defaults to 10.
+        show_plots (bool, optional): Flag to show or hide plots. Defaults to False.
+        fontsize (int, optional): Font size for plots. Defaults to 18.
+        filetype (str, optional): File type for saving plots. Defaults to "png".
+        dpi (int, optional): Dots per inch for plot resolution. Defaults to 300.
+        verbose (int, optional): Verbosity level. Defaults to 1.
+    """
+
     def __init__(
         self,
         train_loader,
@@ -45,6 +96,8 @@ class Optimize:
         n_startup_trials=10,
         show_plots=False,
         fontsize=18,
+        filetype="png",
+        dpi=300,
         verbose=1,
     ):
         self.train_loader = train_loader
@@ -68,7 +121,13 @@ class Optimize:
         self.logger = logging.getLogger(__name__)
 
         self.plotting = PlotGenIE(
-            device, output_dir, prefix, show_plots=show_plots, fontsize=fontsize
+            device,
+            output_dir,
+            prefix,
+            show_plots=show_plots,
+            fontsize=fontsize,
+            filetype=filetype,
+            dpi=dpi,
         )
 
         self.cv_results = pd.DataFrame(
@@ -107,9 +166,360 @@ class Optimize:
         Returns:
             float: Loss value.
         """
-        dataset = self.train_loader.dataset
+        if ModelClass == "RF":
+            # RF Hyperparameters
+            self.model_type = "RF"
+            (
+                param_dict,
+                n_bins,
+                use_weighted,
+                smote_method,
+                smote_neighbors,
+            ) = self.set_rf_param_grid(trial, self.dataset.features.shape[0])
 
-        # Optuna hyperparameters
+            use_kmeans = True
+            use_kde = False
+            w_power = 1.0
+            max_clusters = 10
+            max_neighbors = 50
+            normalize = False
+
+        elif ModelClass == "GB":
+            self.model_type = "GB"
+            (
+                param_dict,
+                n_bins,
+                use_weighted,
+                smote_method,
+                smote_neighbors,
+            ) = self.set_gb_param_grid(trial, self.dataset.features.shape[0])
+
+        else:
+            # Optuna hyperparameters
+            self.model_type = "DL"
+            (
+                lr,
+                width,
+                nlayers,
+                dropout_prop,
+                l2_weight,
+                lr_scheduler_patience,
+                lr_scheduler_factor,
+                width_factor,
+                use_kmeans,
+                use_kde,
+                w_power,
+                normalize,
+                use_weighted,
+                max_clusters,
+                max_neighbors,
+                grad_clip,
+                n_bins,
+                smote_method,
+                smote_neighbors,
+            ) = self.set_param_grid(trial)
+
+            param_dict = None
+
+        if use_weighted in ["sampler", "both"]:
+            if not any([use_kmeans, use_kde]):
+                raise optuna.exceptions.TrialPruned()
+
+        if ModelClass in ["RF", "GB"]:
+            trained_model, val_loss = self.run_rf_training(
+                trial,
+                param_dict,
+                train_func,
+                n_bins,
+                smote_method,
+                smote_neighbors,
+                self.train_loader,
+                self.val_loader,
+            )
+        else:
+            criterion = WeightedRMSELoss()
+
+            # Model, loss, and optimizer
+            trained_model, val_loss = self.run_training(
+                trial,
+                criterion,
+                ModelClass,
+                train_func,
+                self.dataset,
+                lr,
+                width,
+                nlayers,
+                dropout_prop,
+                l2_weight,
+                lr_scheduler_patience,
+                lr_scheduler_factor,
+                width_factor,
+                grad_clip,
+                n_bins,
+                smote_method,
+                smote_neighbors,
+                self.train_loader,
+                self.val_loader,
+            )
+
+            if trained_model is None:
+                raise optuna.exceptions.TrialPruned()
+
+        if np.isnan(val_loss):
+            raise optuna.exceptions.TrialPruned()
+        if val_loss is None:
+            raise optuna.exceptions.TrialPruned()
+
+        return val_loss
+
+    def extract_features_labels(self, train_subset):
+        subset_features = []
+        subset_labels = []
+
+        # Iterate over the subset and extract features and labels
+        for data in train_subset:
+            features, labels, _ = data
+            subset_features.append(features.numpy().tolist())
+            subset_labels.append(labels.numpy().tolist())
+        subset_features = np.array(subset_features)
+        subset_labels = np.array(subset_labels)
+        return subset_features, subset_labels
+
+    def run_rf_training(
+        self,
+        trial,
+        param_dict,
+        train_func,
+        n_bins,
+        smote_method,
+        smote_neighbors,
+        train_loader,
+        val_loader,
+    ):
+        return train_func(
+            train_loader,
+            val_loader,
+            param_dict,
+            trial,
+            objective_mode=True,
+            n_bins=n_bins,
+            use_smote=self.args.use_synthetic_oversampling,
+            smote_method=smote_method,
+            smote_neighbors=smote_neighbors,
+        )
+
+    def run_training(
+        self,
+        trial,
+        criterion,
+        ModelClass,
+        train_func,
+        dataset,
+        lr,
+        width,
+        nlayers,
+        dropout_prop,
+        l2_weight,
+        lr_scheduler_patience,
+        lr_scheduler_factor,
+        width_factor,
+        grad_clip,
+        n_bins,
+        smote_method,
+        smote_neighbors,
+        train_loader,
+        val_loader,
+    ):
+        model = ModelClass(
+            input_size=dataset.features.shape[1],
+            width=width,
+            nlayers=nlayers,
+            dropout_prop=dropout_prop,
+            device=self.device,
+            factor=width_factor,
+        ).to(self.device)
+
+        optimizer = optim.Adam(
+            model.parameters(),
+            lr=lr,
+            weight_decay=l2_weight,
+        )
+
+        # Train model
+        trained_model = train_func(
+            train_loader,
+            val_loader,
+            model,
+            criterion,
+            optimizer,
+            trial,
+            lr_scheduler_factor,
+            lr_scheduler_patience,
+            objective_mode=True,
+            grad_clip=grad_clip,
+            use_smote=self.args.use_synthetic_oversampling,
+            n_bins=n_bins,
+            smote_neighbors=smote_neighbors,
+            smote_method=smote_method,
+        )
+
+        return trained_model
+
+    def reload_subsets(
+        self,
+        use_weighted,
+        kwargs,
+        val_subset,
+        subset_features,
+        subset_labels,
+        weighted_sampler,
+        subset_features_val=None,
+        subset_labels_val=None,
+    ):
+        train_subset_dataset = CustomDataset(
+            subset_features, subset_labels, weighted_sampler.weights
+        )
+
+        if self.model_type in ["RF", "GB"]:
+            val_subset_dataset = CustomDataset(subset_features_val, subset_labels_val)
+
+        if use_weighted in ["sampler", "both"]:
+            kwargs["sampler"] = weighted_sampler
+        else:
+            kwargs["shuffle"] = True
+        train_loader = DataLoader(train_subset_dataset, **kwargs)
+
+        if self.model_type in ["RF", "GB"]:
+            val_loader = DataLoader(
+                val_subset_dataset, batch_size=kwargs["batch_size"], shuffle=False
+            )
+        else:
+            val_loader = DataLoader(
+                val_subset, batch_size=kwargs["batch_size"], shuffle=False
+            )
+
+        return train_loader, val_loader
+
+    def set_gb_param_grid(self, trial, n_samples):
+        gb_n_estimators = trial.suggest_int("gb_n_estimators", 50, 1000)
+        gb_learning_rate = trial.suggest_float("gb_learning_rate", 0.01, 0.3)
+        gb_subsample = trial.suggest_float("gb_subsample", 0.5, 1.0)
+        gb_max_depth = trial.suggest_int("gb_max_depth", 3, 10)
+        gb_min_child_weight = trial.suggest_int("gb_min_child_weight", 1, 10)
+        gb_reg_alpha = trial.suggest_float("gb_reg_alpha", 0, 1.0)
+        gb_reg_lambda = trial.suggest_float("gb_reg_lambda", 0.1, 1.0)
+        gb_gamma = trial.suggest_float("gb_gamma", 5, 10)
+        gb_colsample_bytree = trial.suggest_float("gb_colsample_bytree", 0.5, 1.0)
+
+        n_bins = trial.suggest_int("n_bins", 3, 10)
+
+        if self.args.force_no_weighting:
+            l = ["none"]
+        elif self.args.force_weighted_opt:
+            l = [self.args.use_weighted]
+        else:
+            l = ["sampler", "none"]
+
+        use_weighted = trial.suggest_categorical("use_weighted", l)
+
+        if (
+            self.args.use_synthetic_oversampling
+            and self.args.oversample_method == "choose"
+        ):
+            l2 = ["kmeans", "optics", "kerneldensity"]
+        elif self.args.use_synthetic_oversampling and self.args.oversample_method in [
+            "kmeans",
+            "optics",
+            "kerneldensity",
+        ]:
+            l2 = [self.args.oversample_method]
+        else:
+            l2 = None
+
+        smote_method = None
+        smote_neighbors = self.args.oversample_neighbors
+        if l2 is not None:
+            smote_method = trial.suggest_categorical("oversample_method", l2)
+            smote_neighbors = trial.suggest_int("oversample_neighbors", 2, 50)
+
+        return (
+            {
+                "gb_n_estimators": gb_n_estimators,
+                "gb_learning_rate": gb_learning_rate,
+                "gb_subsample": gb_subsample,
+                "gb_gamma": gb_gamma,
+                "gb_max_depth": gb_max_depth,
+                "gb_min_child_weight": gb_min_child_weight,
+                "gb_reg_alpha": gb_reg_alpha,
+                "gb_reg_lambda": gb_reg_lambda,
+                "gb_colsample_bytree": gb_colsample_bytree,
+            },
+            n_bins,
+            use_weighted,
+            smote_method,
+            smote_neighbors,
+        )
+
+    def set_rf_param_grid(self, trial, n_samples):
+        n_estimators = trial.suggest_int("n_estimators", 50, 1000)
+        criterion = trial.suggest_categorical(
+            "criterion", ["squared_error", "absolute_error", "friedman_mse"]
+        )
+        max_depth = trial.suggest_int("max_depth", 3, n_samples)
+        min_samples_split = trial.suggest_float("min_samples_split", 1e-3, 1.0)
+        min_samples_leaf = trial.suggest_float("min_samples_leaf", 1e-3, 1.0)
+        max_features = trial.suggest_categorical("max_features", ["sqrt", "log2", None])
+        max_samples = trial.suggest_float("max_samples", 1e-3, 1.0)
+        n_bins = trial.suggest_int("n_bins", 3, 5)
+
+        if self.args.force_no_weighting:
+            l = ["none"]
+        elif self.args.force_weighted_opt:
+            l = [self.args.use_weighted]
+        else:
+            l = ["sampler", "none"]
+
+        use_weighted = trial.suggest_categorical("use_weighted", l)
+
+        if (
+            self.args.use_synthetic_oversampling
+            and self.args.oversample_method == "choose"
+        ):
+            l2 = ["kmeans", "optics", "kerneldensity"]
+        elif self.args.use_synthetic_oversampling and self.args.oversample_method in [
+            "kmeans",
+            "optics",
+            "kerneldensity",
+        ]:
+            l2 = [self.args.oversample_method]
+        else:
+            l2 = None
+
+        smote_method = None
+        smote_neighbors = self.args.oversample_neighbors
+        if l2 is not None:
+            smote_method = trial.suggest_categorical("oversample_method", l2)
+            smote_neighbors = trial.suggest_int("oversample_neighbors", 2, 50)
+
+        return (
+            {
+                "n_estimators": n_estimators,
+                "criterion": criterion,
+                "max_depth": max_depth,
+                "min_samples_split": min_samples_split,
+                "min_samples_leaf": min_samples_leaf,
+                "max_features": max_features,
+                "bootstrap": True,
+                "oob_score": True,
+                "max_samples": max_samples,
+            },
+            n_bins,
+            use_weighted,
+            smote_method,
+            smote_neighbors,
+        )
+
+    def set_param_grid(self, trial):
         lr = trial.suggest_float("lr", 1e-4, 0.5, log=True)
         width = trial.suggest_int(
             "width", 8, self.train_loader.dataset.tensors[0].shape[1] - 1
@@ -124,183 +534,64 @@ class Optimize:
         use_kmeans = trial.suggest_categorical("use_kmeans", [False, True])
         use_kde = trial.suggest_categorical("use_kde", [False, True])
         w_power = trial.suggest_int("w_power", 1, 10)
-        normalize = trial.suggest_categorical("normalize", [False, True])
+        normalize = trial.suggest_categorical("normalize_sample_weights", [False, True])
 
         if self.args.force_no_weighting:
-            use_weighted = trial.suggest_categorical("use_weighted", ["none"])
+            l = ["none"]
+        elif self.args.force_weighted_opt:
+            l = [self.args.use_weighted]
         else:
-            l = (
-                [self.args.use_weighted]
-                if self.args.force_weighted_opt
-                else ["loss", "sampler", "both", "none"]
-            )
+            l = ["loss", "sampler", "both", "none"]
 
-            # l = (
-            #     ["both"]
-            #     if self.args.force_weighted_opt
-            #     else ["loss", "sampler", "both", "none"]
-            # )
-            use_weighted = trial.suggest_categorical("use_weighted", l)
+        use_weighted = trial.suggest_categorical("use_weighted", l)
+
+        if (
+            self.args.use_synthetic_oversampling
+            and self.args.oversample_method == "choose"
+        ):
+            l2 = ["morton-balance", "morton-extreme", "kmeans", "optics"]
+        elif self.args.use_synthetic_oversampling and self.args.oversample_method in [
+            "morton-balance",
+            "morton-extreme",
+            "kmeans",
+            "optics",
+        ]:
+            l2 = [self.args.oversample_method]
+        else:
+            l2 = None
+
         max_clusters = trial.suggest_int("max_clusters", 5, 100)
         max_neighbors = trial.suggest_int("max_neighbors", 5, 100)
+        n_bins = trial.suggest_int("n_bins", 5, 20)
+
+        smote_method = None
+        smote_neighbors = self.args.oversample_neighbors
+        if l2 is not None:
+            smote_method = trial.suggest_categorical("oversample_method", l2)
+            smote_neighbors = trial.suggest_int("oversample_neighbors", 2, 50)
 
         grad_clip = trial.suggest_categorical("grad_clip", [False, True])
-
-        # K-Fold Cross-Validation
-        num_folds = 5
-
-        kfold = KFold(n_splits=num_folds)
-        # kfold = self.stratified_weighted_multioutput_kfold(
-        #     dataset.features,
-        #     dataset.labels,
-        #     dataset.sample_weights,
-        #     n_bins=n_bins,
-        #     n_splits=num_folds,
-        # )
-
-        fold_losses = []  # Store losses for each fold
-        gwrs = []
-        total_loss = 0.0
-
-        if use_weighted in ["sampler", "both"]:
-            if not any([use_kmeans, use_kde]):
-                raise optuna.exceptions.TrialPruned()
-
-        kwargs = {"batch_size": self.train_loader.batch_size}
-
-        for train_idx, val_idx in kfold.split(dataset):
-            # Create train and validation subsets for this fold
-            train_subset = Subset(dataset, train_idx)
-            val_subset = Subset(dataset, val_idx)
-
-            # Initialize lists to store features and labels
-            subset_features = []
-            subset_labels = []
-
-            if use_weighted in ["loss", "both"]:
-                subset_weights = []
-            else:
-                subset_weights = torch.ones(len(train_subset), dtype=torch.float32)
-            # Iterate over the subset and extract features and labels
-            for data in train_subset:
-                features, labels, sample_weights = data
-                subset_features.append(features)
-                subset_labels.append(labels)
-
-                if use_weighted in ["loss", "both"]:
-                    subset_weights.append(sample_weights)
-
-            subset_features = torch.stack(subset_features).to(torch.float32)
-            subset_labels = torch.stack(subset_labels).to(torch.float32)
-
-            if not isinstance(subset_weights, torch.Tensor):
-                subset_weights = torch.stack(subset_weights).to(torch.float32)
-
-            # Get subset of weighted sampler.
-            weighted_sampler = GeographicDensitySampler(
-                pd.DataFrame(subset_labels.numpy(), columns=["x", "y"]),
-                use_kmeans=use_kmeans,
-                use_kde=use_kde,
-                w_power=w_power,
-                max_clusters=max_clusters,
-                max_neighbors=max_neighbors,
-                objective_mode=True,
-                normalize=normalize,
-            )
-
-            train_subset_dataset = CustomDataset(
-                subset_features, subset_labels, weighted_sampler.weights
-            )
-
-            if use_weighted in ["sampler", "both"]:
-                kwargs["sampler"] = weighted_sampler
-            else:
-                kwargs["shuffle"] = True
-            train_loader = DataLoader(train_subset_dataset, **kwargs)
-
-            val_loader = DataLoader(
-                val_subset, batch_size=kwargs["batch_size"], shuffle=False
-            )
-
-            # Model, loss, and optimizer
-            model = ModelClass(
-                input_size=dataset.features.shape[1],
-                width=width,
-                nlayers=nlayers,
-                dropout_prop=dropout_prop,
-                device=self.device,
-                factor=width_factor,
-            ).to(self.device)
-
-            optimizer = optim.Adam(
-                model.parameters(),
-                lr=lr,
-                weight_decay=l2_weight,
-            )
-
-            criterion = WeightedRMSELoss()
-
-            # criterion = MultiobjectiveHaversineLoss(
-            #     alpha, beta, gamma, composite_loss=self.args.composite_loss
-            # )
-
-            # Train model
-            trained_model = train_func(
-                train_loader,
-                val_loader,
-                model,
-                criterion,
-                optimizer,
-                trial,
-                lr_scheduler_factor,
-                lr_scheduler_patience,
-                objective_mode=True,
-                grad_clip=grad_clip,
-            )
-
-            # Evaluate on validation set
-            fold_loss, gwr = self.evaluate_model(
-                val_loader,
-                trained_model,
-                criterion,
-                weighted_sampler,
-            )
-            fold_losses.append(fold_loss)
-            gwrs.append(gwr)
-            total_loss += fold_loss
-
-        # Calculate average loss and standard deviation
-        average_loss = np.mean(fold_losses)
-        std_dev = np.std(fold_losses)
-
-        average_gwr = np.mean(gwrs)
-        std_dev_gwr = np.std(gwrs)
-
-        # Create a new row as a DataFrame
-        new_row = pd.DataFrame(
-            [
-                {
-                    "trial": trial.number,
-                    "average_loss": average_loss,
-                    "std_dev": std_dev,
-                    "average_gwr": average_gwr,
-                    "std_dev_gwr": std_dev_gwr,
-                },
-            ]
+        return (
+            lr,
+            width,
+            nlayers,
+            dropout_prop,
+            l2_weight,
+            lr_scheduler_patience,
+            lr_scheduler_factor,
+            width_factor,
+            use_kmeans,
+            use_kde,
+            w_power,
+            normalize,
+            use_weighted,
+            max_clusters,
+            max_neighbors,
+            grad_clip,
+            n_bins,
+            smote_method,
+            smote_neighbors,
         )
-
-        # Concatenate the new row to the existing DataFrame
-        self.cv_results = pd.concat(
-            [self.cv_results, new_row],
-            ignore_index=True,
-        )
-
-        if np.isnan(average_loss):
-            raise optuna.exceptions.TrialPruned()
-        if average_loss is None:
-            raise optuna.exceptions.TrialPruned()
-
-        return average_loss
 
     def stratified_weighted_multioutput_kfold(
         self, X, y, weights, n_splits=5, n_bins=10
@@ -342,10 +633,9 @@ class Optimize:
 
         return fold_indices
 
-    def evaluate_model(self, val_loader, model, criterion, weighted_sampler):
+    def evaluate_model(self, val_loader, model, criterion):
         model.eval()
         total_loss = 0.0
-        total_gwr = 0.0
         with torch.no_grad():
             for batch in val_loader:
                 if len(batch) == 3:
@@ -361,13 +651,13 @@ class Optimize:
                     inputs, labels = inputs.to(self.device), labels.to(self.device)
                     sample_weights = None
                 outputs = model(inputs)
-                loss = criterion(outputs, labels, sample_weight=sample_weights)
-                gwr = weighted_sampler.perform_gwr(
-                    outputs.numpy(), labels.numpy(), sample_weights.numpy()
+                loss = criterion(
+                    outputs,
+                    labels,
+                    torch.ones(len(sample_weights), dtype=torch.float32),
                 )
                 total_loss += loss.item()
-                total_gwr += gwr
-        return total_loss / len(val_loader), gwr / len(val_loader)
+        return total_loss / len(val_loader)
 
     def perform_optuna_optimization(self, criterion, ModelClass, train_func):
         """
@@ -379,6 +669,8 @@ class Optimize:
         Returns:
             tuple: Best trial and the Optuna study object.
         """
+        self.dataset = self.train_loader.dataset
+
         # Enable log propagation to the root logger
         enable_propagation()
 
@@ -421,12 +713,17 @@ class Optimize:
         if self.verbose >= 1:
             self.logger.info("Beginning parameter search...")
 
+        start_time = time.time()
+
         study.optimize(
             objective,
             n_trials=self.n_trials,
             n_jobs=self.n_jobs,
             show_progress_bar=self.show_progress_bar,
         )
+
+        end_time = time.time()
+        total_time = end_time - start_time
 
         cv_outfile = os.path.join(
             self.output_dir, "optimize", f"{self.prefix}_cv_results.csv"
@@ -435,7 +732,7 @@ class Optimize:
         self.cv_results.to_csv(cv_outfile, header=True, index=False)
 
         if self.verbose >= 1:
-            self.logger.info("Finished parameter search!")
+            self.logger.info(f"Finished parameter search in {total_time} seconds")
 
         return study.best_trial, study
 

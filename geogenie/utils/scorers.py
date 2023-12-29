@@ -14,14 +14,8 @@ logger = logging.getLogger(__name__)
 
 def kstest(y_true, y_pred, sample_weight=None):
     # Calculate Haversine error for each pair of points
-    haversine_errors = np.array(
-        [
-            haversine(act[0], act[1], pred[0], pred[1])
-            for act, pred in zip(y_true, y_pred)
-        ]
-    )
-
-    errors = np.array(haversine_errors)
+    haversine_errors = haversine_distances_agg(y_true, y_pred, np.array)
+    errors = haversine_errors.copy()
 
     # Statistical Distribution Analysis
     mean_error = np.mean(errors)

@@ -13,40 +13,163 @@ import torch
 from kneed import KneeLocator
 from pysam import VariantFile
 from sklearn.base import clone
-from sklearn.decomposition import PCA
+from sklearn.decomposition import NMF, PCA, KernelPCA
 from sklearn.impute import SimpleImputer
-from sklearn.manifold import MDS, TSNE, LocallyLinearEmbedding
-from sklearn.metrics import accuracy_score, f1_score
+from sklearn.manifold import MDS, TSNE
 from sklearn.model_selection import GridSearchCV, train_test_split
 from sklearn.preprocessing import PolynomialFeatures, StandardScaler
-from torch import float as torchfloat
-from torch import tensor
-from torch.utils.data import DataLoader, TensorDataset
-from torch_geometric.data import DataLoader as GeoDataLoader
+from torch.utils.data import DataLoader
 
 from geogenie.outliers.detect_outliers import GeoGeneticOutlierDetector
 from geogenie.plotting.plotting import PlotGenIE
 from geogenie.samplers.samplers import GeographicDensitySampler
 from geogenie.utils.gtseq2vcf import GTseqToVCF
 from geogenie.utils.scorers import LocallyLinearEmbeddingWrapper
+from geogenie.utils.transformers import MCA
+
+# from geogenie.utils.transformers import MCA
 from geogenie.utils.utils import (
     CustomDataset,
     LongLatToCartesianTransformer,
+    assign_to_bins,
     get_iupac_dict,
 )
 
 
 class DataStructure:
-    """Class to hold data structure from input VCF file."""
+    """Class to hold data structure from input VCF file.
+
+    High level class overview. Key class functionalities include:
+
+    Initialization and Data Parsing: It loads VCF (Variant Call Format) files using pysam, processes genotypes, and handles missing data.
+
+    Data Transformation and Imputation: Implements methods for allele counting, imputing missing genotypes, normalizing data, and transforming genotypes to various encodings.
+
+    Data Splitting: Facilitates splitting data into training, validation, and test sets.
+
+    Outlier Detection: Includes methods for detecting and handling outliers in the data.
+
+    Data Preprocessing and Embedding: The class contains methods for preprocessing data, including scaling, dimensionality reduction, and embedding using various techniques like PCA, t-SNE, MCA, etc.
+
+    Data Analysis and Visualization: The script integrates with the geogenie library for tasks like outlier detection and plotting.
+
+    Machine Learning and Data Loading: It includes functionalities for creating data loaders (using torch) and preparing datasets for machine learning tasks, with support for different data sampling strategies and weightings.
+
+    Utility Methods: The script provides additional utility methods for tasks like reading GTseq data, setting parameters, and selecting optimal components for different data transformations.
+
+    In summary, the script is designed for comprehensive genomic data analysis, offering capabilities for data loading, preprocessing, transformation, machine learning model preparation, and visualization. It's structured to handle data from VCF files, process it through various analytical and transformational steps, and prepare it for further analysis or machine learning tasks.
+
+    Attributes:
+        vcf: A VariantFile object from the pysam library. It represents the VCF file loaded for processing genotypes.
+
+        samples: A list of sample IDs extracted from the VCF file's header.
+
+        logger: A logging object used to log information, warnings, and errors throughout the class's methods.
+
+        genotypes: A NumPy array storing the parsed genotypes from the VCF file.
+
+        is_missing: A boolean array indicating missing data in the genotypes.
+
+        genotypes_iupac: An array representing genotypes converted to IUPAC nucleotide codes.
+
+        verbose: A boolean or integer indicating the verbosity level for logging.
+
+        samples_weight: Used for storing sample weights, potentially for use in machine learning models or data sampling.
+
+        data: A dictionary to store various data attributes, such as training, validation, and testing datasets.
+
+        mask: A boolean mask used for filtering samples, especially in the context of outlier detection.
+
+        simputer: An instance of SimpleImputer from sklearn.impute, used for imputing missing data in the genotypes.
+
+        sample_data: A pandas DataFrame containing additional sample data, including geographical coordinates (longitude and latitude).
+
+        locs: An array of geographical coordinates associated with the samples.
+
+        norm: An attribute for storing the normalizing transformation, used for geographical coordinates as the targets. However, this is not currently used.
+
+        y: The target variable, representing geographical coordinates.
+
+        genotypes_enc: Encoded genotypes, presumably in a format suitable for analysis or machine learning.
+
+        X, y, X_pred, true_idx: Extracted datasets and indices after processing, including features (X), targets (y), features to predict on (X_pred), and corresponding indices (true_idx).
+
+        indices: A dictionary storing various index arrays used in the data processing, like training, validation, and testing indices.
+
+        plotting: An instance of PlotGenIE for plotting-related tasks.
+
+        train_loader, val_loader, test_loader, train_val_loader: DataLoader objects from PyTorch, used for loading batches of data during model training and evaluation.
+
+        _params: A private attribute intended to store parameters, for configuring the model parameters and settings.
+
+    Methods:
+        Constructor (__init__): Initializes the class with a VCF file and sets up basic attributes like samples, logger, genotypes, and missing data flags.
+
+        define_params: Sets up or updates parameters for the class from an argparse.Namespace object.
+
+        _parse_genotypes: Parses genotypes from the VCF file and converts them into NumPy arrays, handling missing data.
+
+        map_alleles_to_iupac: Maps alleles to IUPAC nucleotide codes.
+
+        is_biallelic: Checks whether a genomic record has exactly two alleles (biallelic).
+
+        count_alleles: Counts the alleles for each SNP across all samples.
+
+        impute_missing: Imputes missing genotypes (features) in the data.
+
+        sort_samples: Sorts sample data to match the order in the VCF file.
+
+        normalize_target: Normalizes target variables (locations), converting geographic coordinates to a different scale or format if 'placeholder=False'. Otherwise, does nothing if 'placeholder=True'.
+
+        _check_sample_ordering: Validates the ordering of samples between the sample data and the VCF file.
+
+        snps_to_012: Converts SNPs to a 0/1/2 encoding format, with 0=reference, 1=heterozygous, and 2=alternate alleles.
+
+        filter_gt: Filters genotypes based on minor allele count and optionally selects a random subset of SNPs.
+
+        split_train_test: Splits the data into training, validation, and testing sets.
+
+        map_outliers_through_filters: Maps outlier indices through multiple filtering stages back to the original dataset.
+
+        load_and_preprocess_data: A comprehensive method that wraps various preprocessing steps like loading, sorting, imputing, embedding, and splitting the data.
+
+        extract_datasets: Extracts and separates datasets into known and predicted sets based on the presence of missing data.
+
+        validate_feature_target_len: Validates that the feature and target datasets have the same length.
+
+        setup_index_masks: Sets up index masks for filtering the data.
+
+        run_outlier_detection: Performs outlier detection using geographic and genetic criteria.
+
+        call_create_dataloaders: Helper method to create DataLoader objects for different data sets.
+
+        embed: Embeds the SNP data using various dimensionality reduction techniques.
+
+        perform_mca_and_select_components: Performs Multiple Correspondence Analysis (MCA) and selects the optimal number of components.
+
+        select_optimal_components: Selects the optimal number of components for dimensionality reduction methods based on explained variance or inertia.
+
+        find_optimal_nmf_components: Finds the optimal number of components for Non-negative Matrix Factorization (NMF) based on reconstruction error.
+
+        get_num_pca_comp: Determines the optimal number of principal components for PCA.
+
+        create_dataloaders: Creates DataLoader objects for training, testing, and validation datasets.
+
+        get_sample_weights: Calculates sample weights based on sampling density.
+
+        read_gtseq: Reads and processes GTSeq data, converting it to VCF format.
+
+        params property getter and setter: Getters and setters for managing class parameters.
+    """
 
     def __init__(self, vcf_file, verbose=False):
         """Constructor for DataStructure class.
 
         Args:
-            genotypes (list or np.ndarray): Input genotypes loaded with pysam.
-            samples (list): SampleIDs from VCF file.
+            vcf_file (str): VCF filename to load.
+            verbose (bool): Whether to enable verbosity.
         """
-        self.vcf = VariantFile(vcf_file)  # pysam
+        self.vcf = VariantFile(vcf_file)  # loads with pysam
         self.samples = list(self.vcf.header.samples)
         self.logger = logging.getLogger(__name__)
         self.genotypes, self.is_missing, self.genotypes_iupac = self._parse_genotypes()
@@ -195,7 +318,7 @@ class DataStructure:
         """Validate sample ordering between 'sample_data' and VCF files."""
         for i, x in enumerate(self.samples):
             if self.sample_data["sampleID2"].iloc[i] != x:
-                msg = "Invalid sample ordering. sample IDs in 'sample_data' must match the order in the VCF file."
+                msg = "Invalid sample ordering. sample IDs in 'sample_data' must match the sample order in the VCF file."
                 self.logger.error(msg)
                 raise ValueError(msg)
 
@@ -240,7 +363,7 @@ class DataStructure:
 
         return gt
 
-    def split_train_test(self, train_split, val_split, seed):
+    def split_train_test(self, train_split, val_split, seed, args):
         """
         Split data into training, validation, and testing sets, handling NaN values in locations.
 
@@ -263,6 +386,18 @@ class DataStructure:
                 "The difference between train_split - val_split must be >= 0."
             )
 
+        weighted_sampler = self.get_sample_weights(self.y, args)
+
+        bins, centroids = assign_to_bins(
+            pd.DataFrame(self.y, columns=["x", "y"]),
+            long_col="x",
+            lat_col="y",
+            n_bins=args.n_bins,
+            args=args,
+            method="kmeans",
+            random_state=seed,
+        )
+
         # Split non-NaN samples into training + validation and test sets
         (
             X_train_val,
@@ -271,22 +406,56 @@ class DataStructure:
             y_test,
             train_val_indices,
             test_indices,
+            train_val_bins,
+            test_bins,
         ) = train_test_split(
             self.X,
             self.y,
             self.true_idx,
+            bins,
             train_size=train_split,
             random_state=seed,
+            stratify=bins,
         )
 
         # Split training data into actual training and validation sets
-        X_train, X_val, y_train, y_val, train_indices, val_indices = train_test_split(
+        (
+            X_train,
+            X_val,
+            y_train,
+            y_val,
+            train_indices,
+            val_indices,
+            train_bins,
+            val_bins,
+        ) = train_test_split(
             X_train_val,
             y_train_val,
             train_val_indices,
+            train_val_bins,
             test_size=val_split,
             random_state=seed,
+            stratify=train_val_bins,
         )
+
+        if args.use_gradient_boosting:
+            (
+                X_train,
+                X_train_val2,
+                y_train,
+                y_train_val2,
+                train_bins,
+                train_val_bins,
+                train_val_bins2,
+                train_val_indices2,
+            ) = train_test_split(
+                X_train,
+                y_train,
+                train_bins,
+                train_indices,
+                test_size=0.1,
+                stratify=train_bins,
+            )
 
         data = {
             "X_train": X_train,
@@ -298,7 +467,17 @@ class DataStructure:
             "y_val": y_val,
             "y_test": y_test,
             "y": self.y,
+            "train_bins": train_bins,
+            "train_val_bins": train_val_bins,
+            "val_bins": val_bins,
+            "test_bins": test_bins,
         }
+
+        if args.use_gradient_boosting:
+            data["X_train_val"] = X_train_val2
+            data["y_train_val"] = y_train_val2
+            data["train_val_bins"] = train_val_bins2
+
         self.data.update(data)
 
         self.indices = {
@@ -309,6 +488,9 @@ class DataStructure:
             "pred_indices": self.pred_indices,
             "true_indices": self.true_indices,
         }
+
+        if args.use_gradient_boosting:
+            self.indices["train_val_indices2"] = train_val_indices2
 
         if self.verbose >= 1:
             self.logger.info("Created train, validation, and test datasets.")
@@ -331,7 +513,57 @@ class DataStructure:
         return original_indices[current_indices]
 
     def load_and_preprocess_data(self, args):
-        """Wrapper method to load and preprocess data."""
+        """Wrapper method to load and preprocess data.
+
+        Code execution order:
+
+        Sample Data Loading and Sorting:
+        Calls self.sort_samples with args.sample_data to load and sort sample data. This step involves reading sample data, presumably including their geographical locations, and aligning them with the genomic data.
+
+        SNP Encoding Transformation:
+        Transforms Single Nucleotide Polymorphisms (SNPs) into a 0/1/2 encoding format using self.snps_to_012, considering parameters like min_mac (minimum minor allele count) and max_snps (maximum number of SNPs).
+
+        Validation of Feature and Target Lengths:
+        Ensures that the feature data (X) and target data (y) have the same number of rows using self.validate_feature_target_len.
+
+        Missing Data Imputation on full dataset:
+        Imputes missing data in self.genotypes_enc using self.impute_missing.
+
+        Data Embedding:
+        Performs an embedding transformation (like PCA) on the imputed data (X) using self.embed, with full_dataset_only=True and transform_only=False.
+
+        Index Mask Setup:
+        Defines masks for prediction (self.pred_mask) to identify samples with known and unknown locations.
+        Sets up index masks for data using self.setup_index_masks.
+
+        Outlier Detection (Conditional):
+        If args.detect_outliers is True, performs outlier detection using self.run_outlier_detection.
+
+        Dataset Extraction:
+        Extracts and partitions datasets into known and predicted datasets using self.extract_datasets.
+
+        Plotting Outliers (Conditional):
+        If outliers are detected, plots the outliers using self.plotting.plot_outliers.
+
+        Data Normalization (Placeholder):
+        Normalizes the target data (y) using self.normalize_target with placeholder=True. This does nothing, unless 'placeholder=False'.
+
+        Splitting into Train, Test, and Validation Sets:
+        Splits the dataset into training, validation, and testing sets using self.split_train_test.
+
+        Feature Embedding for Train, Validation, and Test Sets (Conditional):
+        If args.embedding_type is not "none", embeds the features of training, validation, and test sets using self.embed.
+
+        Logging Data Split and DataLoader Creation:
+        Logs the completion of data splitting and the start of DataLoader creation, if verbosity is enabled.
+
+        DataLoader Creation:
+        Creates DataLoaders for training, validation, and test datasets using self.call_create_dataloaders.
+        Additional DataLoader is created for gradient boosting if args.use_gradient_boosting is True.
+
+        Logging Completion of Preprocessing:
+        Logs the successful completion of data loading and preprocessing, if verbosity is enabled.
+        """
 
         self.plotting = PlotGenIE(
             "cpu",
@@ -339,6 +571,8 @@ class DataStructure:
             args.prefix,
             show_plots=args.show_plots,
             fontsize=args.fontsize,
+            filetype=args.filetype,
+            dpi=args.plot_dpi,
         )
 
         if self.verbose >= 1:
@@ -347,16 +581,9 @@ class DataStructure:
         # Load and sort sample data
         self.sort_samples(args.sample_data)
 
-        if args.model_type.lower() == "mlp":
-            self.snps_to_012(
-                min_mac=args.min_mac,
-                max_snps=args.max_SNPs,
-                return_values=False,
-            )
-        else:
-            raise NotImplementedError(
-                f"Only mlp model is currently implemented, but got: {args.model_type}"
-            )
+        self.snps_to_012(
+            min_mac=args.min_mac, max_snps=args.max_SNPs, return_values=False
+        )
 
         # Make sure features and target have same number of rows.
         self.validate_feature_target_len()
@@ -368,7 +595,7 @@ class DataStructure:
         X = self.embed(
             args,
             X=X,
-            alg=args.embedding_type,
+            alg="pca",
             full_dataset_only=True,
             transform_only=False,
         )
@@ -406,9 +633,16 @@ class DataStructure:
                 f"{self.X.shape[0]} samples remaining after removing {len(all_outliers)} outliers."
             )
 
+            self.plotting.plot_outliers(
+                self.mask, self.locs, args.shapefile_url, buffer=args.bbox_buffer
+            )
+
         # placeholder=True makes it not do transform.
         self.normalize_target(placeholder=True)
-        self.split_train_test(args.train_split, args.val_split, args.seed)
+        self.split_train_test(args.train_split, args.val_split, args.seed, args)
+
+        if args.verbose >= 1 and args.embedding_type != "none":
+            self.logger.info("Embedding input features...")
 
         for k, v in self.data.items():
             if k.startswith("X"):
@@ -424,6 +658,9 @@ class DataStructure:
                     transform_only=tonly,
                 )
 
+        if args.verbose >= 1 and args.embedding_type != "none":
+            self.logger.info("Finished embedding features!")
+
         if args.verbose >= 1:
             self.logger.info("Data split into train, val, and test sets.")
             self.logger.info("Creating DataLoader objects.")
@@ -438,6 +675,11 @@ class DataStructure:
         self.test_loader = self.call_create_dataloaders(
             self.data["X_test"], self.data["y_test"], args, True
         )
+
+        if args.use_gradient_boosting:
+            self.train_val_loader = self.call_create_dataloaders(
+                self.data["X_train_val"], self.data["y_train_val"], args, True
+            )
 
         if args.verbose >= 1:
             self.logger.info("DataLoaders created succesfully.")
@@ -483,6 +725,9 @@ class DataStructure:
             seed=args.seed,
             debug=False,
             verbose=args.verbose,
+            fontsize=args.fontsize,
+            filetype=args.filetype,
+            dpi=args.plot_dpi,
         )
 
         outliers = outlier_detector.composite_outlier_detection(
@@ -493,12 +738,12 @@ class DataStructure:
 
         all_outliers = np.concatenate((outliers["geographic"], outliers["genetic"]))
 
-        # Returns outiler indieces, remapped.
+        # Returns outiler indices, remapped.
         mapped_all_outliers = self.map_outliers_through_filters(
             indices, filter_stage_indices, all_outliers
         )
 
-        # Remove mapped outliers from your data
+        # Remove mapped outliers from data
         self.mask[np.isin(self.all_indices, mapped_all_outliers)] = False
 
         return all_outliers
@@ -517,7 +762,7 @@ class DataStructure:
         self,
         args,
         X=None,
-        alg="polynomial",
+        alg="pca",
         full_dataset_only=False,
         transform_only=False,
     ):
@@ -543,23 +788,67 @@ class DataStructure:
         if X is None:
             X = self.genotypes_enc.copy()
 
-        if args.model_type != "transformer":
-            do_embed = True
-        else:
-            do_embed = False
+        do_embed = True
         if alg.lower() == "polynomial":
             emb = PolynomialFeatures(args.polynomial_degree)
         elif alg.lower() == "pca":
             n_components = args.n_components
-            if args.n_components is None and not transform_only:
+            if n_components is None and not transform_only:
                 n_components = self.get_num_pca_comp(X)
                 emb = PCA(n_components=n_components, random_state=args.seed)
 
                 if n_components is None:
                     self.logger.error(
-                        "n_componenets must be defined, but got NoneType."
+                        "n_componenets must be defined for PCA, but got NoneType."
                     )
-                    raise TypeError("n_componenets must be defined, but got NoneType.")
+                    raise TypeError(
+                        "n_componenets must be defined for PCA, but got NoneType."
+                    )
+        elif alg.lower() == "kernelpca":
+            n_components = self.gen_num_pca_comp(X)
+            emb = KernelPCA(
+                n_components=n_components,
+                kernel="rbf",
+                remove_zero_eig=True,
+                random_state=args.seed,
+            )
+
+            if n_components is None:
+                self.logger.error(
+                    "n_components must be defined for KernelPCA, but got NoneType."
+                )
+                raise TypeError(
+                    "n_components must be defined for KernelPCA, but got NoneType."
+                )
+
+        elif alg.lower() == "nmf":
+            n_components, recon_error = self.find_optimal_nmf_components(
+                X, 2, min(X.shape[1] // 4, 50)
+            )
+
+            if args.verbose >= 1:
+                self.logger.info(f"Optimal number of NMF components: {n_components}")
+
+            self.plotting.plot_nmf_error(recon_error, n_components)
+
+            emb = NMF(n_components=n_components, random_state=args.seed)
+
+            if n_components is None:
+                msg = "n_components must be defined for NMF, but got NoneType."
+                self.logger.error(msg)
+                raise TypeError(msg)
+
+        elif alg.lower() == "mca":
+            n_components = self.perform_mca_and_select_components(
+                X, range(2, min(100, X.shape[1]))
+            )
+            emb = MCA(
+                n_components=n_components,
+                n_iter=25,
+                check_input=True,
+                random_state=args.seed,
+                one_hot=True,
+            )
         elif alg.lower() == "tsne":
             # TODO: Make T-SNE plot.
             emb = TSNE(
@@ -610,8 +899,9 @@ class DataStructure:
             raise ValueError(f"Invalid 'alg' value pasesed to 'embed()': {alg}")
 
         if not transform_only and do_embed:
-            self.ssc = StandardScaler()
-            X = self.ssc.fit_transform(X)
+            if alg.lower() != "mca":
+                self.ssc = StandardScaler()
+                X = self.ssc.fit_transform(X)
             if alg.lower() == "lle":
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
@@ -629,20 +919,104 @@ class DataStructure:
 
         if do_embed:
             if full_dataset_only:
-                X = self.ssc.fit_transform(X)
-                X = self.emb.fit_transform(X)
+                if alg != "mca":
+                    X = self.ssc.fit_transform(X)
+                    X = self.emb.fit_transform(X)
+                else:
+                    self.emb.fit(X)
+                    X = self.emb.transform(X)
+
+                if isinstance(X, pd.DataFrame):
+                    X = X.to_numpy()
                 return X
 
             if not transform_only:
-                X = self.ssc.fit_transform(X)
-                X = self.emb.fit_transform(X)
+                if alg != "mca":
+                    X = self.ssc.fit_transform(X)
+                    X = self.emb.fit_transform(X)
+                else:
+                    self.emb.fit(X)
+                    X = self.emb.transform(X)
+                if isinstance(X, pd.DataFrame):
+                    X = X.to_numpy()
                 return X
 
-            X = self.ssc.transform(X)
-            X = self.emb.transform(X)
+            if alg != "mca":
+                X = self.ssc.transform(X)
+                X = self.emb.transform(X)
+            else:
+                X = self.emb.transform(X)
+            if isinstance(X, pd.DataFrame):
+                X = X.to_numpy()
             return X
         else:
+            if isinstance(X, pd.DataFrame):
+                X = X.to_numpy()
             return X.copy()
+
+    def perform_mca_and_select_components(self, data, n_components_range):
+        """
+        Perform MCA on the provided data and select the optimal number of components.
+
+        Args:
+            data (pd.DataFrame): The categorical data.
+            n_components_range (range): The range of components to explore.
+
+        Returns:
+            MCA: The MCA model fitted with the optimal number of components.
+            int: The optimal number of components.
+        """
+        mca = MCA(
+            n_components=max(n_components_range),
+            n_iter=10,
+            random_state=42,
+            one_hot=True,
+        )
+        mca = mca.fit(data)
+        cumulative_inertia = mca.cumulative_inertia_
+        optimal_n = self.select_optimal_components(
+            cumulative_inertia, n_components_range
+        )
+
+        self.plotting.plot_mca_curve(cumulative_inertia, optimal_n)
+        return optimal_n
+
+    def select_optimal_components(self, cumulative_inertia, n_components_range):
+        """
+        Select the optimal number of components based on explained inertia.
+
+        Args:
+            explained_inertia (list): The explained inertia for each component.
+            n_components_range (range): The range of components to explore.
+
+        Returns:
+            int: The optimal number of components.
+        """
+        optimal_n = n_components_range[np.argmax(cumulative_inertia >= 0.8)]
+        return optimal_n
+
+    def find_optimal_nmf_components(self, data, min_components, max_components):
+        """
+        Find the optimal number of components for NMF based on reconstruction error.
+
+        Args:
+            data (np.array): The data to fit the NMF model.
+            min_components (int): The minimum number of components to try.
+            max_components (int): The maximum number of components to try.
+
+        Returns:
+            int: The optimal number of components.
+        """
+        errors = []
+        components_range = range(min_components, max_components + 1)
+
+        for n in components_range:
+            model = NMF(n_components=n, init="random", random_state=0)
+            model.fit(data)
+            errors.append(model.reconstruction_err_)
+
+        optimal_n = components_range[np.argmin(errors)]
+        return optimal_n, errors
 
     def get_num_pca_comp(self, x):
         """Get optimal number of PCA components.
@@ -655,7 +1029,10 @@ class DataStructure:
         """
         pca = PCA().fit(x)
 
-        vr = np.cumsum(pca.explained_variance_ratio_)
+        try:
+            vr = np.cumsum(pca.explained_variance_ratio_)
+        except AttributeError:
+            vr = np.cumsum(pca.eigenvalues_) / sum(pca.eigenvalues_)
 
         x = range(1, len(vr) + 1)
         kneedle = KneeLocator(
@@ -687,16 +1064,27 @@ class DataStructure:
             class_weights (bool): If True, calculates class weights for weighted sampling.
             batch_size (int): Batch size to use with model.
             args (argparse.Namespace): User-supplied arguments.
-            model_type (str): Type of the model: 'gcn', 'transformer', or 'mlp'.
+            is_val (bool): Whether using validation/ test dataset. Otherwise should be training dataset. Defaults to False.
 
         Returns:
             torch.utils.data.DataLoader: DataLoader object suitable for the specified model type.
         """
-        # Custom sampler - density-based.
-        weighted_sampler = self.get_sample_weights(self.norm.inverse_transform(y), args)
+        if not is_val:
+            # Custom sampler - density-based.
+            weighted_sampler = self.get_sample_weights(
+                self.norm.inverse_transform(y), args
+            )
 
-        if self.samples_weight is None:
+        if (
+            self.samples_weight is None
+            or args.use_weighted not in ["loss", "both"]
+            and not args.use_random_forest
+            and not args.use_gradient_boosting
+        ):
             self.samples_weight = torch.ones(y.shape[0], dtype=torch.float32)
+        elif self.samples_weight is None:
+            self.samples_weight = torch.ones(y.shape[0], dtype=torch.float32)
+        self.samples_weight_orig = self.samples_weight.copy()
 
         dataset = CustomDataset(X, y, sample_weights=self.samples_weight)
 
@@ -744,6 +1132,14 @@ class DataStructure:
             if args.verbose >= 1:
                 self.logger.info("Done estimating sample weights.")
 
+            if self.samples_weight is not None:
+                self.logger.warning(
+                    "Re-setting 'samples_weight' after it has already been set. Was this intended?"
+                )
+                warnings.warn(
+                    "Re-setting 'samples_weight' after it has already been set. Was this intended?",
+                    category=UserWarning,
+                )
             self.weighted_sampler = weighted_sampler
             self.samples_weight = weighted_sampler.weights
             self.samples_weight_indices = weighted_sampler.indices

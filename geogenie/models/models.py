@@ -51,30 +51,6 @@ class MLPRegressor(nn.Module):
                 "Number of layers must be at least 2 to calculate a scaling factor."
             )
 
-        # self.blocks = nn.ModuleList()
-        # for _ in range(nlayers // 2):  # Handles even numbers of layers
-        #     self.blocks.append(
-        #         nn.Sequential(
-        #             nn.Linear(width, width, device=self.device),
-        #             nn.BatchNorm1d(width, device=self.device),
-        #             nn.ELU(),
-        #             nn.Dropout(dropout_prop),
-        #             nn.Linear(width, width, device=self.device),
-        #             nn.BatchNorm1d(width, device=self.device),
-        #         )
-        #     )
-
-        # # Adding an additional layer if nlayers is odd
-        # self.extra_layer = None
-        # if nlayers % 2 != 0:
-        #     self.extra_layer = nn.Sequential(
-        #         nn.Linear(width, width, device=self.device),
-        #         nn.BatchNorm1d(width, device=self.device),
-        #         nn.ELU(),
-        #         nn.Dropout(dropout_prop),
-        #     )
-        # self.output_layer = nn.Linear(width, output_width, device=device)
-
         new_width = width
         old_width = width
         self.blocks = nn.ModuleList()
@@ -108,41 +84,6 @@ class MLPRegressor(nn.Module):
                 nn.Dropout(dropout_prop),
             )
         self.output_layer = nn.Linear(final_width, output_width, device=device)
-
-        # new_width = width
-        # old_width = width
-        # # Creating blocks of layers with residual connections
-        # self.blocks = nn.ModuleList()
-        # for _ in range(nlayers // 2):  # Handles even numbers of layers
-        #     new_width *= factor
-        #     new_width = int(new_width)
-        #     if new_width >= min_width:
-        #         self.blocks.append(
-        #             nn.Sequential(
-        #                 nn.Linear(old_width, new_width, device=self.device),
-        #                 nn.BatchNorm1d(new_width, device=self.device),
-        #                 nn.ELU(),
-        #                 nn.Dropout(dropout_prop),
-        #                 nn.Linear(new_width, new_width, device=self.device),
-        #                 nn.BatchNorm1d(new_width, device=self.device),
-        #             )
-        #         )
-        #         old_width = new_width
-        #         final_width = new_width
-        #     else:
-        #         final_width = old_width
-        #         break
-
-        # # Adding an additional layer if nlayers is odd
-        # self.extra_layer = None
-        # if nlayers % 2 != 0:
-        #     self.extra_layer = nn.Sequential(
-        #         nn.Linear(final_width, final_width, device=self.device),
-        #         nn.BatchNorm1d(final_width, device=self.device),
-        #         nn.ELU(),
-        #         nn.Dropout(dropout_prop),
-        #     )
-        # self.output_layer = nn.Linear(final_width, output_width, device=device)
 
     def forward(self, x):
         """Forward pass through network."""

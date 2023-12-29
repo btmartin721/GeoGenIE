@@ -39,14 +39,6 @@ class EvaluateAction(argparse.Action):
             )
 
 
-def validate_model_type(value):
-    """Validate the model type."""
-    model_types = ["mlp", "gcn", "transformer"]
-    if value not in model_types:
-        raise argparse.ArgumentTypeError(f"Invalid model_type argument: {value}")
-    return value
-
-
 def validate_positive_int(value):
     """Validate that the provided value is a positive integer."""
     ivalue = int(value)
@@ -61,20 +53,6 @@ def validate_positive_float(value):
     if fvalue <= 0:
         raise argparse.ArgumentTypeError(f"{value} must be a positive float.")
     return fvalue
-
-
-def validate_model_type(value):
-    if value is None:
-        raise TypeError("'model_type' cannot be NoneType.")
-    try:
-        model_type = str(value)
-        if model_type not in ["mlp", "gcn", "transformer"]:
-            raise ValueError(f"Invalid model_type argument provided: {model_type}")
-    except (TypeError, ValueError):
-        raise TypeError(
-            f"Could not convert 'model_type' to a string: {type(model_type)}"
-        )
-    return model_type
 
 
 def validate_gpu_number(value):
@@ -163,6 +141,14 @@ def validate_seed(value):
     else:
         return None
     return seed
+
+
+def validate_lower_str(value):
+    try:
+        value = str(value)
+    except TypeError:
+        raise TypeError(f"Could not convert {value} to a string.")
+    return value.lower()
 
 
 def setup_parser():
@@ -260,12 +246,6 @@ def setup_parser():
         "Model Configuration", description="Model configuration arguments."
     )
     model_group.add_argument(
-        "--model_type",
-        type=validate_model_type,
-        default="mlp",
-        help="Specify model type. Supported options: 'mlp', 'gcn', 'transformer'.",
-    )
-    model_group.add_argument(
         "--nlayers",
         type=validate_positive_int,
         default=10,
@@ -282,6 +262,23 @@ def setup_parser():
         type=validate_positive_float,
         default=0.2,
         help="Dropout rate (0-1) to prevent overfitting. Default: 0.2.",
+    )
+    model_group.add_argument(
+        "--load_best_params",
+        type=str,
+        default=None,
+        help="Specify filename to load best paramseters from previous Optuna parameter search. Default: None (don't load best parameters).",
+    )
+    model_group.add_argument(
+        "--use_random_forest",
+        action="store_true",
+        help="Whether to use RandomForest model instead of deep learning model.Default: False (use deep learning model).",
+    )
+
+    model_group.add_argument(
+        "--use_gradient_boosting",
+        action="store_true",
+        help="Whether to use Gradient Boosting model instead of deep learning model. Default: False (use deep learning model).",
     )
 
     # Training Parameters
@@ -337,7 +334,7 @@ def setup_parser():
         help="Apply class weights to account for imbalanced geographic sampling density'. Default: False",
     )
     training_group.add_argument(
-        "--bootstrap",
+        "--do_bootstrap",
         action="store_true",
         default=False,
         help="Enable bootstrap replicates. Default: False.",
@@ -430,6 +427,24 @@ def setup_parser():
         help="Use synthetic oversampling of low-density regions to get better predictions.",
     )
     geo_sampler_group.add_argument(
+        "--oversample_method",
+        type=validate_lower_str,
+        default="kerneldensity",
+        help="Synthetic oversampling/ undersampling method to use. Valid options include 'kmeans', 'optics', 'kerneldensity', or 'choose'. Default: 'morton-balance'.",
+    )
+    geo_sampler_group.add_argument(
+        "--oversample_neighbors",
+        type=validate_positive_int,
+        default=5,
+        help="Number of nearest neighbors to use with oversampling method. Default: 5.",
+    )
+    geo_sampler_group.add_argument(
+        "--n_bins",
+        type=validate_positive_int,
+        default=10,
+        help="Number of bins to use with synthetic resampling.",
+    )
+    geo_sampler_group.add_argument(
         "--use_kmeans",
         action="store_true",
         help="Use KMeans clustering in the Weighted Geographic Density Sampler. Default: False",
@@ -504,30 +519,6 @@ def setup_parser():
         default=50,
         help="Maximum number of nearest neighbors (K) for outlier detection. K will be optimized between (2, maxk + 1). Default: 50.",
     )
-
-    transformer_group = parser.add_argument_group(
-        "Transformer-specific model parameters.",
-        description="Parameters to adjust for the 'transformer' model_type only.",
-    )
-    transformer_group.add_argument(
-        "--embedding_dim",
-        type=validate_positive_int,
-        default=256,
-        help="The size of the embedding vectors. It defines the dimensionality of the input and output tokens in the model. Higher dimensions can capture more information but increase computational complexity.",
-    )
-    transformer_group.add_argument(
-        "--nhead",
-        type=validate_positive_int,
-        default=8,
-        help="In multi-head attention, this parameter defines the number of parallel attention heads used. More heads allow the model to simultaneously attend to information from different representation subspaces, potentially capturing a wider range of dependencies.",
-    )
-    transformer_group.add_argument(
-        "--dim_feedforward",
-        type=validate_positive_int,
-        default=1024,
-        help="The size of the inner feedforward networks within each transformer layer. Adjusting this can impact the model’s ability to process information within each layer.",
-    )
-
     # Output and Miscellaneous Arguments
     output_group = parser.add_argument_group(
         "Output and Miscellaneous", description="Output and miscellaneous arguments."
@@ -574,24 +565,231 @@ def setup_parser():
         default=1,
         help="Enable detailed logging. Verbosity level: 0 (non-verbose) to 3 (most verbose). Default: 1.",
     )
-    output_group.add_argument(
+
+    plotting_group = parser.add_argument_group(
+        "Plot Settings",
+        description="Set plotting parameters to customize the visualizations.",
+    )
+    plotting_group.add_argument(
         "--show_plots",
         action="store_true",
         default=False,
-        help="If True, then shows in-line plots. Default: False (do not show in-line). Either way, the plots also get saved to disk.",
+        help="If True, then shows in-line plots. Useful if rendered in jupyter notebooks. Either way, the plots get saved to disk. Default: False (do not show in-line).",
     )
-    output_group.add_argument(
+    plotting_group.add_argument(
         "--fontsize",
         type=validate_positive_int,
-        default=18,
-        help="Font size for plot axis labels and title. Default: 18.",
+        default=24,
+        help="Font size for plot axis labels, ticks, and titles. Default: 24.",
+    )
+    plotting_group.add_argument(
+        "--filetype",
+        type=str,
+        default="png",
+        help="File type to use for plotting. Valid options include any that 'matplotlib.pyplot.savefig' supports. Most common options include 'png' or 'pdf', but the following are supported: (eps, jpeg, jpg, pdf, pgf, png, ps, raw, rgba, svg, svgz, tif, tiff, webp). Do not prepend a '.' character to the string. Default: 'png'.",
+    )
+    plotting_group.add_argument(
+        "--plot_dpi",
+        type=validate_positive_int,
+        default=300,
+        help="DPI to use for plots that are in raster format, such as 'png'. Default: 300.",
     )
 
-    output_group.add_argument(
+    plotting_group.add_argument(
         "--shapefile_url",
         type=str,
         default="https://www2.census.gov/geo/tiger/GENZ2018/shp/cb_2018_us_state_500k.zip",
-        help="URL for shapefile used for plotting prediction error. This is a map of the continental USA, so if you need a different base map, you can supply your own URL here.",
+        help="URL for shapefile used when plotting prediction error. This is a map of the continental USA, so if you need a different base map, you can supply your own URL here.",
+    )
+    plotting_group.add_argument(
+        "--n_contour_levels",
+        type=validate_positive_int,
+        default=20,
+        help="Number of contour levels to use in the plot that interpolates the prediction error on a spatial map (i.e., Kriging plot). Increase the for a more continuous distribution of contours, decrease it to visualize more discrete contour levels. Default: 20.",
+    )
+    plotting_group.add_argument(
+        "--min_colorscale",
+        type=int,
+        default=0,
+        help="Minimum colorbar value for the Kriging plot. Default: 0.",
+    )
+    plotting_group.add_argument(
+        "--max_colorscale",
+        type=validate_positive_int,
+        default=300,
+        help="Maximum value to use on the Kriging plot's colorbar. If your error distribution is higher than this value or you are getting uncontoured areas, increase this value. Default: 300.",
+    )
+    plotting_group.add_argument(
+        "--sample_point_scale",
+        type=validate_positive_int,
+        default=3,
+        help="Scale factor for sample point size on Kriging plot. If the sample points are too large or do not appear, decrease or increase this value, respectively. Default: 3.",
+    )
+    plotting_group.add_argument(
+        "--bbox_buffer",
+        type=validate_positive_float,
+        default=0.1,
+        help="Buffer to add to the sampling bounding box on map visualizations. Adjust to your liking. Default: 0.1.",
+    )
+
+    rf_group = parser.add_argument_group(
+        title="Random Forest Argument Group",
+        description="Specify parameters for doing Random Forest decision tree predictions.",
+    )
+
+    # Random Forest Parameters
+    rf_group.add_argument(
+        "--n_estimators",
+        type=validate_positive_int,
+        default=100,
+        help="Number of estimators to use for Random Forest Regressor. Default: 100.",
+    )
+
+    rf_group.add_argument(
+        "--criterion",
+        type=str,
+        default="squared_error",
+        help="Criterion to use for Random Forest Regressor. Valid options: 'squared_error', 'absolute_error', 'friedman_mse', 'poisson'. Default: 'squared_error'.",
+    )
+
+    rf_group.add_argument(
+        "--max_depth",
+        default=None,
+        help="Max Depth of tree for Random Forest Regressor. Default: None (expand until exhausted).",
+    )
+
+    rf_group.add_argument(
+        "--min_samples_split",
+        default=2,
+        help="The minimum number of samples required to split an internal node. Can be float or int. If float, then gets proportion from n_samples. If int, then gets the exact number of samples. int must be <= the total number of samples. Default: 2",
+    )
+
+    rf_group.add_argument(
+        "--min_samples_leaf",
+        default=1,
+        help="The minimum number of samples required to be at a leaf node. Can be int or float. If int, uses that exact number. If float, then must be between 0 and 1 and calculates proportion of n_samples. Default: 1.",
+    )
+
+    rf_group.add_argument(
+        "--max_features",
+        default=1.0,
+        help="The number of features to consider when looking for the best split. Can be 'sqrt', 'log2', float, or None. If float, then gets proportion of n_features and must be in interval (0, 1]. If None, uses all features. Default: 1.0 (use all features).",
+    )
+
+    rf_group.add_argument(
+        "--bootstrap",
+        action="store_true",
+        help="Whether bootstrap samples are used when building trees. If False, the whole dataset is used to build each tree. Default: True (do boostrapping).",
+    )
+
+    rf_group.add_argument(
+        "--oob_score",
+        action="store_true",
+        help="Whether to use out-of-bag samples to estimate the generalization score. Only used if '--bootstrap' is True. Default: False.",
+    )
+
+    rf_group.add_argument(
+        "--max_samples",
+        default=None,
+        help="Can be int, float, or None. If None, use all samples. If float, then get proportion of samples and must be between 0 and 1. If int, then get 'max_samples' samples. Default: None (use all samples).",
+    )
+
+    gb_group = parser.add_argument_group(
+        title="Gradient Boosting Argument Group",
+        description="Specify parameters for doing Gradient Boosting predictions.",
+    )
+    gb_group.add_argument(
+        "--gb_learning_rate",
+        type=validate_positive_float,
+        default=0.3,
+        help="Step size shrinkage used in update to prevent overfitting. This parameter usually requires tuning. Default: 0.1.",
+    )
+    gb_group.add_argument(
+        "--gb_n_estimators",
+        type=validate_positive_int,
+        default=100,
+        help="Number of boosting stages to perform. Gradient boosting is fairly robust to over-fitting so a large number usually results in better perforamnce. Values must be in the range [1, inf). Default: 100.",
+    )
+    gb_group.add_argument(
+        "--gb_subsample",
+        type=validate_positive_float,
+        default=1.0,
+        help="Subsample ratio of the training instances. Setting it to 0.5 means that XGBoost would randomly sample half of the training data prior to growing trees. and this will prevent overfitting. Subsampling will occur once in every boosting iteration. Range: (0.0, 1.0]. Default: 1.0",
+    )
+    gb_group.add_argument(
+        "--gb_colsample_bytree",
+        type=validate_positive_float,
+        default=1.0,
+        help="colsample_bytree is the subsample ratio of columns when constructing each tree. Subsampling occurs once for every tree constructed. Range: (0.0, 1.0]. Default: 1.0",
+    )
+
+    gb_group.add_argument(
+        "--gb_min_child_weight",
+        default=1,
+        help="Minimum sum of instance weight (hessian) needed in a child. If the tree partition step results in a leaf node with the sum of instance weight less than min_child_weight, then the building process will give up further partitioning. In linear regression task, this simply corresponds to minimum number of instances needed to be in each node. The larger min_child_weight is, the more conservative the algorithm will be. Default: 1",
+    )
+    gb_group.add_argument(
+        "--gb_max_delta_step",
+        default=0,
+        type=int,
+        help="Maximum delta step we allow each leaf output to be. If the value is set to 0, it means there is no constraint. If it is set to a positive value, it can help making the update step more conservative. Usually this parameter is not needed, but it might help in logistic regression when class is extremely imbalanced. Set it to value of 1-10 might help control the update. Default: 0 (no maximum delta step).",
+    )
+    gb_group.add_argument(
+        "--gb_max_leaves",
+        default=0,
+        help="The maximum number of leaves allowed at a leaf node. Tuning this may have the effect of smoothing the model. Default: 0 (no maximum).",
+    )
+    gb_group.add_argument(
+        "--gb_max_depth",
+        default=6,
+        help="Maximum depth of a tree. Increasing this value will make the model more complex and more likely to overfit. 0 indicates no limit on depth. Beware that XGBoost aggressively consumes memory when training a deep tree.",
+    )
+    gb_group.add_argument(
+        "--gb_reg_alpha",
+        type=float,
+        default=0,
+        help="L1 regularization for Gradient Boosting model. Tuning this can mitigate overfitting. Range: [0, inf). Default: 0 (no L1 regularization).",
+    )
+    gb_group.add_argument(
+        "--gb_reg_lambda",
+        type=float,
+        default=1,
+        help="L2 regularization for Gradient Boosting model. Tuning this can mitigate overfitting. Range: [0, inf). Defaul: 0 (no L1 regularization).",
+    )
+    gb_group.add_argument(
+        "--gb_gamma",
+        type=float,
+        default=0,
+        help="Minimum loss reduction required to make a further partition on a leaf node of the tree. The larger gamma is, the more conservative the algorithm will be. Range: [0, inf). Default: 0.0.",
+    )
+    gb_group.add_argument(
+        "--gb_multi_strategy",
+        type=str,
+        default="one_output_per_tree",
+        help="The strategy used for training multi-target models, including multi-target regression and multi-class classification. See Multiple Outputs for more information. Supported options: 'one_output_per_tree': Train a separate model for each target. 'multi_output_tree': Use multi-target trees. Default: 'one_target_per_node'.",
+    )
+    gb_group.add_argument(
+        "--gb_objective",
+        type=str,
+        default="reg:squarederror",
+        help="Loss objective to use for scoring with the gradient boosting model. Supported options: 'reg:squarederror', 'reg:quantileerror', 'reg:absoluteerror', 'reg:gamma', and 'reg:tweedie'. See XGBoost documentation for more information on each. Default: 'reg:squarederror'.",
+    )
+    gb_group.add_argument(
+        "--gb_eval_metric",
+        type=str,
+        default="rmse",
+        help="Evaluation metrics for validation data, a default metric will be assigned according to objective (rmse for regression. Supported options include: 'rmse' (root mean squared error), 'mae' (mean absolute error), 'mape' (mean absolute percentage error), 'gamma-nloglik' (negative log-likelihood for gamma regression), 'tweedie-nloglik' (negative log-likelihood for Tweedie regression). Default: 'rmse'.",
+    )
+    gb_group.add_argument(
+        "--gb_early_stopping_rounds",
+        type=validate_positive_int,
+        default=10,
+        help="Number of rounds to go before terminating training via early stopping criteria. Will revert the model to the best model. Default: 10.",
+    )
+    gb_group.add_argument(
+        "--gb_use_lr_scheduler",
+        action="store_true",
+        help="Whether to use learning rate scheduler to gradually reduce the learning rate. Default: False (off).",
     )
 
     args = parser.parse_args()
@@ -645,8 +843,11 @@ def setup_parser():
         "lle",
         "polynomial",
         "none",
+        "kernelpca",
+        "nmf",
+        "mca",
     ]:
-        msg = f"Invalid value supplied to '--embedding_type'. Supported options include: 'pca', 'tsne', 'mds', 'polynomial', 'lle', 'none', but got: {args.embedding_type}"
+        msg = f"Invalid value supplied to '--embedding_type'. Supported options include: 'pca', 'tsne', 'mds', 'mca', 'polynomial', 'lle', 'kernelpca', 'nmf', or 'none', but got: {args.embedding_type}"
         logger.error(msg)
         parser.error(msg)
 
@@ -658,7 +859,7 @@ def setup_parser():
 
     if args.embedding_type.lower() == "none":
         msg = "'--embedding_type' was set to 'none', which means no embedding will be performed. Did you intend to do this?"
-        logger.wanring(msg)
+        logger.warning(msg)
         warnings.warn(msg)
 
     if args.seed is not None and args.embedding_type == "polynomial":
@@ -685,6 +886,127 @@ def setup_parser():
     if args.force_no_weighting and args.force_weighted_opt:
         msg = "'force_no_weighting' and 'force_weighted_opt' cannot both be defined."
         logger.error(msg)
-        raise ValueError(msg)
+        parser.error(msg)
+
+    if args.min_colorscale < 0:
+        msg = f"'--min_colorscale' must be >= 0: {args.min_colorscale}"
+        logger.error(msg)
+        parser.error(msg)
+
+    if args.oversample_method not in [
+        "kmeans",
+        "optics",
+        "kerneldensity",
+        "choose",
+    ]:
+        msg = f"'--oversample_method' value must be one of 'kmeans', 'optics', 'kerneldensity', or 'choose', but got: {args.oversample_method}'"
+        logger.error(msg)
+        parser.error(msg)
+
+    if args.use_random_forest and args.use_gradient_boosting:
+        msg = "Cannot toggle both '--use_random_forest' and '--use_gradient_boosting' at the same time. Use one or the other."
+        logger.error(msg)
+        parser.error(msg)
+
+    if isinstance(args.max_depth, float):
+        if args.max_depth <= 0 or args.max_depth > 1.0:
+            msg = f"'max_depth' must be between 0 and 1 if supplied as type float: {args.max_depth}"
+            logger.error(msg)
+            parser.error(msg)
+    elif isinstance(args.max_depth, int):
+        if args.max_depth < 1:
+            msg = (
+                f"'max_depth' must be > 1 if type integer is supplied: {args.max_depth}"
+            )
+            logger.error(msg)
+            parser.error(msg)
+
+    if args.max_features is not None:
+        try:
+            float(args.max_features)
+        except TypeError:
+            if args.max_features not in ["sqrt", "log2"]:
+                msg = f"'--max_features' must be either 'sqrt' or 'log2' if of type string: {args.max_features}"
+                logger.error(msg)
+                parser.error(msg)
+
+    if args.max_depth is not None:
+        if isinstance(args.max_depth, float):
+            if args.max_depth <= 0 or args.max_depth > 1.0:
+                msg = f"'--max_depth' must be in interval (0, 1] if type is float: {args.max_depth}."
+                logger.error(msg)
+                parser.error(msg)
+
+    if args.filetype.startswith("."):
+        msg = f"'filetype' argument cannot start with a '.' character: {args.filetype}"
+        logger.error(msg)
+        parser.error(msg)
+
+    if isinstance(args.min_samples_leaf, float):
+        if args.min_samples_leaf <= 0 or args.min_samples_leaf > 1.0:
+            msg = f"'--min_samples_leaf' must be in interval (0, 1] if type is float: {args.min_samples_leaf}."
+            logger.error(msg)
+            parser.error(msg)
+    elif isinstance(args.min_samples_leaf, int):
+        if args.min_samples_leaf <= 0:
+            msg = f"'--min_samples_leaf' must be > 0 if type is integer: {args.min_samples_leaf}."
+            logger.error(msg)
+            parser.error(msg)
+    if isinstance(args.min_samples_split, float):
+        if args.min_samples_split <= 0 or args.min_samples_split > 1.0:
+            msg = f"'--min_samples_split' must be in interval (0, 1] if type is float: {args.min_samples_split}."
+            logger.error(msg)
+            parser.error(msg)
+    elif isinstance(args.min_samples_split, int):
+        if args.min_samples_split <= 0:
+            msg = f"'--min_samples_split' must be > 0 if type is integer: {args.min_samples_split}."
+            logger.error(msg)
+            parser.error(msg)
+    if args.max_samples is not None:
+        if isinstance(args.max_samples, float):
+            if args.max_samples <= 0 or args.max_samples > 1.0:
+                msg = f"'--max_samples' must be in interval (0, 1] if type is float: {args.max_samples}."
+                logger.error(msg)
+                parser.error(msg)
+        elif isinstance(args.max_samples, int):
+            if args.max_samples <= 0:
+                msg = f"'--max_samples' must be > 0 if type is integer: {args.max_samples}."
+                logger.error(msg)
+                parser.error(msg)
+
+    if args.gb_objective not in [
+        "reg:squarederror",
+        "reg:squaredlogerror",
+        "reg:absoluteerror",
+        "reg:quantileerror",
+        "reg:gamma",
+        "reg:tweedie",
+    ]:
+        msg = f"Invalid 'gb_objective' parameter provided. Supported options include: 'reg:squarederror', 'reg:squaredlogerror', 'reg:absoluteerror', 'reg:quantileerror', 'reg:gamma', or 'reg:tweedie', but got: {args.gb_objective}"
+        logger.error(msg)
+        parser.error(msg)
+
+    if args.gb_eval_metric not in [
+        "rmse",
+        "rmsle",
+        "mae",
+        "mape",
+        "mphe",
+        "gamma-nloglik",
+        "tweedie-nloglik",
+    ]:
+        msg = f"Invalid parameter provided to 'gb_eval_metric'. Supported options include: 'rmse', 'rmsle', 'mae', 'mape', 'mphe', 'gamma-nloglik', or 'tweedie-nloglik', but got: {args.gb_eval_metric}."
+        logger.error(msg)
+        parser.error(msg)
+
+    if args.gb_multi_strategy not in ["one_output_per_tree", "multi_output_tree"]:
+        msg = f"Invalid parameter provided to 'gb_multi_strategy'. Supported options include 'one_output_per_tree' or 'multi_output_tree', but got: {args.gb_multi_strategy}."
+        logger.error(msg)
+        parser.error(msg)
+
+    if args.gb_subsample > 1.0 or args.gb_subsample <= 0.0:
+        msg = f"Invalid value provided for 'gb_subsample'. Values must be > 0.0 and <= 1.0, but got: {args.gb_subsample}"
+        logger.error(msg)
+        parser.error(msg)
 
     return args

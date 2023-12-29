@@ -36,3 +36,5 @@ scratch_paper.py
 data/test_*
 real_test*
 geogenie_N1000*
+smote_debug_scatter.png
+launch.json

@@ -30,6 +30,9 @@ class GeoGeneticOutlierDetector:
         show_plots=False,
         debug=False,
         verbose=0,
+        fontsize=24,
+        filetype="png",
+        dpi=300,
     ):
         """Initialize GeoGeneticOutlierDetector.
 
@@ -63,7 +66,15 @@ class GeoGeneticOutlierDetector:
         self.buffer = buffer
         self.show_plots = show_plots
         self.logger = logging.getLogger(__name__)
-        self.plotting = PlotGenIE("cpu", output_dir, prefix)
+        self.plotting = PlotGenIE(
+            "cpu",
+            output_dir,
+            prefix,
+            show_plots=False,
+            fontsize=fontsize,
+            filetype=filetype,
+            dpi=dpi,
+        )
         self.verbose = verbose
 
     def calculate_dgeo(self, pred_geo_coords, geo_coords, scalar):
