@@ -1095,7 +1095,7 @@ class DataStructure:
 
         # Create DataLoader
         kwargs = {"batch_size": batch_size}
-        if args.use_weighted in ["sampler", "both"]:
+        if args.use_weighted in ["sampler", "both"] and not is_val:
             kwargs["sampler"] = weighted_sampler
         else:
             kwargs["shuffle"] = False if is_val else True
