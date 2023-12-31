@@ -31,10 +31,8 @@ for embedding_type in "${embedding_types[@]}"; do
                                             # Construct script filename
                                             script_name="./generated_scripts_reduced/run_${embedding_type}_${use_weighted}_${oversample_method}_${gb_use_lr_scheduler}_${force_weighted_opt}_${force_no_weighting}_${detect_outliers}_${use_synthetic_oversampling}_${use_kmeans}_${use_kde}_${use_gradient_boosting}.sh"
 
-                                            # Construct prefix and sqldb path
+                                            # Construct prefix
                                             prefix="config_${embedding_type}_${use_weighted}_${oversample_method}_${gb_use_lr_scheduler}_${force_weighted_opt}_${force_no_weighting}_${detect_outliers}_${use_synthetic_oversampling}_${use_kmeans}_${use_kde}_${use_gradient_boosting}"
-
-                                            sqldb_path="./final_analysis/${prefix}/database"
 
                                             # Start writing the script
                                             echo "#!/bin/bash" > "$script_name"
@@ -67,7 +65,6 @@ for embedding_type in "${embedding_types[@]}"; do
 
                                             echo "    --prefix $prefix \\" >> "$script_name"
 
-                                            echo "    --sqldb $sqldb_path \\" >> "$script_name"
 
                                             echo "    --output_dir final_analysis \\" >> "$script_name"
 
