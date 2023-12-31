@@ -540,17 +540,18 @@ class GeoGenIE:
         if objective_mode:
             return model, np.mean(val_losses)
         else:
-            self.data_structure.train_loader.dataset.features = torch.tensor(
-                features, dtype=torch.float32
-            )
-            self.data_structure.train_loader.dataset.labels = torch.tensor(
-                labels, dtype=torch.float32
-            )
-
-            if sample_weights is not None:
-                self.data_structure.train_loader.dataset.sample_weights = torch.tensor(
-                    sample_weights, dtype=torch.float32
+            if use_smote:
+                self.data_structure.train_loader.dataset.features = torch.tensor(
+                    features, dtype=torch.float32
                 )
+                self.data_structure.train_loader.dataset.labels = torch.tensor(
+                    labels, dtype=torch.float32
+                )
+
+                if sample_weights is not None:
+                    self.data_structure.train_loader.dataset.sample_weights = (
+                        torch.tensor(sample_weights, dtype=torch.float32)
+                    )
             return (
                 model,
                 train_losses,
