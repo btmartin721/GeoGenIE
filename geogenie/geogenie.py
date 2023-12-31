@@ -272,7 +272,6 @@ class GeoGenIE:
         rf_params_final = {k: v for k, v in rf_params.items() if k in params_l}
 
         if self.args.use_gradient_boosting:
-            print(rf_params_final)
             rf_params_final = {
                 k.replace("gb_", ""): v for k, v in rf_params_final.items()
             }
