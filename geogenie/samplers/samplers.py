@@ -736,7 +736,7 @@ class GeographicDensitySampler(Sampler):
         """
         self.logger = logging.getLogger(__name__)
 
-        if not any([use_kmeans, use_kde, focus_regions]):
+        if not use_kmeans and not use_kde and focus_regions is None:
             if objective_mode:
                 use_kde = True
             else:
