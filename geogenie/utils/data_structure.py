@@ -729,7 +729,6 @@ class DataStructure:
             fontsize=args.fontsize,
             filetype=args.filetype,
             dpi=args.plot_dpi,
-            verbose=args.verbose,
         )
 
         outliers = outlier_detector.composite_outlier_detection(
