@@ -533,7 +533,7 @@ def setup_parser():
         "--sqldb",
         type=str,
         default=None,
-        help="SQLite3 database directory. Default: ./database.",
+        help="SQLite3 database directory. Default: None (don't use database)",
     )
     output_group.add_argument(
         "--output_dir",
