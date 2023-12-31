@@ -306,9 +306,15 @@ class GeoGenIE:
             self.data_structure.train_loader.dataset.labels = torch.tensor(
                 labels, dtype=torch.float32
             )
-            self.data_structure.train_loader.dataset.sample_weights = torch.tensor(
-                sample_weights, dtype=torch.float32
-            )
+
+            if sample_weights is None:
+                self.data_structure.train_loader.dataset.sample_weights = torch.ones(
+                    len(labels), dtype=torch.float32
+                )
+            else:
+                self.data_structure.train_loader.dataset.sample_weights = torch.tensor(
+                    sample_weights, dtype=torch.float32
+                )
 
         if objective_mode:
             return rf, rmse
