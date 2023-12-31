@@ -42,3 +42,4 @@ final_analysis/
 config_template.yaml
 generated_scripts*
 config_mca*.yaml
+final_analysis_old/

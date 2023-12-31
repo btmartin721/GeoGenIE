@@ -61,7 +61,7 @@ for embedding_type in "${embedding_types[@]}"; do
 
                                             echo "    --n_iter 200 \\" >> "$script_name"
 
-                                            echo "    --n_jobs 32 \\" >> "$script_name"
+                                            echo "    --n_jobs 4 \\" >> "$script_name"
 
                                             echo "    --do_gridsearch \\" >> "$script_name"
 
