@@ -237,7 +237,9 @@ class GeoGeneticOutlierDetector:
         )
 
         r2 = calculate_r2_knn(predicted_gen_data, gen_coords)
-        self.logger.info(f"r-squared for genetic outlier detection: {r2}")
+
+        if self.verbose >= 1:
+            self.logger.info(f"r-squared for genetic outlier detection: {r2}")
 
         outliers, p_values, gamma_params = self.fit_gamma_mle(dg, sig_level)
         fn = path.join(self.output_dir, "plots", f"{self.prefix}_gamma_genetic.png")
@@ -281,7 +283,9 @@ class GeoGeneticOutlierDetector:
         dgeo = self.calculate_dgeo(predicted_geo_coords, geo_coords, scale_factor)
 
         r2 = calculate_r2_knn(predicted_geo_coords, geo_coords)
-        self.logger.info(f"r-squared for geographic outlier detection: {r2}")
+
+        if self.verbose >= 1:
+            self.logger.info(f"r-squared for geographic outlier detection: {r2}")
 
         outliers, p_values, gamma_params = self.fit_gamma_mle(dgeo, sig_level)
         fn = path.join(self.output_dir, "plots", f"{self.prefix}_gamma_geographic.png")
@@ -376,7 +380,8 @@ class GeoGeneticOutlierDetector:
         Returns:
             int: Optimal K value.
         """
-        self.logger.info("Finding optimal K for Nearest Neighbors...")
+        if self.verbose >= 1:
+            self.logger.info("Finding optimal K for Nearest Neighbors...")
 
         min_k, max_k = klim
         all_D = []
@@ -420,7 +425,10 @@ class GeoGeneticOutlierDetector:
 
             all_D.append(np.sum(D_statistic))
         optimal_k = min_k + np.argmin(all_D)  # Adjust index to actual K value
-        self.logger.info("Completed optimal K search.")
+
+        if self.verbose >= 1:
+            self.logger.info("Completed optimal K search.")
+
         return optimal_k
 
     def predict_coords_knn(self, coords, knn_distances, knn_indices, w_power):
@@ -965,7 +973,8 @@ class GeoGeneticOutlierDetector:
     def composite_outlier_detection(
         self, sig_level=0.05, maxk=50, min_nn_dist=1000, scale_factor=100, w_power=2
     ):
-        self.logger.info("Starting composite outlier detection...")
+        if self.verbose >= 1:
+            self.logger.info("Starting composite outlier detection...")
 
         dgen = self.genetic_data
         dgeo = self.geographic_data
@@ -984,7 +993,9 @@ class GeoGeneticOutlierDetector:
             min_nn_dist=min_nn_dist,
             scale_factor=scale_factor,
         )
-        self.logger.info("Outlier detection completed.")
+
+        if self.verbose >= 1:
+            self.logger.info("Outlier detection completed.")
         return outliers
 
     def compute_pairwise_p(self, distmat, gamma_params, k):

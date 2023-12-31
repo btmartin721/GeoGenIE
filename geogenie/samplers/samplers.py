@@ -37,6 +37,7 @@ def synthetic_resampling(
     args,
     method="kmeans",
     smote_neighbors=5,
+    verbose=0,
 ):
     """
     Performs synthetic resampling on the provided datasets using various binning methods and SMOTE (Synthetic Minority Over-sampling Technique).
@@ -132,7 +133,7 @@ def synthetic_resampling(
                 logger.warning(f"Single-sample bins found: {single_sample_bins}")
                 # Merge single-sample bins with nearest bin
                 bins = merge_single_sample_bins(
-                    single_sample_bins, distance_matrix, bins
+                    single_sample_bins, distance_matrix, bins, verbose=verbose
                 )
 
         else:
@@ -175,6 +176,7 @@ def synthetic_resampling(
             X_scaled,
             smote_neighbors,
             method,
+            labels,
         )
 
     return (
@@ -189,7 +191,9 @@ def synthetic_resampling(
     )
 
 
-def merge_single_sample_bins(single_sample_bins, distance_matrix, bin_indices):
+def merge_single_sample_bins(
+    single_sample_bins, distance_matrix, bin_indices, verbose=0
+):
     """
     Merge single-sample bins with the nearest bin.
 
@@ -197,6 +201,7 @@ def merge_single_sample_bins(single_sample_bins, distance_matrix, bin_indices):
         single_sample_bins (np.ndarray): Array of single-sample bin indices.
         distance_matrix (np.ndarray): Distance matrix between centroids.
         bin_indices (np.ndarray): Array of bin indices for each sample.
+        verbose (int): Verbosity setting (0=silent, 3=most verbose).
 
     Returns:
         np.ndarray: Updated array of bin indices.
@@ -207,7 +212,9 @@ def merge_single_sample_bins(single_sample_bins, distance_matrix, bin_indices):
         distances[single_bin] = np.inf
         nearest_bin = np.argmin(distances)
         updated_bin_indices[bin_indices == single_bin] = nearest_bin
-        logger.info(f"Merged single-sample bin {single_bin} into bin {nearest_bin}")
+
+        if verbose >= 1:
+            logger.info(f"Merged single-sample bin {single_bin} into bin {nearest_bin}")
     return updated_bin_indices
 
 
@@ -443,6 +450,7 @@ def run_binned_smote(
     X_scaled,
     smote_neighbors,
     method,
+    labels,
 ):
     """
     Runs SMOTEENN, and adjusts the number of neighbors for SMOTE based on the minimum number of samples in the least populous bin.
@@ -456,6 +464,7 @@ def run_binned_smote(
         X_scaled (np.array): Scaled feature array.
         smote_neighbors (int): Initial number of neighbors for SMOTE.
         method (str): The method used for SMOTE.
+        labels (np.ndarray or pd.DataFrame): Labels to use. Only used in specific circumstances.
 
     Returns:
         tuple: features_resampled, labels_resampled, sammple_weights_resampled, centroids_resampled, and bins_resampled
@@ -477,6 +486,12 @@ def run_binned_smote(
     enn = EditedNearestNeighbours(n_neighbors=smote_neighbors)
     smote = SMOTEENN(random_state=args.seed, smote=smt, enn=enn)
 
+    if X_scaled.shape[1] == len(feature_names):
+        if isinstance(X_scaled, np.ndarray):
+            X_scaled = np.hstack((X_scaled, labels))
+        else:
+            X_scaled = pd.concat([X_scaled, labels], axis=1)
+
     features_resampled, bins_resampled = smote.fit_resample(X_scaled, bins_filtered)
 
     if method != "kerneldensity":
@@ -491,16 +506,19 @@ def run_binned_smote(
             ssc.inverse_transform(features_resampled),
             columns=list(feature_names) + ["x", "y"],
         )
-    except ValueError:
-        if args.use_weighted in ["loss", "both"]:
+    except (ValueError, KeyError) as e:
+        if features_resampled.shape[1] == len(list(feature_names)) + 3:
             features_resampled = pd.DataFrame(
                 ssc.inverse_transform(features_resampled),
                 columns=list(feature_names) + ["x", "y"] + ["sample_weights"],
             )
             features_resampled.drop(["sample_weights"], axis=1, inplace=True)
-
+        elif features_resampled.shape[1] == len(list(feature_names)) + 2:
+            features_resampled = pd.DataFrame(
+                ssc.inverse_transform(features_resampled),
+                columns=list(feature_names) + ["x", "y"],
+            )
     labels_resampled = features_resampled[["x", "y"]]
-
     features_resampled.drop(labels=["x", "y"], axis=1, inplace=True)
     centroids_resampled = targets_resampled.copy()
 
@@ -701,6 +719,7 @@ class GeographicDensitySampler(Sampler):
         indices=None,
         objective_mode=False,
         normalize=False,
+        verbose=0,
     ):
         """
         Args:
@@ -736,6 +755,7 @@ class GeographicDensitySampler(Sampler):
         self.max_neighbors = max_neighbors
         self.objective_mode = objective_mode
         self.normalize = normalize
+        self.verbose = verbose
 
         if indices is None:
             self.indices = np.arange(data.shape[0])
@@ -866,12 +886,13 @@ class GeographicDensitySampler(Sampler):
 
         """
         if not self.objective_mode:
-            self.logger.info("Estimating sample weights...")
+            if self.verbose >= 1:
+                self.logger.info("Estimating sample weights...")
 
         weights = np.ones(len(self.data))
 
         if self.use_kmeans:
-            if not self.objective_mode:
+            if not self.objective_mode and self.verbose >= 1:
                 self.logger.info("Estimating sample weights with KMeans...")
             n_clusters = self.find_optimal_clusters()
             kmeans = KMeans(n_clusters=n_clusters, n_init="auto")
@@ -881,7 +902,7 @@ class GeographicDensitySampler(Sampler):
             mms = MinMaxScaler(feature_range=(1, 300))
             weights *= np.squeeze(mms.fit_transform(cluster_weights.reshape(-1, 1)))
         if self.use_kde:
-            if not self.objective_mode:
+            if not self.objective_mode and self.verbose >= 1:
                 self.logger.info("Estimating sample weights with Kernel Density...")
             adaptive_bandwidth = self.calculate_adaptive_bandwidth(
                 self.optimal_k_neighbors
@@ -909,7 +930,7 @@ class GeographicDensitySampler(Sampler):
                 )
                 weights[in_region] *= 2
 
-        if not self.objective_mode:
+        if not self.objective_mode and self.verbose >= 1:
             self.logger.info("Done estimating sample weights.")
 
         if self.normalize:

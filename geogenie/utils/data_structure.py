@@ -629,9 +629,10 @@ class DataStructure:
         self.X, self.y, self.X_pred, self.true_idx = self.extract_datasets()
 
         if args.detect_outliers:
-            self.logger.info(
-                f"{self.X.shape[0]} samples remaining after removing {len(all_outliers)} outliers."
-            )
+            if self.verbose >= 1:
+                self.logger.info(
+                    f"{self.X.shape[0]} samples remaining after removing {len(all_outliers)} outliers."
+                )
 
             self.plotting.plot_outliers(
                 self.mask, self.locs, args.shapefile_url, buffer=args.bbox_buffer
@@ -728,6 +729,7 @@ class DataStructure:
             fontsize=args.fontsize,
             filetype=args.filetype,
             dpi=args.plot_dpi,
+            verbose=args.verbose,
         )
 
         outliers = outlier_detector.composite_outlier_detection(
@@ -1084,7 +1086,11 @@ class DataStructure:
             self.samples_weight = torch.ones(y.shape[0], dtype=torch.float32)
         elif self.samples_weight is None:
             self.samples_weight = torch.ones(y.shape[0], dtype=torch.float32)
-        self.samples_weight_orig = self.samples_weight.copy()
+
+        if isinstance(self.samples_weight, torch.Tensor):
+            self.samples_weight_orig = self.samples_weight.numpy().copy()
+        else:
+            self.samples_weight_orig = self.samples_weight.copy()
 
         dataset = CustomDataset(X, y, sample_weights=self.samples_weight)
 
@@ -1127,6 +1133,7 @@ class DataStructure:
                 max_clusters=args.max_clusters,
                 max_neighbors=args.max_neighbors,
                 normalize=args.normalize_sample_weights,
+                verbose=args.verbose,
             )
 
             if args.verbose >= 1:

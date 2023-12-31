@@ -1022,7 +1022,7 @@ class GeoGenIE:
         )
 
         self.logger.info(
-            f"Spearman's Correlation Coefficient = {rho}, P-value = {spearman_p_value_x}"
+            f"Spearman's Correlation Coefficient = {rho}, P-value = {rho_p}"
         )
         self.logger.info(
             f"Spearman's Correlation Coefficient for Longitude = {spearman_corr_x}, P-value = {spearman_p_value_x}"
@@ -1220,6 +1220,7 @@ class GeoGenIE:
                 max_neighbors=best_params["max_neighbors"],
                 normalize=best_params["normalize_sample_weights"],
                 objective_mode=objective_mode,
+                verbose=self.args.verbose,
             )
 
             sample_weights = weighted_sampler.weights
@@ -1653,16 +1654,19 @@ class GeoGenIE:
                     )
                     self.data_structure.params = best_params
                     best_params.update(self.data_structure.params)
-                    self.logger.info(f"Best found parameters: {best_params}")
+
+                    if self.args.verbose >= 1:
+                        self.logger.info(f"Best found parameters: {best_params}")
 
             if self.args.load_best_params is not None:
                 best_params = self.load_best_params(self.args.load_best_params)
                 self.data_structure.params = best_params
                 best_params.update(self.data_structure.params)
 
-                self.logger.info(
-                    f"Best parameters loaded from parent directory {self.args.load_best_params}: {best_params}"
-                )
+                if self.args.vebose >= 1:
+                    self.logger.info(
+                        f"Best parameters loaded from parent directory {self.args.load_best_params}: {best_params}"
+                    )
 
             # Model Training
             if self.args.do_bootstrap:

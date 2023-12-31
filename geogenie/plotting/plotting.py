@@ -1122,6 +1122,7 @@ class PlotGenIE:
             use_kmeans=False,
             max_clusters=50,
             max_neighbors=50,
+            verbose=0,
         )
 
         x = sampler.density

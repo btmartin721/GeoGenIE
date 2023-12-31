@@ -604,7 +604,7 @@ def setup_parser():
     plotting_group.add_argument(
         "--n_contour_levels",
         type=validate_positive_int,
-        default=20,
+        default=25,
         help="Number of contour levels to use in the plot that interpolates the prediction error on a spatial map (i.e., Kriging plot). Increase the for a more continuous distribution of contours, decrease it to visualize more discrete contour levels. Default: 20.",
     )
     plotting_group.add_argument(
@@ -622,7 +622,7 @@ def setup_parser():
     plotting_group.add_argument(
         "--sample_point_scale",
         type=validate_positive_int,
-        default=3,
+        default=2,
         help="Scale factor for sample point size on Kriging plot. If the sample points are too large or do not appear, decrease or increase this value, respectively. Default: 3.",
     )
     plotting_group.add_argument(

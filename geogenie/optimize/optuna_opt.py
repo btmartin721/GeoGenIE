@@ -701,6 +701,9 @@ class Optimize:
             if self.verbose >= 1:
                 self.logger.info(f"Writing Optuna data to database: {storage_path}")
 
+        if self.verbose < 1:
+            optuna.logging.set_verbosity(optuna.logging.WARNING)
+
         study = create_study(
             direction="minimize",
             sampler=sampler,
@@ -749,7 +752,9 @@ class Optimize:
         """
         # Extract and print the best parameters
         best_params = best_trial.params
-        self.logger.info("Best trial parameters:", best_params)
+
+        if self.verbose >= 1:
+            self.logger.info("Best trial parameters:", best_params)
 
         fn = os.path.join(
             self.output_dir,

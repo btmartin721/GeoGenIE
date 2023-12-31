@@ -38,3 +38,7 @@ real_test*
 geogenie_N1000*
 smote_debug_scatter.png
 launch.json
+final_analysis/
+config_template.yaml
+generated_scripts*
+config_mca*.yaml
