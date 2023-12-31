@@ -567,6 +567,7 @@ class Optimize:
         elif self.args.use_synthetic_oversampling and self.args.oversample_method in [
             "kmeans",
             "optics",
+            "kerneldensity",
         ]:
             l2 = [self.args.oversample_method]
         else:
