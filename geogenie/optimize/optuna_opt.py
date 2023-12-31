@@ -177,8 +177,8 @@ class Optimize:
                 smote_neighbors,
             ) = self.set_rf_param_grid(trial, self.dataset.features.shape[0])
 
-            use_kmeans = True
-            use_kde = False
+            use_kmeans = False
+            use_kde = True
             w_power = 1.0
             max_clusters = 10
             max_neighbors = 50
@@ -193,6 +193,13 @@ class Optimize:
                 smote_method,
                 smote_neighbors,
             ) = self.set_gb_param_grid(trial, self.dataset.features.shape[0])
+
+            use_kmeans = False
+            use_kde = True
+            w_power = 1.0
+            max_clusters = 10
+            max_neighbors = 50
+            normalize = False
 
         else:
             # Optuna hyperparameters
@@ -531,10 +538,17 @@ class Optimize:
         lr_scheduler_patience = trial.suggest_int("lr_scheduler_patience", 10, 100)
         lr_scheduler_factor = trial.suggest_float("lr_scheduler_factor", 0.1, 1.0)
         width_factor = trial.suggest_float("factor", 0.2, 1.0)
-        use_kmeans = trial.suggest_categorical("use_kmeans", [False, True])
-        use_kde = trial.suggest_categorical("use_kde", [False, True])
-        w_power = trial.suggest_int("w_power", 1, 10)
-        normalize = trial.suggest_categorical("normalize_sample_weights", [False, True])
+
+        use_kde = True
+        use_kmeans = False
+        w_power = 1.0
+        normalize = False
+
+        # use_kmeans = trial.suggest_categorical("use_kmeans", [False, True])
+        # use_kde = trial.suggest_categorical("use_kde", [False, True])
+        # w_power = trial.suggest_int("w_power", 1, 10)
+
+        # normalize = trial.suggest_categorical("normalize_sample_weights", [False, True])
 
         if self.args.force_no_weighting:
             l = ["none"]
@@ -549,10 +563,8 @@ class Optimize:
             self.args.use_synthetic_oversampling
             and self.args.oversample_method == "choose"
         ):
-            l2 = ["morton-balance", "morton-extreme", "kmeans", "optics"]
+            l2 = ["kmeans", "optics", "kerneldensity"]
         elif self.args.use_synthetic_oversampling and self.args.oversample_method in [
-            "morton-balance",
-            "morton-extreme",
             "kmeans",
             "optics",
         ]:
