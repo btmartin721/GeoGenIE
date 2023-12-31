@@ -451,7 +451,7 @@ def setup_parser():
     )
     geo_sampler_group.add_argument(
         "--use_kde",
-        action="store_false",
+        action="store_true",
         default=True,
         help="Use Kernel Density Estimation in the Weighted Geographic Density Sampler. Default: True.",
     )
@@ -532,7 +532,7 @@ def setup_parser():
     output_group.add_argument(
         "--sqldb",
         type=str,
-        default="./database",
+        default=None,
         help="SQLite3 database directory. Default: ./database.",
     )
     output_group.add_argument(
