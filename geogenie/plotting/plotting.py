@@ -204,7 +204,11 @@ class PlotGenIE:
         """
         df = df.copy()
         df["bins"] = bins
-        df["size"] = df["sample_weights"].astype(int)
+
+        try:
+            df["size"] = df["sample_weights"].astype(int)
+        except (KeyError, TypeError):
+            df["size"] = 1
 
         self._plot_map(df[["x", "y"]].to_numpy(), url, self.output_dir, buffer, ax)
 
