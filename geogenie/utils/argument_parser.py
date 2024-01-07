@@ -223,6 +223,12 @@ def setup_parser():
         help="Number of components to use with 'pca' or 'tsne' embeddings. If not specified, then 'n_components' will be optimized if using PCA, otherwise a value is required.'. Default: Search for optimal 'n_components.' parameter. Default: Search optimal components.",
     )
     embed_group.add_argument(
+        "--embedding_sensitivity",
+        type=validate_positive_float,
+        default=1.0,
+        help="Sensitivity setting for selecting optimal number of components with 'mca' and 'pca'. Set lower than 0 if you want fewer components, and higher than 0 for more components. Default: 1.0.",
+    )
+    embed_group.add_argument(
         "--tsne_perplexity",
         type=validate_positive_int,
         default=30,
@@ -310,7 +316,7 @@ def setup_parser():
         help="L2 regularization weight. Default: 0 (none).",
     )
     training_group.add_argument(
-        "--patience",
+        "--early_stop_patience",
         type=validate_positive_int,
         default=48,
         help="Epochs to wait before reducing learning rate after no improvement. Default: 100.",
@@ -358,24 +364,6 @@ def setup_parser():
         help="Iterations for parameter optimization. Used with 'do_gridsearch'. Optuna recommends between 100-1000. Default: 100.",
     )
     training_group.add_argument(
-        "--alpha",
-        default=0.5,
-        type=validate_positive_float,
-        help="Factor to scale havesine loss by.",
-    )
-    training_group.add_argument(
-        "--beta",
-        default=0.5,
-        type=validate_positive_float,
-        help="Factor to scale mean and StdDev by in loss function.",
-    )
-    training_group.add_argument(
-        "--gamma",
-        default=0.5,
-        type=validate_positive_float,
-        help="Factor to scale r-squared by in loss function.",
-    )
-    training_group.add_argument(
         "--lr_scheduler_patience",
         default=8,
         type=validate_positive_int,
@@ -398,21 +386,6 @@ def setup_parser():
         action="store_true",
         help="If true, does gradient clipping to reduce overfitting.",
     )
-    training_group.add_argument(
-        "--composite_loss",
-        action="store_true",
-        help="Whether to use composite loss (if toggled) or Haversine Error. Default: Havesine error.",
-    )
-    training_group.add_argument(
-        "--force_weighted_opt",
-        action="store_true",
-        help="Do not allow non-weighted sampling in parameter optimization. Default: allow wegihted sampling.",
-    )
-    training_group.add_argument(
-        "--force_no_weighting",
-        action="store_true",
-        help="If True, does not use sample weighting.",
-    )
 
     # Geographic Density Sampler Arguments
     geo_sampler_group = parser.add_argument_group("Geographic Density Sampler")
@@ -422,15 +395,10 @@ def setup_parser():
         help="Use inverse-weighted probability sampling to calculate sample weights based on sampling density; use the sample weights in the loss function, or both. Valid options include: 'sampler', 'loss', 'both', or 'none'. Default: 'none'.",
     )
     geo_sampler_group.add_argument(
-        "--use_synthetic_oversampling",
-        action="store_true",
-        help="Use synthetic oversampling of low-density regions to get better predictions.",
-    )
-    geo_sampler_group.add_argument(
         "--oversample_method",
         type=validate_lower_str,
-        default="kerneldensity",
-        help="Synthetic oversampling/ undersampling method to use. Valid options include 'kmeans', 'optics', 'kerneldensity', or 'choose'. Default: 'morton-balance'.",
+        default="none",
+        help="Synthetic oversampling/ undersampling method to use. Valid options include 'kmeans', 'optics', 'kerneldensity', or 'none'. Default: 'none' (do not use over-sampling).",
     )
     geo_sampler_group.add_argument(
         "--oversample_neighbors",
@@ -441,7 +409,7 @@ def setup_parser():
     geo_sampler_group.add_argument(
         "--n_bins",
         type=validate_positive_int,
-        default=10,
+        default=8,
         help="Number of bins to use with synthetic resampling.",
     )
     geo_sampler_group.add_argument(
@@ -481,7 +449,7 @@ def setup_parser():
     geo_sampler_group.add_argument(
         "--normalize_sample_weights",
         action="store_true",
-        help="Whether to normalize density-based sample weights. Default: Do not normalize.",
+        help="Whether to normalize density-based sample weights. Default: False (Do not normalize).",
     )
 
     outlier_detection_group = parser.add_argument_group(
@@ -883,11 +851,6 @@ def setup_parser():
         logger.error(msg)
         parser.error(msg)
 
-    if args.force_no_weighting and args.force_weighted_opt:
-        msg = "'force_no_weighting' and 'force_weighted_opt' cannot both be defined."
-        logger.error(msg)
-        parser.error(msg)
-
     if args.min_colorscale < 0:
         msg = f"'--min_colorscale' must be >= 0: {args.min_colorscale}"
         logger.error(msg)
@@ -897,9 +860,9 @@ def setup_parser():
         "kmeans",
         "optics",
         "kerneldensity",
-        "choose",
+        "none",
     ]:
-        msg = f"'--oversample_method' value must be one of 'kmeans', 'optics', 'kerneldensity', or 'choose', but got: {args.oversample_method}'"
+        msg = f"'--oversample_method' value must be one of 'kmeans', 'optics', 'kerneldensity', or 'none', but got: {args.oversample_method}'"
         logger.error(msg)
         parser.error(msg)
 
