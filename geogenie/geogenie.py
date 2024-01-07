@@ -1,8 +1,10 @@
+import csv
 import json
 import logging
 import os
 import time
 import traceback
+from functools import wraps
 from pathlib import Path
 
 import numpy as np
@@ -12,9 +14,9 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import xgboost as xgb
-from scipy.stats import spearmanr, pearsonr
+from scipy.stats import pearsonr, spearmanr
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import mean_squared_error
+from sklearn.metrics import mean_squared_error, median_absolute_error
 from torch.utils.data import DataLoader
 
 from geogenie.models.models import MLPRegressor
@@ -24,11 +26,53 @@ from geogenie.plotting.plotting import PlotGenIE
 from geogenie.samplers.samplers import GeographicDensitySampler, synthetic_resampling
 from geogenie.utils.callbacks import EarlyStopping
 from geogenie.utils.data_structure import DataStructure
-from geogenie.utils.loss import WeightedRMSELoss
+from geogenie.utils.loss import euclidean_distance_loss
 from geogenie.utils.scorers import calculate_rmse, haversine_distances_agg, kstest
 from geogenie.utils.utils import CustomDataset, geo_coords_is_valid, validate_is_numpy
 
 os.environ["TQDM_DISABLE"] = "1"
+
+execution_times = []
+
+
+def timer(func):
+    """
+    Decorator that measures and stores the execution time of a function.
+
+    Args:
+        func (Callable): The function to be wrapped by the timer.
+
+    Returns:
+        Callable: The wrapped function with timing functionality.
+    """
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        end_time = time.time()
+        execution_time = end_time - start_time
+        execution_times.append((func.__name__, execution_time))
+        return result
+
+    return wrapper
+
+
+def save_execution_times(filename):
+    """
+    Appends the execution times to a CSV file. If the file doesn't exist, it creates one.
+
+    Args:
+        filename (str): The name of the file where data will be saved.
+    """
+    with open(filename, mode="a", newline="") as f:
+        writer = csv.writer(f)
+        # Check if the file is empty to decide whether to write headers
+        f.seek(0, 2)  # Move to the end of the file
+        if f.tell() == 0:  # Check if file is empty
+            # Write headers only if file is empty
+            writer.writerow(["Function Name", "Execution Time"])
+        writer.writerows(execution_times)
 
 
 class GeoGenIE:
@@ -128,35 +172,16 @@ class GeoGenIE:
         if self.args.verbose >= 1:
             self.logger.info(f"Model saved to {filename}")
 
-    def train_rf(
-        self,
-        train_loader,
-        val_loader,
-        rf_params,
-        *args,
-        objective_mode=False,
-        n_bins=10,
-        use_smote=False,
-        smote_method=None,
-        smote_neighbors=5,
-        **kwargs,
-    ):
+    @timer
+    def train_rf(self, clf_params, objective_mode=False):
         """
         Trains a Random Forest or Gradient Boosting model using the specified parameters and data loaders.
 
         The method supports data augmentation using SMOTE (Synthetic Minority Over-sampling Technique) and evaluates the model's performance using Root Mean Squared Error (RMSE).
 
         Args:
-            train_loader (DataLoader): DataLoader for the training dataset.
-            val_loader (DataLoader): DataLoader for the validation dataset.
-            rf_params (dict): Parameters for Random Forest or Gradient Boosting models.
-            *args: Additional arguments.
+            clf_params (dict): Parameters for Random Forest or Gradient Boosting models.
             objective_mode (bool, optional): If True, the method is used for optimization objectives. Defaults to False.
-            n_bins (int, optional): Number of bins for resampling. Defaults to 10.
-            use_smote (bool, optional): Flag to indicate the use of SMOTE for data augmentation. Defaults to False.
-            smote_method (str, optional): Method for SMOTE. Defaults to None.
-            smote_neighbors (int, optional): Number of nearest neighbors for SMOTE. Defaults to 5.
-            **kwargs: Additional keyword arguments.
 
         Returns:
             RandomForestRegressor or XGBRegressor: The trained model.
@@ -171,8 +196,15 @@ class GeoGenIE:
         if self.args.verbose >= 2:
             self.logger.info("\n\n")
 
+        X_train = self.data_structure.data["X_train"]
+        y_train = self.data_structure.data["y_train"]
+        sample_weights = self.data_structure.samples_weight
+
+        if sample_weights is None:
+            sample_weights = np.ones((len(X_train)))
+
         centroids = None
-        if use_smote:
+        if self.args.oversample_method.lower() != "none":
             (
                 features,
                 labels,
@@ -183,42 +215,48 @@ class GeoGenIE:
                 centroids_orig,
                 bins_resampled,
             ) = synthetic_resampling(
-                train_loader.dataset.features,
-                train_loader.dataset.labels,
-                train_loader.dataset.sample_weights,
-                n_bins,
+                X_train,
+                y_train,
+                sample_weights,
+                self.args.n_bins,
                 self.args,
-                method=smote_method,
-                smote_neighbors=smote_neighbors,
+                method=self.args.oversample_method,
+                smote_neighbors=self.args.oversample_neighbors,
             )
 
             if features is None or labels is None:
                 msg = "Synthetic data augmentation failed during optimization. Pruning trial."
                 self.logger.warning(msg)
                 if objective_mode:
-                    self.logger.warning("")
                     return None
                 else:
                     msg = "Synthetic data augmentation failed. Try adjusting the parameters supplied to SMOTE or SMOTER."
                     self.logger.error(msg)
                     raise ValueError(msg)
 
-            if not objective_mode:
-                self.visualize_oversampling(
-                    features, labels, sample_weights, df, bins, bins_resampled
-                )
+            # if not objective_mode:
+            #     self.visualize_oversampling(
+            #         features,
+            #         labels,
+            #         sample_weights,
+            #         df,
+            #         bins_resampled,
+            #     )
         else:
-            features = train_loader.dataset.features
-            labels = train_loader.dataset.labels
-            sample_weights = train_loader.dataset.sample_weights
+            features = X_train.copy()
+            labels = y_train.copy()
+
+            if isinstance(sample_weights, torch.Tensor):
+                sample_weights = sample_weights.numpy()
+            sample_weights = sample_weights.copy()
 
         if self.args.use_gradient_boosting:
             X_train_val = self.data_structure.data["X_train_val"]
             y_train_val = self.data_structure.data["y_train_val"]
+            X_val = self.data_structure.data["X_val"]
+            y_val = self.data_structure.data["y_val"]
 
-        X_val = val_loader.dataset.features
-        y_val = val_loader.dataset.labels
-        sample_weights_val = val_loader.dataset.sample_weights
+        sample_weights_val = np.ones((X_val.shape[0]))
 
         features, labels, sample_weights = validate_is_numpy(
             features, labels, sample_weights
@@ -227,77 +265,49 @@ class GeoGenIE:
             X_val, y_val, sample_weights_val
         )
 
-        if self.args.use_random_forest:
-            params_l = [
-                "n_estimators",
-                "criterion",
-                "max_depth",
-                "min_samples_split",
-                "min_samples_leaf",
-                "max_features",
-                "bootstrap",
-                "oob_score",
-                "max_samples",
-            ]
-        elif self.args.use_gradient_boosting:
-            callbacks = None
-            if not objective_mode:
-                callbacks = None
-                if rf_params["gb_use_lr_scheduler"]:
-                    learning_rates = np.linspace(
-                        rf_params["learning_rate"],
-                        0.01,
-                        rf_params["gb_n_estimators"],
-                        endpoint=True,
-                    )
-                    lrs = xgb.callback.LearningRateScheduler(learning_rates.tolist())
-                    callbacks = [lrs]
-            params_l = [
-                "gb_n_estimators",
-                "gb_learning_rate",
-                "gb_subsample",
-                "gb_max_depth",
-                "gb_min_child_weight",
-                "gb_colsample_bytree",
-                "gb_max_delta_step",
-                "gb_max_leaves",
-                "gb_reg_alpha",
-                "gb_reg_lambda",
-                "gb_gamma",
-                "gb_multi_strategy",
-                "gb_objective",
-                "gb_early_stopping_rounds",
-            ]
-
-        rf_params_final = {k: v for k, v in rf_params.items() if k in params_l}
-
         if self.args.use_gradient_boosting:
-            rf_params_final = {
-                k.replace("gb_", ""): v for k, v in rf_params_final.items()
-            }
+            callbacks = None
+            clf_params["use_lr_scheduler"] = self.args.gb_use_lr_scheduler
+            if clf_params["use_lr_scheduler"]:
+                learning_rates = np.linspace(
+                    clf_params["learning_rate"],
+                    0.01,
+                    self.args.gb_n_estimators,
+                    endpoint=True,
+                )
+                lrs = xgb.callback.LearningRateScheduler(learning_rates.tolist())
+                callbacks = [lrs]
 
-        rf = (
-            RandomForestRegressor(**rf_params_final)
+        if "n_estimators" in clf_params:
+            n_estimators = clf_params.pop("n_estimators")
+        else:
+            n_estimators = self.args.gb_n_estimators
+
+        clf = (
+            RandomForestRegressor(**clf_params)
             if self.args.use_random_forest
-            else xgb.XGBRegressor(**rf_params_final, callbacks=callbacks, verbosity=0)
+            else xgb.XGBRegressor(
+                n_estimators=n_estimators,
+                multi_strategy=self.args.gb_multi_strategy,
+                **clf_params,
+                callbacks=callbacks,
+                verbosity=0,
+            )
         )
 
         if self.args.use_gradient_boosting:
-            rf.fit(
+            clf.fit(
                 features,
                 labels,
                 eval_metric=self.args.gb_eval_metric,
-                eval_set=[(features, labels), (X_train_val, y_train_val)],
+                eval_set=[(X_train, y_train), (X_train_val, y_train_val)],
                 sample_weight=sample_weights,
                 verbose=0,
             )
-
-            evals_result = rf.evals_result()
-            rmse = evals_result["validation_0"][self.args.gb_eval_metric]
         else:
-            rf.fit(features, labels, sample_weight=sample_weights)
-        y_pred = rf.predict(X_val)
-        rmse = mean_squared_error(y_val, y_pred, squared=False)
+            clf.fit(features, labels, sample_weight=sample_weights)
+        y_pred = clf.predict(X_val)
+        med_abs_err = median_absolute_error(y_val, y_pred)
 
         if not objective_mode:
             self.data_structure.train_loader.dataset.features = torch.tensor(
@@ -317,12 +327,12 @@ class GeoGenIE:
                 )
 
         if objective_mode:
-            return rf, rmse
+            return clf, med_abs_err
         else:
-            return rf, None, rmse, None, None, None, centroids
+            return clf, None, med_abs_err, None, None, None, centroids
 
     def visualize_oversampling(
-        self, features, labels, sample_weights, df, bins, bins_resampled
+        self, features, labels, sample_weights, df, bins_resampled
     ):
         """
         Visualizes the effect of SMOTE (Synthetic Minority Over-sampling Technique) on the dataset.
@@ -334,7 +344,6 @@ class GeoGenIE:
             labels (np.array or pandas.DataFrame): The label set, expected to contain 'x' and 'y' coordinates.
             sample_weights (np.array): Array of sample weights.
             df (pandas.DataFrame): Original DataFrame before applying SMOTE.
-            bins (array-like): Array of bin labels for the original data.
             bins_resampled (array-like): Array of bin labels for the data after applying SMOTE.
 
         Notes:
@@ -345,6 +354,10 @@ class GeoGenIE:
         features, labels, sample_weights = validate_is_numpy(
             features, labels, sample_weights
         )
+
+        labels = self.data_structure.norm.inverse_transform(labels)
+        geo_coords_is_valid(labels)
+
         dfX = pd.DataFrame(features)
         dfy = pd.DataFrame(labels, columns=["x", "y"])
         dfX["sample_weights"] = sample_weights
@@ -354,12 +367,13 @@ class GeoGenIE:
             df_smote,
             bins_resampled,
             df,
-            bins,
+            self.args.n_bins,
             self.args.shapefile_url,
             buffer=self.args.bbox_buffer,
             marker_scale_factor=self.args.sample_point_scale,
         )
 
+    @timer
     def train_model(
         self,
         train_loader,
@@ -367,16 +381,8 @@ class GeoGenIE:
         model,
         criterion,
         optimizer,
-        trial,
-        lr_scheduler_factor=0.5,
-        lr_scheduler_patience=8,
+        trial=None,
         objective_mode=False,
-        verbose=False,
-        grad_clip=False,
-        use_smote=False,
-        n_bins=10,
-        smote_method=None,
-        smote_neighbors=5,
     ):
         """
         Train the PyTorch model with given parameters.
@@ -385,18 +391,9 @@ class GeoGenIE:
             train_loader (DataLoader): DataLoader for the training dataset.
             val_loader (DataLoader): DataLoader for the validation dataset.
             model (nn.Module): PyTorch model to be trained.
-            trial (optuna.Trial): Optuna trial object, if applicable.
-            criterion: Loss function.
             optimizer: Optimizer.
-            lr_scheduler_factor (float): Factor by which the learning rate will be reduced. Defaults to 0.5.
-            lr_scheduler_patience (int): Number of epochs with no improvement after which learning rate will be reduced. Defaults to 8.
+            trial (optuna.Trial): Current Optuna trial. Defaults to None.
             objective_mode (bool): Whether to return just the model for Optuna's objective function. Defaults to False.
-            verbose (bool): Verbosity setting.
-            grad_clip (bool): If True, does gradient clipping to mitigate vanishing gradient problem. Defaults to False.
-            use_smote (bool): Whether to use over-sampling on minority classes. Defaults to False.
-            n_bins (int): Number of bins to use for synthetic oversampling. Defaults to 10.
-            smote_method (str): Method to use for SMOTE. Defaults to None (no SMOTE).
-            smote_neighbors (int): Number of K-nearest neighbors to use with SMOTE.
 
         Returns:
             Model and training statistics, or just the model if in objective mode.
@@ -404,17 +401,17 @@ class GeoGenIE:
         early_stopping = EarlyStopping(
             output_dir=self.args.output_dir,
             prefix=self.args.prefix,
-            patience=self.args.patience,
-            verbose=verbose >= 2,
+            patience=self.args.early_stop_patience,
+            verbose=self.args.verbose >= 2,
             delta=0,
         )
 
         lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer,
             mode="min",
-            factor=lr_scheduler_factor,
-            patience=lr_scheduler_patience,
-            verbose=verbose >= 2,
+            factor=self.args.lr_scheduler_factor,
+            patience=self.args.lr_scheduler_patience,
+            verbose=self.args.verbose >= 2,
         )
 
         train_losses, val_losses, epoch_times = [], [], []
@@ -423,11 +420,11 @@ class GeoGenIE:
 
         epochs = self.args.max_epochs
 
-        if verbose >= 2:
+        if self.args.verbose >= 2:
             self.logger.info("\n\n")
 
         centroids = None
-        if use_smote:
+        if self.args.oversample_method.lower() != "none":
             (
                 features,
                 labels,
@@ -441,27 +438,30 @@ class GeoGenIE:
                 train_loader.dataset.features,
                 train_loader.dataset.labels,
                 train_loader.dataset.sample_weights,
-                n_bins,
+                self.args.n_bins,
                 self.args,
-                method=smote_method,
-                smote_neighbors=smote_neighbors,
+                method=self.args.oversample_method,
+                smote_neighbors=self.args.oversample_neighbors,
             )
 
             if features is None or labels is None:
-                msg = "Synthetic data augmentation failed during optimization. Pruning trial."
-                self.logger.warning(msg)
                 if objective_mode:
-                    self.logger.warning("")
                     return None
                 else:
                     msg = "Synthetic data augmentation failed. Try adjusting the parameters supplied to SMOTE or SMOTER."
                     self.logger.error(msg)
                     raise ValueError(msg)
 
-            if not objective_mode and sample_weights is not None:
-                self.visualize_oversampling(
-                    features, labels, sample_weights, df, bins, bins_resampled
-                )
+            if not objective_mode:
+                if sample_weights is None:
+                    sample_weights = np.ones((len(features),))
+                # self.visualize_oversampling(
+                #     features,
+                #     labels,
+                #     sample_weights,
+                #     df,
+                #     bins_resampled,
+                # )
 
             train_dataset = CustomDataset(
                 features, labels, sample_weights=sample_weights
@@ -476,22 +476,54 @@ class GeoGenIE:
             if sample_weights is None or np.all(sw == 1.0):
                 kwargs["shuffle"] = True
             else:
-                kwargs["sampler"] = train_loader.sampler
+                if self.args.use_weighted in ["sampler", "both"]:
+                    weighted_sampler = GeographicDensitySampler(
+                        pd.DataFrame(labels, columns=["x", "y"]),
+                        use_kde=self.args.use_kde,
+                        use_kmeans=self.args.use_kmeans,
+                        w_power=self.args.w_power,
+                        max_clusters=self.args.max_clusters,
+                        max_neighbors=self.args.max_neighbors,
+                        objective_mode=objective_mode,
+                        normalize=self.args.normalize_sample_weights,
+                    )
+
+                    kwargs["sampler"] = weighted_sampler
             train_loader = DataLoader(train_dataset, **kwargs)
+
+            if (
+                self.args.oversample_method.lower() != "none"
+                and self.args.use_weighted in ["loss", "both"]
+                and sample_weights is not None
+            ):
+                train_loader.dataset.sample_weights = torch.tensor(
+                    sample_weights, dtype=torch.float32
+                )
 
         for epoch in range(epochs):
             try:
                 # Training
                 start_time, avg_train_loss = self.train_step(
-                    train_loader, model, criterion, optimizer, grad_clip
+                    train_loader,
+                    model,
+                    criterion,
+                    optimizer,
+                    self.args.grad_clip,
+                    objective_mode,
                 )
+                if avg_train_loss is None:
+                    # If errored out, then start_time will be string containing
+                    # exception.
+                    self.logger.warning(
+                        f"Model training failed at epoch {epoch}: {start_time}"
+                    )
+                    return None, None
                 train_losses.append(avg_train_loss)
-
                 # Validation
                 avg_val_loss = self.test_step(val_loader, model, criterion)
                 val_losses.append(avg_val_loss)
 
-                if verbose >= 2:
+                if self.args.verbose >= 2:
                     self.logger.info(
                         f"Epoch {epoch+1}/{epochs} - "
                         f"Train Loss: {avg_train_loss:.4f} - "
@@ -503,7 +535,7 @@ class GeoGenIE:
                 epoch_times.append(epoch_duration)
 
                 # Logging
-                if verbose >= 2 and epoch % (rolling_window_size * 2) == 0:
+                if self.args.verbose >= 2 and epoch % (rolling_window_size * 2) == 0:
                     self.logger.info(
                         f"Current model train time ({epoch}/{epochs}): "
                         f"{total_time:.2f}s, - "
@@ -516,7 +548,7 @@ class GeoGenIE:
                 lr_scheduler.step(avg_val_loss)
 
                 if early_stopping.early_stop:
-                    if verbose >= 2:
+                    if self.args.verbose >= 2:
                         self.logger.info("Early stopping triggered.")
                     break
 
@@ -545,7 +577,7 @@ class GeoGenIE:
         if objective_mode:
             return model, np.mean(val_losses)
         else:
-            if use_smote:
+            if self.args.oversample_method.lower() != "none":
                 self.data_structure.train_loader.dataset.features = torch.tensor(
                     features, dtype=torch.float32
                 )
@@ -557,6 +589,10 @@ class GeoGenIE:
                     self.data_structure.train_loader.dataset.sample_weights = (
                         torch.tensor(sample_weights, dtype=torch.float32)
                     )
+                else:
+                    self.data_structure.train_loader.dataset.sample_weights = (
+                        torch.ones(sample_weights, dtype=torch.float32)
+                    )
             return (
                 model,
                 train_losses,
@@ -567,7 +603,9 @@ class GeoGenIE:
                 centroids,
             )
 
-    def train_step(self, train_loader, model, criterion, optimizer, grad_clip):
+    def train_step(
+        self, train_loader, model, criterion, optimizer, grad_clip, objective_mode
+    ):
         """
         Executes a single training step (epoch) for the given model using the provided data loader, loss function, and optimizer.
 
@@ -577,6 +615,7 @@ class GeoGenIE:
             criterion (function): The loss function used for training.
             optimizer (torch.optim.Optimizer): Optimizer used for model parameter updates.
             grad_clip (bool): Flag indicating whether gradient clipping should be applied.
+            objective_mode (bool): Whether using objective mode.
 
         Returns:
             tuple: A tuple containing:
@@ -592,29 +631,35 @@ class GeoGenIE:
         model.train()
         total_loss = 0.0
 
-        for batch in train_loader:
-            if len(batch) == 3:
-                data, targets, sample_weight = batch
+        try:
+            for batch in train_loader:
+                if len(batch) == 3:
+                    data, targets, sample_weight = batch
+                else:
+                    data, targets = batch
+
+                data = data.to(model.device)
+                targets = targets.to(model.device)
+
+                if sample_weight is not None:
+                    sample_weight = sample_weight.to(model.device)
+
+                optimizer.zero_grad()
+                outputs = model(data)
+                loss = criterion(outputs, targets, sample_weight=sample_weight)
+                loss.backward()
+
+                if grad_clip:
+                    # Gradient clipping.
+                    nn.utils.clip_grad_norm_(model.parameters(), 10.0)
+                optimizer.step()
+                total_loss += loss.item()
+            avg_train_loss = total_loss / len(train_loader)
+        except Exception as e:
+            if objective_mode:
+                return str(e), None
             else:
-                data, targets = batch
-
-            data = data.to(model.device)
-            targets = targets.to(model.device)
-
-            if sample_weight is not None:
-                sample_weight = sample_weight.to(model.device)
-
-            optimizer.zero_grad()
-            outputs = model(data)
-            loss = criterion(outputs, targets, sample_weight=sample_weight)
-            loss.backward()
-
-            if grad_clip:
-                # Gradient clipping.
-                nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-            optimizer.step()
-            total_loss += loss.item()
-        avg_train_loss = total_loss / len(train_loader)
+                raise e
         return start_time, avg_train_loss
 
     def test_step(self, val_loader, model, criterion):
@@ -1146,16 +1191,8 @@ class GeoGenIE:
                     model,
                     criterion,
                     optimizer,
-                    None,
-                    best_params["lr_scheduler_factor"],
-                    best_params["lr_scheduler_patience"],
+                    trial=None,
                     objective_mode=False,
-                    verbose=self.args.verbose,
-                    grad_clip=best_params["grad_clip"],
-                    use_smote=self.args.use_synthetic_oversampling,
-                    n_bins=best_params["n_bins"],
-                    smote_method=best_params["oversample_method"],
-                    smote_neighbors=best_params["oversample_neighbors"],
                 )
 
             else:
@@ -1169,16 +1206,7 @@ class GeoGenIE:
                     ___,
                     ____,
                     centroids,
-                ) = self.train_rf(
-                    train_loader,
-                    val_loader,
-                    best_params,
-                    objective_mode=False,
-                    n_bins=best_params["n_bins"],
-                    use_smote=self.args.use_synthetic_oversampling,
-                    smote_method=best_params["oversample_method"],
-                    smote_neighbors=best_params["oversample_neighbors"],
-                )
+                ) = self.train_rf(best_params, objective_mode=False)
 
                 end_time = time.time()
                 total_train_time = end_time - start_time
@@ -1210,7 +1238,7 @@ class GeoGenIE:
 
         # Define the criterion and optimizer
         optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=l2)
-        criterion = WeightedRMSELoss()
+        criterion = euclidean_distance_loss
         return criterion, optimizer
 
     def get_sample_weights(self, train_loader, best_params):
@@ -1258,7 +1286,9 @@ class GeoGenIE:
             train_loader = DataLoader(train_dataset, **kwargs)
 
             self.plotting.plot_geographical_heatmap(
-                train_loader.dataset.labels.numpy(),
+                self.data_structure.norm.inverse_transform(
+                    train_loader.dataset.labels.numpy()
+                ),
                 sample_weights,
                 self.args.shapefile_url,
                 buffer=self.args.bbox_buffer,
@@ -1268,7 +1298,9 @@ class GeoGenIE:
                 sample_weights, title="Sample Weight Distribution"
             )
             self.plotting.plot_weighted_scatter(
-                train_loader.dataset.labels.numpy(),
+                self.data_structure.norm.inverse_transform(
+                    train_loader.dataset.labels.numpy()
+                ),
                 sample_weights,
                 self.args.shapefile_url,
                 buffer=self.args.bbox_buffer,
@@ -1339,19 +1371,9 @@ class GeoGenIE:
             self.data_structure.samples_weight,
             self.data_structure.weighted_sampler,
             self.device,
-            self.args.max_epochs,
-            self.args.patience,
-            self.args.prefix,
-            self.args.output_dir,
-            self.args.sqldb,
-            self.args.n_iter,
-            self.args.n_jobs,
             self.args,
             show_progress_bar=False,
             n_startup_trials=10,
-            filetype=self.args.filetype,
-            dpi=self.args.plot_dpi,
-            verbose=self.args.verbose,
         )
 
         if self.args.use_random_forest or self.args.use_gradient_boosting:
@@ -1398,7 +1420,7 @@ class GeoGenIE:
             best_params["dropout_prop"],
             best_params["learning_rate"],
             best_params["l2_reg"],
-            self.args.patience,
+            self.args.early_stop_patience,
             self.args.output_dir,
             self.args.prefix,
             self.data_structure.sample_data,
@@ -1466,6 +1488,9 @@ class GeoGenIE:
 
         y_train = self.data_structure.train_loader.dataset.labels.numpy()
         X_train = self.data_structure.train_loader.dataset.features.numpy()
+        y_train = self.data_structure.norm.inverse_transform(y_train)
+        if centroids is not None:
+            centroids = self.data_structure.norm.inverse_transform(centroids)
 
         if use_rf:
             y_train_pred = model.predict(X_train)
@@ -1639,7 +1664,7 @@ class GeoGenIE:
             self.data_structure.define_params(self.args)
             best_params = self.data_structure.params
 
-            criterion = WeightedRMSELoss()
+            criterion = euclidean_distance_loss
 
             if self.args.use_random_forest:
                 modelclass = "RF"
@@ -1659,17 +1684,23 @@ class GeoGenIE:
                         criterion=criterion, ModelClass=modelclass
                     )
                     self.data_structure.params = best_params
-                    best_params.update(self.data_structure.params)
-
+                    # Add only new keys from data_structure.params to
+                    # best_params
+                    for key, value in self.data_structure.params.items():
+                        if key not in best_params:
+                            best_params[key] = value
                     if self.args.verbose >= 1:
                         self.logger.info(f"Best found parameters: {best_params}")
 
             if self.args.load_best_params is not None:
                 best_params = self.load_best_params(self.args.load_best_params)
                 self.data_structure.params = best_params
-                best_params.update(self.data_structure.params)
 
-                if self.args.vebose >= 1:
+                # Add only new keys from data_structure.params to best_params
+                for key, value in self.data_structure.params.items():
+                    if key not in best_params:
+                        best_params[key] = value
+                if self.args.verbose >= 1:
                     self.logger.info(
                         f"Best parameters loaded from parent directory {self.args.load_best_params}: {best_params}"
                     )
@@ -1731,6 +1762,15 @@ class GeoGenIE:
 
             if not use_rf:
                 self.save_model(best_model, model_out)
+
+            Path(f"{self.args.output_dir}/benchmarking").mkdir(
+                exist_ok=True, parents=True
+            )
+
+            save_execution_times(
+                f"{self.args.output_dir}/benchmarking/{self.args.prefix}_execution_times.csv"
+            )
+            execution_times.clear()
 
         except Exception as e:
             self.logger.error(f"Unexpected error occurred: {e}")
