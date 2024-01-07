@@ -75,9 +75,12 @@ def synthetic_resampling(
         "optics",
         "kerneldensity",
     ]:
-        msg = f"Invalid 'method' parameter passed to 'synthetic_resampling()': {method}"
-        logger.error(msg)
-        raise ValueError(msg)
+        if method.lower() == "none":
+            return None, None, None, None, None, None, None, None
+        else:
+            msg = f"Invalid 'method' parameter passed to 'synthetic_resampling()': {method}"
+            logger.error(msg)
+            raise ValueError(msg)
 
     # dfX will contain sample_weights.
     dfX, dfy = setup_synth_resampling(features, labels, sample_weights)
@@ -99,42 +102,7 @@ def synthetic_resampling(
         if method == "kerneldensity":
             # Instantiate the KDE model
             # Assuming you have already run the spatial_kde function
-            density, lon_grid, lat_grid = spatial_kde(
-                dfy["x"].to_numpy(), dfy["y"].to_numpy(), bandwidth=0.04
-            )
-
-            # Define thresholds for bins
-            # thresholds = define_density_thresholds(density, n_bins)
-            thresholds = define_jenks_thresholds(density, n_bins)
-
-            centroids = calculate_bin_centers(density, lon_grid, lat_grid, thresholds)
-
-            # Assign samples to bins
-            samples = np.column_stack([dfy["x"].to_numpy(), df["y"].to_numpy()])
-
-            bins = assign_samples_to_bins(
-                samples, density, lon_grid, lat_grid, thresholds
-            )
-
-            if len(np.unique(bins)) == 1:
-                msg = "Only one bin detected with 'kerneldensity' method."
-                logger.error(msg)
-                raise ValueError(msg)
-
-            small_bins = identify_small_bins(bins, n_bins, min_smote_neighbors=5)
-            distance_matrix = calculate_centroid_distances(centroids)
-            bins = merge_small_bins(small_bins, distance_matrix, bins)
-
-            # Check for single-sample bins after merging
-            bin_counts_after_merging = np.bincount(bins, minlength=n_bins)
-            single_sample_bins = np.where(bin_counts_after_merging == 1)[0]
-
-            if single_sample_bins.size > 0:
-                logger.warning(f"Single-sample bins found: {single_sample_bins}")
-                # Merge single-sample bins with nearest bin
-                bins = merge_single_sample_bins(
-                    single_sample_bins, distance_matrix, bins, verbose=verbose
-                )
+            bins, centroids = do_kde_binning(n_bins, verbose, dfy)
 
         else:
             # Binning with KMeans or OPTICS
@@ -179,6 +147,20 @@ def synthetic_resampling(
             labels,
         )
 
+    if all(
+        [
+            x is None
+            for x in [
+                features_resampled,
+                labels_resampled,
+                sample_weights_resampled,
+                centroids_resampled,
+                bins_resampled,
+            ]
+        ]
+    ):
+        return None, None, None, None, None, None, None, None
+
     return (
         features_resampled,
         labels_resampled,
@@ -189,6 +171,46 @@ def synthetic_resampling(
         centroids,
         bins_resampled,
     )
+
+
+def do_kde_binning(n_bins, verbose, dfy):
+    density, lon_grid, lat_grid = spatial_kde(
+        dfy["x"].to_numpy(), dfy["y"].to_numpy(), bandwidth=0.04
+    )
+
+    # Define thresholds for bins
+    # thresholds = define_density_thresholds(density, n_bins)
+    thresholds = define_jenks_thresholds(density, n_bins)
+
+    centroids = calculate_bin_centers(density, lon_grid, lat_grid, thresholds)
+
+    # Assign samples to bins
+    samples = np.column_stack([dfy["x"].to_numpy(), dfy["y"].to_numpy()])
+
+    bins = assign_samples_to_bins(samples, density, lon_grid, lat_grid, thresholds)
+
+    if len(np.unique(bins)) == 1:
+        msg = "Only one bin detected with 'kerneldensity' method."
+        logger.error(msg)
+        raise ValueError(msg)
+
+    small_bins = identify_small_bins(bins, n_bins, min_smote_neighbors=5)
+    distance_matrix = calculate_centroid_distances(centroids)
+    bins = merge_small_bins(small_bins, distance_matrix, bins)
+
+    # Check for single-sample bins after merging
+    bin_counts_after_merging = np.bincount(bins, minlength=n_bins)
+    single_sample_bins = np.where(bin_counts_after_merging == 1)[0]
+
+    if single_sample_bins.size > 0:
+        if verbose >= 1:
+            logger.warning(f"Single-sample bins found: {single_sample_bins}")
+        # Merge single-sample bins with nearest bin
+        bins = merge_single_sample_bins(
+            single_sample_bins, distance_matrix, bins, verbose=verbose
+        )
+
+    return bins, centroids
 
 
 def merge_single_sample_bins(
@@ -352,14 +374,14 @@ def assign_samples_to_bins(samples, density_grid, lon_grid, lat_grid, thresholds
     return sample_bins
 
 
-def spatial_kde(longitudes, latitudes, bandwidth=0.04):
+def spatial_kde(longitudes, latitudes, bandwidth=0.05):
     """
     Perform spatial KDE on longitude and latitude data in decimal degrees.
 
     Args:
         longitudes (np.ndarray): Array of longitudes in decimal degrees.
         latitudes (np.ndarray): Array of latitudes in decimal degrees.
-        bandwidth (float): Bandwidth for KDE.
+        bandwidth (float): Bandwidth for KDE. Defualts to 0.05.
 
     Returns:
         np.ndarray: Density values.
@@ -492,7 +514,10 @@ def run_binned_smote(
         else:
             X_scaled = pd.concat([X_scaled, labels], axis=1)
 
-    features_resampled, bins_resampled = smote.fit_resample(X_scaled, bins_filtered)
+    try:
+        features_resampled, bins_resampled = smote.fit_resample(X_scaled, bins_filtered)
+    except ValueError:
+        return None, None, None, None, None
 
     if method != "kerneldensity":
         targets_resampled = np.array(
