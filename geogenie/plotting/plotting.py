@@ -14,6 +14,7 @@ import scipy.stats as stats
 import seaborn as sns
 import wget
 from optuna import visualization
+from optuna import exceptions as optuna_exceptions
 from scipy.stats import gamma
 from shapely.geometry import Point
 from sklearn.exceptions import ConvergenceWarning
@@ -32,6 +33,7 @@ from geogenie.samplers.samplers import GeographicDensitySampler
 
 warnings.filterwarnings(action="ignore", category=UserWarning)
 warnings.filterwarnings(action="ignore", category=ConvergenceWarning)
+warnings.filterwarnings(action="ignore", category=optuna_exceptions.ExperimentalWarning)
 
 
 class PlotGenIE:
