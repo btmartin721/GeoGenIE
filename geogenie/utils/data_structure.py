@@ -22,18 +22,13 @@ from torch.utils.data import DataLoader
 
 from geogenie.outliers.detect_outliers import GeoGeneticOutlierDetector
 from geogenie.plotting.plotting import PlotGenIE
-from geogenie.samplers.samplers import GeographicDensitySampler
+from geogenie.samplers.samplers import GeographicDensitySampler, do_kde_binning
 from geogenie.utils.gtseq2vcf import GTseqToVCF
 from geogenie.utils.scorers import LocallyLinearEmbeddingWrapper
 from geogenie.utils.transformers import MCA
 
 # from geogenie.utils.transformers import MCA
-from geogenie.utils.utils import (
-    CustomDataset,
-    LongLatToCartesianTransformer,
-    assign_to_bins,
-    get_iupac_dict,
-)
+from geogenie.utils.utils import CustomDataset, get_iupac_dict
 
 
 class DataStructure:
@@ -180,6 +175,8 @@ class DataStructure:
         self.mask = np.ones_like(self.samples, dtype=bool)
         self.simputer = SimpleImputer(strategy="most_frequent", missing_values=np.nan)
 
+        self.norm = StandardScaler()
+
     def define_params(self, args):
         self._params = vars(args)
 
@@ -302,17 +299,20 @@ class DataStructure:
         self._check_sample_ordering()
         self.locs = np.array(self.sample_data[["x", "y"]])
 
-    def normalize_target(self, placeholder=False):
+    def normalize_target(self, y, placeholder=False, transform_only=False):
         """Normalize locations, ignoring NaN."""
         if self.verbose >= 1:
             self.logger.info("Normalizing coordinates.")
 
-        # Turn off placeholder to actually do transformation.
-        self.norm = LongLatToCartesianTransformer(placeholder=placeholder)
-        self.y = self.norm.fit_transform(self.y)
+        if transform_only:
+            y = self.norm.transform(y)
+        else:
+            y = self.norm.fit_transform(y)
 
         if self.verbose >= 1:
             self.logger.info("Done normalizing.")
+
+        return y
 
     def _check_sample_ordering(self):
         """Validate sample ordering between 'sample_data' and VCF files."""
@@ -388,14 +388,10 @@ class DataStructure:
 
         weighted_sampler = self.get_sample_weights(self.y, args)
 
-        bins, centroids = assign_to_bins(
+        bins, centroids = do_kde_binning(
+            args.n_bins,
+            args.verbose,
             pd.DataFrame(self.y, columns=["x", "y"]),
-            long_col="x",
-            lat_col="y",
-            n_bins=args.n_bins,
-            args=args,
-            method="kmeans",
-            random_state=seed,
         )
 
         # Split non-NaN samples into training + validation and test sets
@@ -453,7 +449,7 @@ class DataStructure:
                 y_train,
                 train_bins,
                 train_indices,
-                test_size=0.1,
+                test_size=0.2,
                 stratify=train_bins,
             )
 
@@ -639,11 +635,12 @@ class DataStructure:
             )
 
         # placeholder=True makes it not do transform.
-        self.normalize_target(placeholder=True)
         self.split_train_test(args.train_split, args.val_split, args.seed, args)
 
         if args.verbose >= 1 and args.embedding_type != "none":
             self.logger.info("Embedding input features...")
+
+        self.data["y_train"] = self.normalize_target(self.data["y_train"])
 
         for k, v in self.data.items():
             if k.startswith("X"):
@@ -658,6 +655,13 @@ class DataStructure:
                     alg=args.embedding_type,
                     transform_only=tonly,
                 )
+            elif k.startswith("y"):
+                tonly = False if k == "y_train" else True
+
+                if tonly:
+                    self.data[k] = self.normalize_target(
+                        v, placeholder=False, transform_only=tonly
+                    )
 
         if args.verbose >= 1 and args.embedding_type != "none":
             self.logger.info("Finished embedding features!")
@@ -841,7 +845,7 @@ class DataStructure:
 
         elif alg.lower() == "mca":
             n_components = self.perform_mca_and_select_components(
-                X, range(2, min(100, X.shape[1]))
+                X, range(2, min(100, X.shape[1])), args.embedding_sensitivity
             )
             emb = MCA(
                 n_components=n_components,
@@ -955,45 +959,50 @@ class DataStructure:
                 X = X.to_numpy()
             return X.copy()
 
-    def perform_mca_and_select_components(self, data, n_components_range):
+    def perform_mca_and_select_components(self, data, n_components_range, S):
         """
         Perform MCA on the provided data and select the optimal number of components.
 
         Args:
             data (pd.DataFrame): The categorical data.
             n_components_range (range): The range of components to explore.
+            S (float): Sensitivity setting for selecting optimal number of components.
 
         Returns:
             MCA: The MCA model fitted with the optimal number of components.
             int: The optimal number of components.
         """
-        mca = MCA(
-            n_components=max(n_components_range),
-            n_iter=10,
-            random_state=42,
-            one_hot=True,
-        )
+        mca = MCA(n_components=max(n_components_range), n_iter=5, one_hot=True)
         mca = mca.fit(data)
         cumulative_inertia = mca.cumulative_inertia_
         optimal_n = self.select_optimal_components(
-            cumulative_inertia, n_components_range
+            cumulative_inertia, n_components_range, S
         )
 
         self.plotting.plot_mca_curve(cumulative_inertia, optimal_n)
         return optimal_n
 
-    def select_optimal_components(self, cumulative_inertia, n_components_range):
+    def select_optimal_components(self, cumulative_inertia, n_components_range, S):
         """
         Select the optimal number of components based on explained inertia.
 
         Args:
             explained_inertia (list): The explained inertia for each component.
             n_components_range (range): The range of components to explore.
+            S (float): Sensitivity setting for selecting optimal number of components.
 
         Returns:
             int: The optimal number of components.
         """
-        optimal_n = n_components_range[np.argmax(cumulative_inertia >= 0.8)]
+        kneedle = KneeLocator(
+            range(cumulative_inertia.shape[0]),
+            cumulative_inertia,
+            curve="concave",
+            direction="increasing",
+            S=S,
+        )
+
+        optimal_n = kneedle.knee
         return optimal_n
 
     def find_optimal_nmf_components(self, data, min_components, max_components):
@@ -1062,7 +1071,6 @@ class DataStructure:
         Args:
             X (numpy.ndarray or list of PyG Data objects): X dataset. Train, test, or validation.
             y (numpy.ndarray or None): Target data (train, test, or validation). None for GNN.
-            class_weights (bool): If True, calculates class weights for weighted sampling.
             batch_size (int): Batch size to use with model.
             args (argparse.Namespace): User-supplied arguments.
             is_val (bool): Whether using validation/ test dataset. Otherwise should be training dataset. Defaults to False.
@@ -1104,13 +1112,10 @@ class DataStructure:
     def get_sample_weights(self, y, args):
         """Gets inverse sample_weights based on sampling density.
 
-        Only performed if 'class_weights' is True.
-
         Uses scikit-learn KernelDensity with a grid search to estimate the optimal bandwidth for GeographicDensitySampler.
 
         Args:
             y (numpy.ndarray): Target values.
-            class_weights (bool): Whether to use weights.
             args (argparse.Namespace): User-supplied arguments.
         """
         # Initialize weighted sampler if class weights are used
