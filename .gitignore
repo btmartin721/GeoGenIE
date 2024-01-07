@@ -43,3 +43,17 @@ config_template.yaml
 generated_scripts*
 config_mca*.yaml
 final_analysis_old/
+gb_*/
+nn_*/
+error_distribution_*
+gb_*
+nn_*
+original_locator*
+best_overall*
+config_mca_*
+*execution_times.csv
+runtimes*
+*.ai
+composite_*
+summary_facet*
+*runtimes*.csv
