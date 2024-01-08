@@ -266,7 +266,7 @@ def setup_parser():
     model_group.add_argument(
         "--dropout_prop",
         type=validate_positive_float,
-        default=0.2,
+        default=0.25,
         help="Dropout rate (0-1) to prevent overfitting. Default: 0.2.",
     )
     model_group.add_argument(
@@ -324,13 +324,13 @@ def setup_parser():
     training_group.add_argument(
         "--train_split",
         type=validate_split,
-        default=0.85,
+        default=0.9,
         help="Training data proportion (0-1). Default: 0.85.",
     )
     training_group.add_argument(
         "--val_split",
         type=validate_split,
-        default=0.15,
+        default=0.1,
         help="Validation data proportion (0-1). Default: 0.15.",
     )
     training_group.add_argument(
@@ -365,7 +365,7 @@ def setup_parser():
     )
     training_group.add_argument(
         "--lr_scheduler_patience",
-        default=8,
+        default=17,
         type=validate_positive_int,
         help="Learning rate scheduler patience.",
     )
@@ -378,8 +378,8 @@ def setup_parser():
     training_group.add_argument(
         "--factor",
         type=validate_positive_float,
-        default=0.5,
-        help="Factor to scale neural network widths by.",
+        default=1.0,
+        help="Factor to scale neural network widths by. Defaults to 1.0 (no width reduction)",
     )
     training_group.add_argument(
         "--grad_clip",
@@ -572,7 +572,7 @@ def setup_parser():
     plotting_group.add_argument(
         "--n_contour_levels",
         type=validate_positive_int,
-        default=25,
+        default=20,
         help="Number of contour levels to use in the plot that interpolates the prediction error on a spatial map (i.e., Kriging plot). Increase the for a more continuous distribution of contours, decrease it to visualize more discrete contour levels. Default: 20.",
     )
     plotting_group.add_argument(
