@@ -13,3 +13,4 @@ h5py
 plotly
 kaleido
 botorch
+rpy2

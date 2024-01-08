@@ -1,0 +1,51 @@
+channels:
+  - ecoevoinfo
+  - conda-forge
+  - bioconda
+  - defaults
+
+package:
+  name: geogenie
+  version: "0.1.0"
+
+source:
+  path: ../ 
+
+requirements:
+  host:
+    - python >=3.9
+    - pip
+    - setuptools
+  run:
+    - python >=3.9
+    - pip
+    - setuptools
+    - requests
+    - perl
+    - matplotlib
+    - seaborn
+    - numpy
+    - pandas
+    - pytorch
+    - optuna
+    - zarr
+    - scipy
+    - scikit-learn
+    - tqdm
+    - h5py
+    - plotly
+    - python-kaleido
+    - botorch
+    - pysam
+
+build:
+  noarch: generic
+  # This is required to make R link correctly on Linux.
+  rpaths:
+    - lib/R/lib/
+    - lib/
+
+about:
+  home: "https://github.com/tkchafin/resistnet"
+  license: "GPLv3"
+  summary: "Package for optimising environmental resistance networks from genetic distances"
