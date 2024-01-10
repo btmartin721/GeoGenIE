@@ -18,7 +18,6 @@ class Bootstrap:
         nboots,
         epochs,
         device,
-        class_weights,
         width,
         nlayers,
         dropout_prop,
@@ -42,7 +41,6 @@ class Bootstrap:
             nboots (int): Number of bootstrap samples to create.
             epochs (int): Number of epochs for training each model.
             device (torch.device): Device to run the model on ('cpu' or 'cuda').
-            class_weights (np.ndarray): Class weights for imbalanced sampling.
             width (int): Number of neurons in hidden layers.
             nlayers (int): Number of hidden layers.
             dropout_prop (float): Dropout proportion to reduce overfitting.
@@ -61,7 +59,6 @@ class Bootstrap:
         self.nboots = nboots
         self.epochs = epochs
         self.device = device
-        self.class_weights = class_weights
         self.width = width
         self.nlayers = nlayers
         self.dropout_prop = dropout_prop
@@ -100,6 +97,8 @@ class Bootstrap:
             Validation losses.
             Total train time.
         """
+        raise NotImplementedError("Bootstrapping is not yet implemented.")
+
         for boot in range(self.nboots):
             try:
                 self.logger.info(
@@ -113,11 +112,10 @@ class Bootstrap:
 
                 # Obtain the weights corresponding to the resampled indices
                 sampler = None
-                if self.class_weights is not None:
-                    resampled_weights = self.class_weights[resampled_indices]
-                    sampler = torch.utils.data.WeightedRandomSampler(
-                        resampled_weights, len(resampled_weights), replacement=True
-                    )
+                resampled_weights = self.class_weights[resampled_indices]
+                sampler = torch.utils.data.WeightedRandomSampler(
+                    resampled_weights, len(resampled_weights), replacement=True
+                )
 
                 # Create a Subset of the dataset corresponding to the resampled indices
                 resampled_dataset = torch.utils.data.Subset(
