@@ -294,3 +294,68 @@ class MortonCurveTransformer(BaseEstimator, TransformerMixin):
         longitude = norm_long * (2 * self.max_long) - self.max_long
         latitude = norm_lat * (2 * self.max_lat) - self.max_lat
         return longitude, latitude
+
+
+class LongLatToCartesianTransformer(BaseEstimator, TransformerMixin):
+    """
+    A transformer for converting longitude and latitude to/ from Cartesian coordinates.
+
+    Attributes:
+        radius (float): The radius of the Earth in kilometers.
+        placeholder (bool): If True, does not actually do transformation. Makes it to where target normalization can easily be toggled for development purposed.
+    """
+
+    def __init__(self, radius=6371, placeholder=False):
+        """
+        Initialize the transformer with the Earth's radius.
+
+        Args:
+            radius (float, optional): The radius of the Earth in kilometers. Defaults to 6371.
+        """
+        self.radius = radius
+        self.placeholder = placeholder
+
+    def fit(self, X, y=None):
+        """Fit method for compatibility with scikit-learn. Does nothing."""
+        return self
+
+    def transform(self, X):
+        """
+        Convert latitude and longitude to Cartesian coordinates.
+
+        Args:
+            X (array-like): The longitude and latitude values. Shape (n_samples, 2).
+
+        Returns:
+            np.ndarray: Cartesian coordinates. Shape (n_samples, 3).
+        """
+
+        if self.placeholder:
+            return X.copy()
+        lon_rad = np.radians(X[:, 0])
+        lat_rad = np.radians(X[:, 1])
+
+        x = self.radius * np.cos(lat_rad) * np.cos(lon_rad)
+        y = self.radius * np.cos(lat_rad) * np.sin(lon_rad)
+        z = self.radius * np.sin(lat_rad)
+
+        return np.column_stack((x, y, z))
+
+    def inverse_transform(self, X):
+        """
+        Convert Cartesian coordinates back to latitude and longitude.
+
+        Args:
+            X (array-like): Cartesian coordinates. Shape (n_samples, 3).
+
+        Returns:
+            np.ndarray: Longitude and latitude values. Shape (n_samples, 2).
+        """
+        if self.placeholder:
+            return X.copy()
+
+        x, y, z = X[:, 0], X[:, 1], X[:, 2]
+        lat = np.degrees(np.arcsin(z / self.radius))
+        lon = np.degrees(np.arctan2(y, x))
+
+        return np.column_stack((lon, lat))
