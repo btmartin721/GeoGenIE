@@ -22,7 +22,6 @@ l2_reg: 0.0  # L2 regularization weight.
 patience: 48  # Epochs to wait before reducing learning rate.
 train_split: 0.85  # Training data proportion (0-1).
 val_split: 0.15  # Validation data proportion (0-1).
-class_weights: false  # Apply class weights for imbalanced datasets.
 bootstrap: false  # Enable bootstrap replicates.
 nboots: 50  # Number of bootstrap replicates. Used if 'bootstrap' is true.
 do_gridsearch: false  # Perform parameter optimization search.
