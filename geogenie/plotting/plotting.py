@@ -1,5 +1,4 @@
 import logging
-import math
 import os
 import warnings
 from pathlib import Path
@@ -12,24 +11,24 @@ import numpy as np
 import pandas as pd
 import scipy.stats as stats
 import seaborn as sns
+import torch
 import wget
-from optuna import visualization
 from optuna import exceptions as optuna_exceptions
+from optuna import visualization
 from scipy.stats import gamma
 from shapely.geometry import Point
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, WhiteKernel
+from sklearn.linear_model import LinearRegression
 from sklearn.metrics import ConfusionMatrixDisplay
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import PolynomialFeatures
-from sklearn.linear_model import LinearRegression
 
-from geogenie.samplers.samplers import custom_gpr_optimizer
+from geogenie.samplers.samplers import GeographicDensitySampler, custom_gpr_optimizer
 from geogenie.utils.exceptions import TimeoutException
 from geogenie.utils.scorers import haversine_distances_agg
 from geogenie.utils.utils import time_limit
-from geogenie.samplers.samplers import GeographicDensitySampler
 
 warnings.filterwarnings(action="ignore", category=UserWarning)
 warnings.filterwarnings(action="ignore", category=ConvergenceWarning)
@@ -154,24 +153,10 @@ class PlotGenIE:
         fig, axs = plt.subplots(1, 2, figsize=(24, 12))
 
         ax = self._plot_smote_scatter(
-            df_orig,
-            bins_orig,
-            axs[0],
-            "Before Simulations",
-            "upper right",
-            url,
-            buffer,
-            marker_scale_factor,
+            df_orig, bins_orig, axs[0], "Before Simulations", "upper right", url, buffer
         )
         ax2 = self._plot_smote_scatter(
-            df,
-            bins,
-            axs[1],
-            "After Simulations",
-            "upper left",
-            url,
-            buffer,
-            marker_scale_factor,
+            df, bins, axs[1], "After Simulations", "upper left", url, buffer
         )
 
         plt.subplots_adjust(wspace=0.25)
@@ -184,7 +169,7 @@ class PlotGenIE:
         fig.savefig(outfile, facecolor="white", bbox_inches="tight")
         plt.close()
 
-    def _plot_smote_scatter(self, df, bins, ax, title, loc, url, buffer, scale_factor):
+    def _plot_smote_scatter(self, df, bins, ax, title, loc, url, buffer):
         """
         Creates a scatter plot for visualizing data points with their associated bin labels.
 
@@ -1097,7 +1082,7 @@ class PlotGenIE:
         plt.close()
 
     def polynomial_regression_plot(
-        self, actual_coords, predicted_coords, dataset, degree=3
+        self, actual_coords, predicted_coords, dataset, degree=3, dtype=torch.float32
     ):
         """
         Creates a polynomial regression plot with the specified degree.
@@ -1107,6 +1092,7 @@ class PlotGenIE:
             predicted_coords (np.array): Array of predicted geographical coordinates by the model.
             dataset (str): Specifies the dataset being used, should be either 'test' or 'validation'.
             degree (int): Polynomial degree to fit. Defaults to 3.
+            dtype (torch.dtype): PyTorch data type to use. Defaults to torch.float32.
 
         Raises:
             ValueError: If the dataset parameter is not 'test' or does not start with 'val'.
@@ -1126,9 +1112,10 @@ class PlotGenIE:
             pd.DataFrame(actual_coords, columns=["x", "y"]),
             use_kde=True,
             use_kmeans=False,
-            max_clusters=50,
+            max_clusters=10,
             max_neighbors=50,
             verbose=0,
+            dtype=dtype,
         )
 
         x = sampler.density
@@ -1539,7 +1526,7 @@ class PlotGenIE:
         fig.savefig(outfile, facecolor="white", bbox_inches="tight")
         plt.close()
 
-    def plot_outliers(self, mask, y_true, url, buffer=0.1, marker_scale_factor=2):
+    def plot_outliers(self, mask, y_true, url, buffer=0.1):
         """
         Plots a scatter plot to visualize the identified outliers in the dataset. Outliers are marked distinctly to
         differentiate them from the regular data points.
@@ -1549,7 +1536,6 @@ class PlotGenIE:
             y_true (np.array): Array of actual coordinates.
             url (str): URL for the shapefile to plot geographical data.
             buffer (float, optional): Buffer distance for geographical plotting. Defaults to 0.1.
-            marker_scale_factor (int, optional): Factor to scale the size of markers for outliers. Defaults to 2.
 
         Notes:
             - The function visualizes outliers on a geographical map, aiding in the identification of anomalous data points.
