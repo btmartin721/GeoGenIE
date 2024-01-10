@@ -58,3 +58,6 @@ composite_*
 summary_facet*
 *runtimes*.csv
 *.tif
+.gg/*
+results/*
+*.tmp
