@@ -1,12 +1,8 @@
 import logging
 
 import numpy as np
+import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from torch import mean as torchmean
-from torch_geometric.nn import GCNConv
-
-from geogenie.utils.utils import base_to_int
 
 
 class MLPRegressor(nn.Module):
@@ -17,15 +13,15 @@ class MLPRegressor(nn.Module):
         input_size,
         width=256,
         nlayers=10,
-        dropout_prop=0.2,
+        dropout_prop=0.25,
         device="cpu",
         output_width=2,
-        min_width=3,
-        factor=0.5,
-        **kwargs,
+        dtype=torch.float32,
+        batch_size=32,
     ):
         super(MLPRegressor, self).__init__()
         self.device = device
+        self.dtype = dtype
 
         self.logger = logging.getLogger(__name__)
 
@@ -42,149 +38,46 @@ class MLPRegressor(nn.Module):
         if initial_width >= input_size:
             self.logger.warning(f"Reduced initial hidden layer width: {width}")
 
-        self.input_layer = nn.Linear(input_size, width, device=self.device)
-        self.elu = nn.ELU()
-        self.dropout = nn.Dropout(dropout_prop)
+        self.seqmodel = self._define_model(
+            input_size, width, nlayers, dropout_prop, output_width
+        )
 
-        if nlayers < 2:
-            raise ValueError(
-                "Number of layers must be at least 2 to calculate a scaling factor."
-            )
+    def _define_model(self, input_size, width, nlayers, dropout_prop, output_width):
+        # Start with a Linear layer followed by BatchNorm1d
+        layers = [
+            nn.Linear(input_size, width, dtype=self.dtype),
+            nn.BatchNorm1d(width, dtype=self.dtype),
+            nn.ELU(),
+        ]
 
-        new_width = width
-        old_width = width
-        self.blocks = nn.ModuleList()
-        for _ in range(nlayers // 2):  # Handles even numbers of layers
-            new_width *= factor
-            new_width = int(new_width)
-            if new_width >= min_width:
-                self.blocks.append(
-                    nn.Sequential(
-                        nn.Linear(old_width, new_width, device=self.device),
-                        nn.BatchNorm1d(new_width, device=self.device),
-                        nn.ELU(),
-                        nn.Dropout(dropout_prop),
-                        nn.Linear(new_width, new_width, device=self.device),
-                        nn.BatchNorm1d(new_width, device=self.device),
-                    )
-                )
-                old_width = new_width
-                final_width = new_width
-            else:
-                final_width = old_width
-                break
+        # Add the first half of the layers
+        for _ in range(int(np.floor(nlayers / 2)) - 1):
+            layers.append(nn.Linear(width, width, dtype=self.dtype))
+            layers.append(nn.ELU())
 
-        # Adding an additional layer if nlayers is odd
-        self.extra_layer = None
-        if nlayers % 2 != 0:
-            self.extra_layer = nn.Sequential(
-                nn.Linear(final_width, final_width, device=self.device),
-                nn.BatchNorm1d(final_width, device=self.device),
-                nn.ELU(),
-                nn.Dropout(dropout_prop),
-            )
-        self.output_layer = nn.Linear(final_width, output_width, device=device)
+        # Add dropout layer
+        layers.append(nn.Dropout(dropout_prop))
+
+        # Add the second half of the layers
+        for _ in range(int(np.ceil(nlayers / 2))):
+            layers.append(nn.Linear(width, width, dtype=self.dtype))
+            layers.append(nn.ELU())
+
+        # Add output layers
+        layers.append(nn.Linear(width, output_width, dtype=self.dtype))
+        layers.append(nn.Linear(output_width, output_width, dtype=self.dtype))
+
+        return nn.Sequential(*layers)
 
     def forward(self, x):
-        """Forward pass through network."""
-        x = self.elu(self.input_layer(x))
-        for block in self.blocks:
-            residual = x  # Storing residual
-            x = block(x)  # Applying block
+        """
+        Forward pass through the neural network.
 
-            # Adjust residual if necessary
-            residual = self.adjust_residual(residual, block)
-            x += residual
-            x = self.elu(x)
+        Args:
+            x (torch.Tensor): The input tensor to the neural network.
 
-        if self.extra_layer is not None:
-            x = self.extra_layer(x)
-        return self.output_layer(x)
-
-    def adjust_residual(self, residual, block):
-        """Adjust the residual to match the output dimension of the block."""
-        # Assuming block[0] is the first Linear layer in the block
-        out_features = block[0].out_features
-        if residual.shape[-1] != out_features:
-            # Dynamically adjust the residual adjuster to match the output dimensions
-            self.residual_adjuster = nn.Linear(
-                residual.shape[-1], out_features, device=self.device
-            )
-            residual = self.residual_adjuster(residual)
-        return residual
-
-
-class SNPTransformer(nn.Module):
-    def __init__(
-        self,
-        input_size,
-        width=256,
-        nlayers=3,
-        dropout_prop=0.1,
-        device="cpu",
-        embedding_dim=256,
-        nhead=8,
-        dim_feedforward=1024,
-        **kwargs,
-    ):
-        super(SNPTransformer, self).__init__()
-        self.device = device
-        self.d_model = embedding_dim
-        num_bases = len(base_to_int())  # Number of unique bases
-        self.embedding = nn.Embedding(
-            num_embeddings=num_bases, embedding_dim=embedding_dim, device=device
-        )
-        encoder_layer = nn.TransformerEncoderLayer(
-            d_model=embedding_dim,
-            nhead=nhead,
-            dim_feedforward=dim_feedforward,
-            dropout=dropout_prop,
-            device=self.device,
-            batch_first=True,
-        )
-        self.transformer_encoder = nn.TransformerEncoder(
-            encoder_layer, num_layers=nlayers
-        )
-        self.fc_out = nn.Linear(embedding_dim, 2, device=self.device)
-
-    def forward(self, src):
-        src = self.embedding(src) * np.sqrt(self.d_model)
-        src = src.permute(1, 0, 2)  # expects seq_len, batch, input_size
-        output = self.transformer_encoder(src)
-        output = output.permute(1, 0, 2)
-        output = F.relu(output.mean(dim=1))  # Aggregating over the sequence
-        return self.fc_out(output)
-
-
-class GeoRegressionGNN(nn.Module):
-    def __init__(
-        self,
-        input_size,
-        width=16,
-        nlayers=3,
-        dropout_prop=0.1,
-        device="cpu",
-        **kwargs,
-    ):
-        super(GeoRegressionGNN, self).__init__()
-        self.width = width
-        self.nlayers = nlayers
-        self.dropout_prop = dropout_prop
-        self.device = device
-        self.layers = nn.ModuleList()
-        self.layers.append(GCNConv(input_size, width, device=self.device))
-
-        for _ in range(nlayers - 1):
-            self.layers.append(GCNConv(width, width, device=self.device))
-
-        self.fc = nn.Linear(width, 2, device=self.device)
-
-    def forward(self, data):
-        x, edge_index = data.x, data.edge_index
-
-        for layer in self.layers:
-            x = F.elu(layer(x, edge_index))
-            x = F.dropout(x, p=self.dropout_prop, training=self.training)
-
-        x = torchmean(x, dim=0)
-        return self.fc(x)
+        Returns:
+            torch.Tensor: The output tensor after passing through the network.
+        """
+        # Pass the input 'x' through the sequential model
+        return self.seqmodel(x)
