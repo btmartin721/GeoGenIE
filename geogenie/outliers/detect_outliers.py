@@ -3,7 +3,6 @@ import time
 from os import path
 
 import numpy as np
-import pandas as pd
 from pynndescent import NNDescent
 from scipy.optimize import minimize
 from scipy.spatial.distance import cdist
