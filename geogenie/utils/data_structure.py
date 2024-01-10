@@ -23,12 +23,13 @@ from torch.utils.data import DataLoader
 from geogenie.outliers.detect_outliers import GeoGeneticOutlierDetector
 from geogenie.plotting.plotting import PlotGenIE
 from geogenie.samplers.samplers import GeographicDensitySampler, do_kde_binning
+
+# from geogenie.utils.transformers import MCA
+from geogenie.utils.data import CustomDataset
 from geogenie.utils.gtseq2vcf import GTseqToVCF
 from geogenie.utils.scorers import LocallyLinearEmbeddingWrapper
 from geogenie.utils.transformers import MCA
-
-# from geogenie.utils.transformers import MCA
-from geogenie.utils.utils import CustomDataset, get_iupac_dict
+from geogenie.utils.utils import get_iupac_dict
 
 
 class DataStructure:
@@ -157,7 +158,7 @@ class DataStructure:
         params property getter and setter: Getters and setters for managing class parameters.
     """
 
-    def __init__(self, vcf_file, verbose=False):
+    def __init__(self, vcf_file, verbose=False, dtype=torch.float32):
         """Constructor for DataStructure class.
 
         Args:
@@ -169,8 +170,8 @@ class DataStructure:
         self.logger = logging.getLogger(__name__)
         self.genotypes, self.is_missing, self.genotypes_iupac = self._parse_genotypes()
         self.verbose = verbose
-        self.samples_weight = None
         self.data = {}
+        self.dtype = dtype
 
         self.mask = np.ones_like(self.samples, dtype=bool)
         self.simputer = SimpleImputer(strategy="most_frequent", missing_values=np.nan)
@@ -371,6 +372,7 @@ class DataStructure:
             train_split (float): Proportion of the data to be used for training.
             val_split (float): Proportion of the training data to be used for validation.
             seed (int): Random seed for reproducibility.
+            args (argparse.Namespace): User-supplied arguments.
 
         Returns:
             tuple: tuple containing indices and data for training, validation, and testing.
@@ -386,14 +388,6 @@ class DataStructure:
                 "The difference between train_split - val_split must be >= 0."
             )
 
-        weighted_sampler = self.get_sample_weights(self.y, args)
-
-        bins, centroids = do_kde_binning(
-            args.n_bins,
-            args.verbose,
-            pd.DataFrame(self.y, columns=["x", "y"]),
-        )
-
         # Split non-NaN samples into training + validation and test sets
         (
             X_train_val,
@@ -402,36 +396,17 @@ class DataStructure:
             y_test,
             train_val_indices,
             test_indices,
-            train_val_bins,
-            test_bins,
         ) = train_test_split(
-            self.X,
-            self.y,
-            self.true_idx,
-            bins,
-            train_size=train_split,
-            random_state=seed,
-            stratify=bins,
+            self.X, self.y, self.true_idx, train_size=train_split, random_state=seed
         )
 
         # Split training data into actual training and validation sets
-        (
-            X_train,
-            X_val,
-            y_train,
-            y_val,
-            train_indices,
-            val_indices,
-            train_bins,
-            val_bins,
-        ) = train_test_split(
+        (X_train, X_val, y_train, y_val, train_indices, val_indices) = train_test_split(
             X_train_val,
             y_train_val,
             train_val_indices,
-            train_val_bins,
             test_size=val_split,
             random_state=seed,
-            stratify=train_val_bins,
         )
 
         if args.use_gradient_boosting:
@@ -440,18 +415,9 @@ class DataStructure:
                 X_train_val2,
                 y_train,
                 y_train_val2,
-                train_bins,
-                train_val_bins,
-                train_val_bins2,
-                train_val_indices2,
-            ) = train_test_split(
-                X_train,
-                y_train,
-                train_bins,
                 train_indices,
-                test_size=0.2,
-                stratify=train_bins,
-            )
+                train_val_indices2,
+            ) = train_test_split(X_train, y_train, train_indices, test_size=0.2)
 
         data = {
             "X_train": X_train,
@@ -463,16 +429,11 @@ class DataStructure:
             "y_val": y_val,
             "y_test": y_test,
             "y": self.y,
-            "train_bins": train_bins,
-            "train_val_bins": train_val_bins,
-            "val_bins": val_bins,
-            "test_bins": test_bins,
         }
 
         if args.use_gradient_boosting:
             data["X_train_val"] = X_train_val2
             data["y_train_val"] = y_train_val2
-            data["train_val_bins"] = train_val_bins2
 
         self.data.update(data)
 
@@ -1084,21 +1045,6 @@ class DataStructure:
                 self.norm.inverse_transform(y), args
             )
 
-        if (
-            self.samples_weight is None
-            or args.use_weighted not in ["loss", "both"]
-            and not args.use_random_forest
-            and not args.use_gradient_boosting
-        ):
-            self.samples_weight = torch.ones(y.shape[0], dtype=torch.float32)
-        elif self.samples_weight is None:
-            self.samples_weight = torch.ones(y.shape[0], dtype=torch.float32)
-
-        if isinstance(self.samples_weight, torch.Tensor):
-            self.samples_weight_orig = self.samples_weight.numpy().copy()
-        else:
-            self.samples_weight_orig = self.samples_weight.copy()
-
         dataset = CustomDataset(X, y, sample_weights=self.samples_weight)
 
         # Create DataLoader
@@ -1120,6 +1066,8 @@ class DataStructure:
         """
         # Initialize weighted sampler if class weights are used
         self.weighted_sampler = None
+        self.densities = None
+        self.samples_weight = torch.ones((y.shape[0],), dtype=self.dtype)
         if args.use_weighted in ["sampler", "loss", "both"]:
             if args.verbose >= 1:
                 self.logger.info("Estimating sampling density weights...")
@@ -1138,22 +1086,16 @@ class DataStructure:
                 max_neighbors=args.max_neighbors,
                 normalize=args.normalize_sample_weights,
                 verbose=args.verbose,
+                dtype=self.dtype,
             )
 
             if args.verbose >= 1:
                 self.logger.info("Done estimating sample weights.")
 
-            if self.samples_weight is not None:
-                self.logger.warning(
-                    "Re-setting 'samples_weight' after it has already been set. Was this intended?"
-                )
-                warnings.warn(
-                    "Re-setting 'samples_weight' after it has already been set. Was this intended?",
-                    category=UserWarning,
-                )
             self.weighted_sampler = weighted_sampler
             self.samples_weight = weighted_sampler.weights
             self.samples_weight_indices = weighted_sampler.indices
+            self.densities = self.weighted_sampler.density
         return self.weighted_sampler
 
     def read_gtseq(
