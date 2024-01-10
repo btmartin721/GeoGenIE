@@ -1,11 +1,9 @@
 import logging
 import os
-from typing import Tuple
 
 import jenkspy
 import numpy as np
 import pandas as pd
-import resreg
 import torch
 from geopy.distance import great_circle
 from imblearn.combine import SMOTEENN
@@ -13,7 +11,7 @@ from imblearn.over_sampling import SMOTE
 from imblearn.under_sampling import EditedNearestNeighbours
 from scipy import optimize
 from scipy.spatial.distance import cdist
-from scipy.stats import gaussian_kde, spearmanr
+from scipy.stats import gaussian_kde
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from sklearn.neighbors import KernelDensity, NearestNeighbors
@@ -22,7 +20,6 @@ from torch.utils.data import Sampler
 
 from geogenie.utils.scorers import haversine_distances_agg
 from geogenie.utils.utils import assign_to_bins, geo_coords_is_valid, validate_is_numpy
-from geogenie.utils.transformers import MortonCurveTransformer
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +32,8 @@ def synthetic_resampling(
     sample_weights,
     n_bins,
     args,
-    method="kmeans",
-    smote_neighbors=5,
+    method="kerneldensity",
+    smote_neighbors=3,
     verbose=0,
 ):
     """
@@ -59,22 +56,12 @@ def synthetic_resampling(
 
     Notes:
         - The function supports different binning methods: 'kmeans', 'optics', and 'kerneldensity'.
-        - Morton's method is currently not supported. A partial implementation is present, but it is currently untested and not working correctly.
-        - For 'kerneldensity', spatial KDE is assumed to be pre-run.
+                - For 'kerneldensity', spatial KDE is assumed to be pre-run.
         - The function includes several preprocessing steps like bin assignment, merging of small bins, scaling, and handling single-sample bins.
         - SMOTE is used to oversample minority classes in each bin.
         - EditedNearestNeighbors is used for undersampling majority classes in each bin.
     """
-    if method.startswith("morton"):
-        msg = "Morton-based methods are currently not supported with ``synthetic_sampling()``\."
-        logger.error(msg)
-        raise NotImplementedError(msg)
-
-    if method not in [
-        "kmeans",
-        "optics",
-        "kerneldensity",
-    ]:
+    if method not in ["kmeans", "optics", "kerneldensity"]:
         if method.lower() == "none":
             return None, None, None, None, None, None, None, None
         else:
@@ -87,28 +74,18 @@ def synthetic_resampling(
     feature_names = dfX.columns
 
     centroids = None
-    if method.startswith("morton"):
-        ssc, mct, df = transform_morton(dfX, dfy, feature_names)
+    df = pd.concat([dfX, dfy], axis=1)
 
-        features, labels, sample_weights = run_morton_smoter(
-            smote_neighbors, feature_names, ssc, mct, df, method
-        )
+    if method == "kerneldensity":
+        # Instantiate the KDE model
+        # Assuming you have already run the spatial_kde function
+        bins, centroids = do_kde_binning(n_bins, verbose, dfy)
 
-        if features is None or labels is None:
-            return None, None, None, None
     else:
-        df = pd.concat([dfX, dfy], axis=1)
-
-        if method == "kerneldensity":
-            # Instantiate the KDE model
-            # Assuming you have already run the spatial_kde function
-            bins, centroids = do_kde_binning(n_bins, verbose, dfy)
-
-        else:
-            # Binning with KMeans or OPTICS
-            bins, centroids = assign_to_bins(
-                df, "x", "y", n_bins, args, method=method, random_state=args.seed
-            )
+        # Binning with KMeans or OPTICS
+        bins, centroids = assign_to_bins(
+            df, "x", "y", n_bins, args, method=method, random_state=args.seed
+        )
 
         X = df.to_numpy()
         y = bins.copy()
@@ -574,47 +551,6 @@ def run_binned_smote(
     )
 
 
-def run_morton_smoter(smote_neighbors, feature_names, ssc, mct, df, method):
-    samp_method = "balance" if method.endswith("balance") else "extreme"
-
-    print(df["encoded"].describe())
-    y = df["encoded"].to_numpy()
-    X = df.drop(["encoded"], axis=1).to_numpy()
-
-    relevance = resreg.sigmoid_relevance(y, cl=None, ch=40000)
-
-    X, y = resreg.smoter(
-        X,
-        y,
-        relevance,
-        relevance_threshold=0.6,
-        k=smote_neighbors,
-        over=samp_method,
-    )
-
-    features = pd.DataFrame(X, columns=feature_names)
-    labels = y.copy()
-
-    sample_weights = torch.ones(features.shape[0], dtype=torch.float32)
-    if "sample_weights" in feature_names:
-        if ssc is None:
-            msg = "Standard Scaler was not properly initialized."
-            logger.error(msg)
-            raise ValueError(msg)
-
-        features = pd.DataFrame(ssc.inverse_transform(features), columns=feature_names)
-
-        sample_weights = features["sample_weights"].to_numpy()
-        sample_weights = torch.tensor(sample_weights, dtype=torch.float32)
-        features.drop(["sample_weights"], axis=1, inplace=True)
-
-    labels = mct.inverse_transform(labels)
-    features = torch.tensor(features.to_numpy(), dtype=torch.float32)
-    labels = torch.tensor(labels, dtype=torch.float32)
-
-    return features, labels, sample_weights
-
-
 def setup_synth_resampling(features, labels, sample_weights):
     """
     Prepares data for synthetic resampling by converting feature and label arrays into DataFrames and incorporating sample weights.
@@ -645,20 +581,6 @@ def setup_synth_resampling(features, labels, sample_weights):
     if not np.all(sample_weights == 1.0):  # If not all 1's.
         dfX["sample_weights"] = sample_weights
     return dfX, dfy
-
-
-def transform_morton(dfX, dfy, feature_names):
-    ssc = None
-    if "sample_weights" in feature_names:
-        ssc = StandardScaler()
-        dfX = pd.DataFrame(ssc.fit_transform(dfX.to_numpy()), columns=feature_names)
-
-    mct = MortonCurveTransformer(bits=16)
-    dfy["encoded"] = mct.fit_transform(dfy.to_numpy())
-
-    df = dfX.copy()
-    df["encoded"] = dfy["encoded"].copy()
-    return ssc, mct, df
 
 
 def process_bins(X, y, bins):
@@ -703,9 +625,7 @@ def custom_gpr_optimizer(obj_func, initial_theta, bounds):
     return theta_opt, func_min
 
 
-def cluster_minority_samples(
-    minority_samples: np.ndarray, n_clusters: int
-) -> Tuple[np.ndarray, np.ndarray]:
+def cluster_minority_samples(minority_samples, n_clusters):
     """
     Cluster minority class samples using k-means and calculate the Euclidean distances
     from each cluster center to the majority class center.
