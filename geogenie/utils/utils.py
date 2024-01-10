@@ -6,9 +6,7 @@ from contextlib import contextmanager
 
 import numpy as np
 import torch
-from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.cluster import OPTICS, KMeans
-from torch.utils.data import Dataset
 
 from geogenie.utils.exceptions import TimeoutException
 
@@ -115,125 +113,6 @@ def assign_to_bins(
     if method == "kmeans":
         return bins, model.cluster_centers_
     return bins, None
-
-
-class CustomDataset(Dataset):
-    def __init__(self, features, labels, sample_weights=None):
-        """
-        Initialize custom PyTorch Dataset that incorporates sample weighting.
-
-        Args:
-            features (Tensor): Input features.
-            labels (Tensor): Labels corresponding to the features.
-            sample_weights (Tensor): Weights for each sample. If None, then a sample_weights tensor is still created, but all weights will be equal to 1.0 (equal weighting). Defaults to None.
-
-        Attributes:
-            features (torch.Tensor): Input features.
-            labels (torch.Tensor): Labels corresponding to features.
-            sample_weights (torch.Tensor): Sample weights of shape (n_samples,).
-            tensors (tuple): Tuple consisting of (features, labels, sample_weights).
-        """
-        if not isinstance(features, torch.Tensor):
-            features = torch.tensor(features, dtype=torch.float32)
-        if not isinstance(labels, torch.Tensor):
-            labels = torch.tensor(labels, dtype=torch.float32)
-
-        if sample_weights is None:
-            sample_weights = torch.ones(len(features), dtype=torch.float32)
-        else:
-            if not isinstance(sample_weights, torch.Tensor):
-                sample_weights = torch.tensor(sample_weights, dtype=torch.float32)
-
-        self.features = features
-        self.labels = labels
-        self.sample_weights = sample_weights
-
-        # Store the tensors as a tuple
-        self.tensors = (features, labels, sample_weights)
-
-    def __len__(self):
-        """
-        Return the total number of samples in the dataset.
-        """
-        return len(self.features)
-
-    def __getitem__(self, idx):
-        """
-        Retrieve the sample at the given index.
-
-        Args:
-            idx (int): Index of the sample to retrieve.
-
-        Returns:
-            tuple: (feature, label, sample_weight) for the specified index.
-        """
-
-        return self.features[idx], self.labels[idx], self.sample_weights[idx]
-
-
-class LongLatToCartesianTransformer(BaseEstimator, TransformerMixin):
-    """
-    A transformer for converting longitude and latitude to/ from Cartesian coordinates.
-
-    Attributes:
-        radius (float): The radius of the Earth in kilometers.
-        placeholder (bool): If True, does not actually do transformation. Makes it to where target normalization can easily be toggled for development purposed.
-    """
-
-    def __init__(self, radius=6371, placeholder=False):
-        """
-        Initialize the transformer with the Earth's radius.
-
-        Args:
-            radius (float, optional): The radius of the Earth in kilometers. Defaults to 6371.
-        """
-        self.radius = radius
-        self.placeholder = placeholder
-
-    def fit(self, X, y=None):
-        """Fit method for compatibility with scikit-learn. Does nothing."""
-        return self
-
-    def transform(self, X):
-        """
-        Convert latitude and longitude to Cartesian coordinates.
-
-        Args:
-            X (array-like): The longitude and latitude values. Shape (n_samples, 2).
-
-        Returns:
-            np.ndarray: Cartesian coordinates. Shape (n_samples, 3).
-        """
-
-        if self.placeholder:
-            return X.copy()
-        lon_rad = np.radians(X[:, 0])
-        lat_rad = np.radians(X[:, 1])
-
-        x = self.radius * np.cos(lat_rad) * np.cos(lon_rad)
-        y = self.radius * np.cos(lat_rad) * np.sin(lon_rad)
-        z = self.radius * np.sin(lat_rad)
-
-        return np.column_stack((x, y, z))
-
-    def inverse_transform(self, X):
-        """
-        Convert Cartesian coordinates back to latitude and longitude.
-
-        Args:
-            X (array-like): Cartesian coordinates. Shape (n_samples, 3).
-
-        Returns:
-            np.ndarray: Longitude and latitude values. Shape (n_samples, 2).
-        """
-        if self.placeholder:
-            return X.copy()
-
-        x, y, z = X[:, 0], X[:, 1], X[:, 2]
-        lat = np.degrees(np.arcsin(z / self.radius))
-        lon = np.degrees(np.arctan2(y, x))
-
-        return np.column_stack((lon, lat))
 
 
 def geo_coords_is_valid(coordinates):
