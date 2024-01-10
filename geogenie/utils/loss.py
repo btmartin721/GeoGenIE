@@ -1,103 +1,7 @@
 import logging
-import math
-import sys
 
-import numpy as np
 import torch
 import torch.nn as nn
-
-
-def squared_haversine_distance(lat1, lon1, lat2, lon2):
-    """
-    Calculate the squared great-circle distance between two points on the Earth.
-
-    Args:
-        lat1 (float): Latitude of the first point.
-        lon1 (float): Longitude of the first point.
-        lat2 (float): Latitude of the second point.
-        lon2 (float): Longitude of the second point.
-
-    Returns:
-        float: Squared great-circle distance in kilometers.
-    """
-    R = 6371  # Radius of the Earth in kilometers
-    phi1, phi2 = np.radians(lat1), np.radians(lat2)
-    delta_phi = np.radians(lat2 - lat1)
-    delta_lambda = np.radians(lon2 - lon1)
-
-    a = (
-        np.sin(delta_phi / 2) ** 2
-        + np.cos(phi1) * np.cos(phi2) * np.sin(delta_lambda / 2) ** 2
-    )
-    c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
-
-    return (R * c) ** 2
-
-
-def squared_weighted_haversine(labels, predt, sample_weights=None):
-    """
-    Custom objective function for squared Haversine error, weighted by sample weights.
-
-    Args:
-        labels (np.ndarray): Actual values, shape (n_samples, 2).
-        predt (np.ndarray): Predicted values, shape (n_samples, 2).
-        sample_weights (np.ndarray): Weights for each sample, shape (n_samples,).
-
-    Returns:
-        Tuple[np.ndarray, np.ndarray]: Gradients and Hessians.
-    """
-    grad = np.zeros_like(predt)
-    hess = np.zeros_like(predt)
-
-    for i in range(len(labels)):
-        lon_actual, lat_actual = labels[i]
-        lon_pred, lat_pred = predt[i]
-
-        distance = squared_haversine_distance(
-            lat_actual, lon_actual, lat_pred, lon_pred
-        )
-
-        if sample_weights is not None:
-            # Adjusting gradient calculation with sample weights
-            grad[i, 0] = -4 * distance * (lat_pred - lat_actual) * sample_weights[i]
-            grad[i, 1] = -4 * distance * (lon_pred - lon_actual) * sample_weights[i]
-
-            # Adjusting Hessian calculation with sample weights
-            hess[i, 0] = 4 * distance * sample_weights[i]
-            hess[i, 1] = 4 * distance * sample_weights[i]
-
-        else:
-            # Adjusting gradient calculation with sample weights
-            grad[i, 0] = -4 * distance * (lat_pred - lat_actual)
-            grad[i, 1] = -4 * distance * (lon_pred - lon_actual)
-
-            # Adjusting Hessian calculation with sample weights
-            hess[i, 0] = 4 * distance
-            hess[i, 1] = 4 * distance
-
-    return grad, hess
-
-
-def weighted_haversine_eval(labels, predt):
-    """
-    Custom evaluation metric for weighted Haversine error.
-
-    Args:
-        labels (np.ndarray): Actual values, shape (n_samples, 2).
-        predt (np.ndarray): Predicted values, shape (n_samples, 2).
-
-    Returns:
-        Tuple[str, float]: Name and value of the evaluation metric.
-    """
-    predt = predt.reshape(labels.shape)
-    haversine_errors = np.array(
-        [
-            squared_haversine_distance(lat1, lon1, lat2, lon2)
-            for (lon1, lat1), (lon2, lat2) in zip(labels, predt)
-        ]
-    )
-    median_error = np.median(haversine_errors)
-    return "weighted_haversine_median_error", median_error
 
 
 class MultiobjectiveHaversineLoss(nn.Module):
@@ -407,106 +311,19 @@ class WeightedRMSELoss(nn.Module):
         return torch.sqrt(loss.mean())
 
 
-import torch
-import torch.nn as nn
-import math
+def weighted_rmse_loss(y_true, y_pred, sample_weight=None):
+    """Custom PyTorch weighted RMSE loss function.
 
+    Args:
+        y_true (torch.Tensor): Ground truth values.
+        y_pred (torch.Tensor): Predictions.
+        sample_weight (torch.Tensor): Sample weights (1-dimensional).
 
-class WeightedHaversineLoss(nn.Module):
-    def __init__(self, eps=1e-6, earth_radius=6371):
-        """
-        Initializes the WeightedHaversineLoss module.
-
-        Args:
-            eps (float): A small epsilon value for numerical stability in calculations.
-            earth_radius (float): The radius of the Earth in kilometers.
-
-        """
-        super(WeightedHaversineLoss, self).__init__()
-        self.eps = eps
-        self.earth_radius = earth_radius
-        self.rad_factor = math.pi / 180  # radians conversion factor
-
-    def forward(self, predictions, targets, sample_weight=None):
-        """
-        Calculates the weighted Haversine loss between predictions and targets.
-
-        Args:
-            predictions (torch.Tensor): Predicted longitude and latitude values.
-            targets (torch.Tensor): True longitude and latitude values.
-            sample_weight (torch.Tensor, optional): Weights for each sample.
-
-        Returns:
-            torch.Tensor: The mean Haversine loss.
-        """
-        predictions = predictions * self.rad_factor
-        targets = targets * self.rad_factor
-
-        dlon = predictions[:, 0] - targets[:, 0]
-        dlat = predictions[:, 1] - targets[:, 1]
-        a = (
-            torch.sin(dlat / 2) ** 2
-            + torch.cos(targets[:, 0])
-            * torch.cos(predictions[:, 0])
-            * torch.sin(dlon / 2) ** 2
-        )
-        c = 2 * torch.atan2(torch.sqrt(a + self.eps), torch.sqrt(1 - a + self.eps))
-        loss = self.earth_radius * c
-        loss = loss.view(-1, 1)
-
-        if sample_weight is not None:
-            sample_weight = sample_weight.view(-1, 1)
-            loss *= sample_weight
-
-        return loss.median()
-
-
-def euclidean_distance_loss(y_true, y_pred, sample_weight=None):
-    """Custom PyTorch loss function."""
+    Returns:
+        float: Weighted RMSE loss.
+    """
     rmse = torch.sqrt(torch.sum((y_pred - y_true) ** 2, axis=1)).mean()
     if sample_weight is not None:
         rmse_scaled = rmse * sample_weight
         return rmse_scaled.mean()
     return rmse
-
-
-def haversine_distance_torch(lon1, lat1, lon2, lat2):
-    """
-    Calculate the Haversine distance between two points on the earth in PyTorch.
-    Args:
-        lat1, lon1, lat2, lon2: latitude and longitude of two points in radians.
-    Returns:
-        Distance in kilometers.
-    """
-    R = 6371.0  # Earth radius in kilometers
-    dlat = lat2 - lat1
-    dlon = lon2 - lon1
-
-    a = (
-        torch.sin(dlat / 2.0) ** 2
-        + torch.cos(lat1) * torch.cos(lat2) * torch.sin(dlon / 2.0) ** 2
-    )
-    c = 2 * torch.atan2(torch.sqrt(a), torch.sqrt(1 - a))
-
-    return R * c
-
-
-def haversine_loss(pred, target, eps=1e-6):
-    lon1, lat1 = torch.split(pred, 1, dim=1)
-    lon2, lat2 = torch.split(target, 1, dim=1)
-    r = 6371  # Radius of Earth in kilometers
-
-    phi1, phi2 = torch.deg2rad(lat1), torch.deg2rad(lat2)
-    delta_phi = torch.deg2rad(lat2 - lat1)
-    delta_lambda = torch.deg2rad(lon2 - lon1)
-
-    a = (
-        torch.sin(delta_phi / 2) ** 2
-        + torch.cos(phi1) * torch.cos(phi2) * torch.sin(delta_lambda / 2) ** 2
-    )
-    a = torch.clamp(a, min=0, max=1)  # Clamp 'a' to avoid sqrt of negative number
-
-    c = 2 * torch.atan2(torch.sqrt(a), torch.sqrt(1 - a + eps))
-    distance = r * c  # Compute the distance
-
-    return torch.mean(distance)
