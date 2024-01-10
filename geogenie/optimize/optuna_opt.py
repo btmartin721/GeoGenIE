@@ -15,17 +15,12 @@ from optuna.logging import (
     enable_default_handler,
     enable_propagation,
 )
-from sklearn.model_selection import StratifiedKFold
 from torch import optim
 from torch.utils.data import DataLoader
 
 from geogenie.plotting.plotting import PlotGenIE
-from geogenie.utils.loss import (
-    WeightedRMSELoss,
-    WeightedHaversineLoss,
-    euclidean_distance_loss,
-)
-from geogenie.utils.utils import CustomDataset
+from geogenie.utils.data import CustomDataset
+from geogenie.utils.loss import weighted_rmse_loss
 from geogenie.utils.scorers import haversine_distances_agg
 
 
@@ -67,6 +62,7 @@ class Optimize:
         args (Namespace): Arguments provided for model configurations.
         show_progress_bar (bool, optional): Flag to show or hide the progress bar. Defaults to False.
         n_startup_trials (int, optional): Number of initial trials. Defaults to 10.
+        dtype (torch.dtype): PyTorch data type to use. Defaults to torch.float32.
     """
 
     def __init__(
@@ -75,16 +71,19 @@ class Optimize:
         val_loader,
         test_loader,
         sample_weights,
+        densities,
         weighted_sampler,
         device,
         args,
         show_progress_bar=False,
         n_startup_trials=10,
+        dtype=torch.float32,
     ):
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.test_loader = test_loader
         self.sample_weights = sample_weights
+        self.densities = densities
         self.weighted_sampler = weighted_sampler
         self.device = device
         self.args = args
@@ -96,6 +95,7 @@ class Optimize:
         self.n_trials = args.n_iter
         self.n_jobs = args.n_jobs
         self.output_dir = args.output_dir
+        self.dtype = dtype
 
         self.logger = logging.getLogger(__name__)
 
@@ -136,7 +136,7 @@ class Optimize:
 
         return mapped_indices
 
-    def objective_function(self, trial, criterion, ModelClass, train_func):
+    def objective_function(self, trial, ModelClass, train_func):
         """Optuna hyperparameter tuning.
 
         Args:
@@ -145,12 +145,7 @@ class Optimize:
         Returns:
             float: Loss value.
         """
-        if ModelClass == "RF":
-            # RF Hyperparameters
-            self.model_type = "RF"
-            param_dict = self.set_rf_param_grid(trial, self.dataset.features.shape[0])
-
-        elif ModelClass == "GB":
+        if ModelClass == "GB":
             self.model_type = "GB"
             param_dict = self.set_gb_param_grid(trial)
 
@@ -159,23 +154,21 @@ class Optimize:
             self.model_type = "DL"
             param_dict = self.set_param_grid(trial)
 
-        if ModelClass in ["RF", "GB"]:
+        if ModelClass == "GB":
             trained_model, val_loss = self.run_rf_training(
                 trial, param_dict, train_func
             )
         else:
-            criterion = euclidean_distance_loss
-
             # Model, loss, and optimizer
             trained_model, val_loss = self.run_training(
-                trial, criterion, ModelClass, train_func, param_dict
+                trial, ModelClass, train_func, param_dict
             )
 
         if trained_model is None:
             raise optuna.exceptions.TrialPruned()
 
         _, haversine_error = self.evaluate_model(
-            self.val_loader, trained_model, euclidean_distance_loss
+            self.val_loader, trained_model, weighted_rmse_loss
         )
 
         if np.isnan(val_loss):
@@ -201,7 +194,7 @@ class Optimize:
     def run_rf_training(self, trial, param_dict, train_func):
         return train_func(param_dict, objective_mode=True)
 
-    def run_training(self, trial, criterion, ModelClass, train_func, param_dict):
+    def run_training(self, trial, ModelClass, train_func, param_dict):
         model = ModelClass(
             input_size=self.dataset.features.shape[1],
             width=param_dict["width"],
@@ -209,6 +202,7 @@ class Optimize:
             dropout_prop=param_dict["dropout_prop"],
             device=self.device,
             factor=param_dict["width_factor"],
+            dtype=self.dtype,
         ).to(self.device)
 
         optimizer = optim.Adam(
@@ -222,7 +216,6 @@ class Optimize:
             self.train_loader,
             self.val_loader,
             model,
-            criterion,
             optimizer,
             trial=trial,
             objective_mode=True,
@@ -245,7 +238,7 @@ class Optimize:
             subset_features, subset_labels, weighted_sampler.weights
         )
 
-        if self.model_type in ["RF", "GB"]:
+        if self.model_type == "GB":
             val_subset_dataset = CustomDataset(subset_features_val, subset_labels_val)
 
         if use_weighted in ["sampler", "both"]:
@@ -254,7 +247,7 @@ class Optimize:
             kwargs["shuffle"] = True
         train_loader = DataLoader(train_subset_dataset, **kwargs)
 
-        if self.model_type in ["RF", "GB"]:
+        if self.model_type == "GB":
             val_loader = DataLoader(
                 val_subset_dataset, batch_size=kwargs["batch_size"], shuffle=False
             )
@@ -303,31 +296,6 @@ class Optimize:
             "objective": objective,
         }
 
-    def set_rf_param_grid(self, trial, n_samples):
-        n_estimators = trial.suggest_int("n_estimators", 50, 1000)
-        criterion = trial.suggest_categorical(
-            "criterion", ["squared_error", "absolute_error", "friedman_mse"]
-        )
-        max_depth = trial.suggest_int("max_depth", 2, n_samples)
-        min_samples_split = trial.suggest_float("min_samples_split", 1e-3, 1.0)
-        min_samples_leaf = trial.suggest_float("min_samples_leaf", 1e-3, 1.0)
-        max_features = trial.suggest_categorical(
-            "max_features", ["sqrt", "log2", 0.1, 0.3, 0.5, 0.9, None]
-        )
-        max_samples = trial.suggest_float("max_samples", 1e-3, 1.0)
-
-        return {
-            "n_estimators": n_estimators,
-            "criterion": criterion,
-            "max_depth": max_depth,
-            "min_samples_split": min_samples_split,
-            "min_samples_leaf": min_samples_leaf,
-            "max_features": max_features,
-            "bootstrap": True,
-            "oob_score": True,
-            "max_samples": max_samples,
-        }
-
     def set_param_grid(self, trial):
         lr = trial.suggest_float("lr", 1e-4, 1e-1, log=True)
         l2_weight = trial.suggest_float("l2_weight", 1e-5, 1e-1, log=True)
@@ -370,7 +338,7 @@ class Optimize:
                     loss = criterion(
                         outputs,
                         labels,
-                        torch.ones(len(sample_weights), dtype=torch.float32),
+                        torch.ones(len(sample_weights), dtype=self.dtype),
                     )
 
                     haverror = haversine_distances_agg(
@@ -393,7 +361,9 @@ class Optimize:
         Perform parameter optimization using Optuna.
 
         Args:
-            logger (logging): Logger to write output to.
+            criterion (callable): Loss criterion to use.
+            ModelClass (MLPRegressor or XGBoost): Model class to use.
+            train_func (callable): Function to train model.
 
         Returns:
             tuple: Best trial and the Optuna study object.
@@ -410,7 +380,6 @@ class Optimize:
         def objective(trial):
             return self.objective_function(
                 trial,
-                criterion,
                 ModelClass,
                 train_func,
             )
