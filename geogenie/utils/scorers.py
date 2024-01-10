@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import scipy.stats as stats
 from sklearn.manifold import LocallyLinearEmbedding
-from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.metrics import mean_squared_error
 
 logger = logging.getLogger(__name__)
 
@@ -143,19 +143,6 @@ def calculate_r2_knn(predicted_data, actual_data):
     correlation_matrix = np.corrcoef(predicted_data, actual_data)
     r_squared = correlation_matrix[0, 1] ** 2
     return np.mean(r_squared)
-
-
-def calculate_r2_sklearn(y_true, y_pred, idx):
-    """This is for the scikit-learn implementation of r2_score
-
-    This is not the same as the calculate_r2 method."""
-    return r2_score(y_true[:, idx], y_pred[:, idx], multioutput="variance_weighted")
-
-
-def r2_multioutput(preds, targets):
-    r2_lon = np.corrcoef(preds[:, 0], targets[:, 0])[0][1] ** 2
-    r2_lat = np.corrcoef(preds[:, 1], targets[:, 1])[0][1] ** 2
-    return r2_lon, r2_lat
 
 
 def calculate_rmse(preds, targets):
