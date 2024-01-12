@@ -151,7 +151,7 @@ def validate_lower_str(value):
     return value.lower()
 
 
-def setup_parser():
+def setup_parser(test_mode=False):
     """Parse command-line arguments.
 
     Returns:
@@ -214,8 +214,8 @@ def setup_parser():
     embed_group.add_argument(
         "--embedding_type",
         type=validate_lower_str,
-        default="pca",
-        help="Embedding to use with input SNP dataset. Supported options are: 'pca', 'polynomial', 'tsne', 'none' (no embedding). Default: 'pca'.",
+        default="none",
+        help="Embedding to use with input SNP dataset. Supported options are: 'pca', 'polynomial', 'tsne', 'none' (no embedding). Default: 'none' (no embedding).",
     )
     embed_group.add_argument(
         "--n_components",
@@ -386,6 +386,7 @@ def setup_parser():
     geo_sampler_group.add_argument(
         "--use_weighted",
         type=validate_lower_str,
+        default="none",
         help="Use inverse-weighted probability sampling to calculate sample weights based on sampling density; use the sample weights in the loss function, or both. Valid options include: 'sampler', 'loss', 'both', or 'none'. Default: 'none'.",
     )
     geo_sampler_group.add_argument(
@@ -694,7 +695,7 @@ def setup_parser():
     args = parser.parse_args()
 
     # Load and apply configuration file if provided
-    validate_inputs(parser, args)
+    validate_inputs(parser, args, test_mode=test_mode)
     validate_significance_levels(parser, args)
     validate_max_neighbors(parser, args)
     validate_embeddings(parser, args)
@@ -841,7 +842,7 @@ def validate_significance_levels(parser, args):
         )
 
 
-def validate_inputs(parser, args):
+def validate_inputs(parser, args, test_mode=False):
     if args.config:
         if not os.path.exists(args.config):
             parser.error(f"Configuration file not found: {args.config}")
@@ -852,11 +853,11 @@ def validate_inputs(parser, args):
             if arg in config:
                 setattr(args, arg, config[arg])
 
-    if args.sample_data is None:
+    if args.sample_data is None and not test_mode:
         logger.error("--sample_data argument is required.")
         parser.error("--sample_data argument is required.")
 
-    if args.vcf is None and args.gtseq is None:
+    if args.vcf is None and args.gtseq is None and not test_mode:
         logger.error("Either --vcf or --gtseq must be defined.")
         parser.error("Either --vcf or --gtseq must be defined.")
 
