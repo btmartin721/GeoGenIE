@@ -222,8 +222,9 @@ class GeographicDensitySampler(Sampler):
             labels = kmeans.fit_predict(self.data)
             cluster_counts = np.bincount(labels, minlength=n_clusters)
             cluster_weights = 1 / (cluster_counts[labels] + 1e-5)
-            mms = MinMaxScaler(feature_range=(1, 300))
+            mms = MinMaxScaler(feature_range=(1, 20))
             weights *= np.squeeze(mms.fit_transform(cluster_weights.reshape(-1, 1)))
+            self.density = None
         if self.use_kde:
             if not self.objective_mode and self.verbose >= 1:
                 self.logger.info("Estimating sample weights with Kernel Density...")
