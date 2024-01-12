@@ -79,4 +79,4 @@ def read_and_plot_params(directory):
 
 
 # Example usage
-read_and_plot_params("final_analysis/optimize/")
+read_and_plot_params("final_analysis/")
