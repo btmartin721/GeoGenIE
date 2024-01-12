@@ -608,7 +608,7 @@ class GeoGenIE:
         """
         start_time = time.time()  # Start time for the epoch
         model.train()
-        total_loss = 0.0
+        total_loss = []
 
         try:
             for batch in train_loader:
@@ -629,8 +629,8 @@ class GeoGenIE:
                     # Gradient clipping.
                     nn.utils.clip_grad_norm_(model.parameters(), 5.0)
                 optimizer.step()
-                total_loss += loss.item()
-            avg_train_loss = total_loss / len(train_loader)
+                total_loss.append(loss.item())
+            avg_train_loss = np.mean(total_loss)
         except Exception as e:
             if objective_mode:
                 return str(e), None
@@ -655,7 +655,7 @@ class GeoGenIE:
             - No gradient calculations or backpropagation are performed, as the model is set to evaluation mode.
         """
         model.eval()
-        total_val_loss = 0.0
+        total_val_loss = []
         with torch.no_grad():
             for batch in val_loader:
                 data, targets, sample_weight = batch
@@ -667,8 +667,8 @@ class GeoGenIE:
 
                 outputs = model(data)
                 val_loss = self.criterion(outputs, targets)
-                total_val_loss += val_loss.item()
-        avg_val_loss = total_val_loss / len(val_loader)
+                total_val_loss.append(val_loss.item())
+        avg_val_loss = np.mean(total_val_loss)
         return avg_val_loss
 
     def compute_rolling_statistics(self, times, window_size):
@@ -1277,7 +1277,7 @@ class GeoGenIE:
             dtype=self.dtype,
         )
 
-        if self.args.use_random_forest or self.args.use_gradient_boosting:
+        if self.args.use_gradient_boosting:
             best_trial, study = opt.perform_optuna_optimization(
                 self.criterion, ModelClass, self.train_rf
             )
