@@ -201,7 +201,7 @@ class Optimize:
             nlayers=param_dict["nlayers"],
             dropout_prop=param_dict["dropout_prop"],
             device=self.device,
-            factor=param_dict["width_factor"],
+            output_width=self.dataset.labels.shape[1],
             dtype=self.dtype,
         ).to(self.device)
 
