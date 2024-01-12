@@ -158,7 +158,7 @@ class DataStructure:
         params property getter and setter: Getters and setters for managing class parameters.
     """
 
-    def __init__(self, vcf_file, verbose=False, dtype=torch.float32):
+    def __init__(self, vcf_file, verbose=False, dtype=torch.float32, debug=False):
         """Constructor for DataStructure class.
 
         Args:
@@ -172,6 +172,7 @@ class DataStructure:
         self.verbose = verbose
         self.data = {}
         self.dtype = dtype
+        self.debug = debug
 
         self.mask = np.ones_like(self.samples, dtype=bool)
         self.simputer = SimpleImputer(strategy="most_frequent", missing_values=np.nan)
@@ -332,6 +333,10 @@ class DataStructure:
             self.genotypes, axis=-1, where=~np.all(np.isnan(self.genotypes))
         )
 
+        self.all_missing_mask = np.all(np.isnan(self.genotypes_enc), axis=0)
+        self.genotypes_enc = self.genotypes_enc[:, ~self.all_missing_mask]
+        self.locs = self.locs[~self.all_missing_mask]
+
         allele_counts = np.apply_along_axis(
             lambda x: np.bincount(x[~np.isnan(x)].astype(int), minlength=3),
             axis=1,
@@ -390,34 +395,40 @@ class DataStructure:
 
         # Split non-NaN samples into training + validation and test sets
         (
-            X_train_val,
-            X_test,
-            y_train_val,
-            y_test,
-            train_val_indices,
-            test_indices,
+            X_train,
+            X_test_val,
+            y_train,
+            y_test_val,
+            train_indices,
+            test_val_indices,
         ) = train_test_split(
-            self.X, self.y, self.true_idx, train_size=train_split, random_state=seed
+            self.X,
+            self.y,
+            self.true_idx,
+            train_size=train_split,
+            random_state=seed,
+            shuffle=True,
         )
 
         # Split training data into actual training and validation sets
-        (X_train, X_val, y_train, y_val, train_indices, val_indices) = train_test_split(
-            X_train_val,
-            y_train_val,
-            train_val_indices,
-            test_size=val_split,
+        (X_test, X_val, y_test, y_val, test_indices, val_indices) = train_test_split(
+            X_test_val,
+            y_test_val,
+            test_val_indices,
+            test_size=0.5,
             random_state=seed,
+            shuffle=True,
         )
 
         if args.use_gradient_boosting:
             (
-                X_train,
-                X_train_val2,
-                y_train,
-                y_train_val2,
+                X_val,
+                X_train_val,
+                y_val,
+                y_train_val,
                 train_indices,
-                train_val_indices2,
-            ) = train_test_split(X_train, y_train, train_indices, test_size=0.2)
+                train_val_indices,
+            ) = train_test_split(X_val, y_val, val_indices, test_size=0.5)
 
         data = {
             "X_train": X_train,
@@ -432,13 +443,13 @@ class DataStructure:
         }
 
         if args.use_gradient_boosting:
-            data["X_train_val"] = X_train_val2
-            data["y_train_val"] = y_train_val2
+            data["X_train_val"] = X_train_val
+            data["y_train_val"] = y_train_val
 
         self.data.update(data)
 
         self.indices = {
-            "train_val_indices": train_val_indices,
+            "test_val_indices": test_val_indices,
             "train_indices": train_indices,
             "val_indices": val_indices,
             "test_indices": test_indices,
@@ -447,7 +458,7 @@ class DataStructure:
         }
 
         if args.use_gradient_boosting:
-            self.indices["train_val_indices2"] = train_val_indices2
+            self.indices["train_val_indices"] = train_val_indices
 
         if self.verbose >= 1:
             self.logger.info("Created train, validation, and test datasets.")
@@ -542,6 +553,12 @@ class DataStructure:
             min_mac=args.min_mac, max_snps=args.max_SNPs, return_values=False
         )
 
+        if self.debug:
+            dfX = pd.DataFrame(self.genotypes_enc)
+            dfy = pd.DataFrame(self.locs, columns=["x", "y"])
+            df = pd.concat([dfX, dfy], axis=1)
+            df.to_csv("geogenie/test/X_mod.csv", header=True, index=False)
+
         # Make sure features and target have same number of rows.
         self.validate_feature_target_len()
 
@@ -549,16 +566,12 @@ class DataStructure:
         X = self.impute_missing(self.genotypes_enc)
 
         # Do embedding (e.g., PCA, LLE)
-        X = self.embed(
-            args,
-            X=X,
-            alg="pca",
-            full_dataset_only=True,
-            transform_only=False,
-        )
+        alg = "pca" if not self.debug else "none"
+        X = self.embed(args, X=X, alg=alg, full_dataset_only=True, transform_only=False)
 
         # Define true_indices and pred_indices
         self.pred_mask = ~np.isnan(self.locs).any(axis=1)
+        self.mask = self.mask[~self.all_missing_mask]
 
         X, indices, y, index = self.setup_index_masks(X)
         self.all_indices = indices
@@ -673,6 +686,8 @@ class DataStructure:
         indices = np.arange(self.locs.shape[0])
         X = X[self.pred_mask, :]
         y = self.locs[self.pred_mask, :]
+
+        self.samples = self.samples[~self.all_missing_mask]
         index = self.samples[self.pred_mask]
 
         # Store indices after filtering for nan
