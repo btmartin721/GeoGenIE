@@ -61,3 +61,4 @@ summary_facet*
 .gg/*
 results/*
 *.tmp
+output_pca_curve.png
