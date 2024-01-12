@@ -45,8 +45,8 @@ class MLPRegressor(nn.Module):
     def _define_model(self, input_size, width, nlayers, dropout_prop, output_width):
         # Start with a Linear layer followed by BatchNorm1d
         layers = [
+            nn.BatchNorm1d(input_size, dtype=self.dtype),
             nn.Linear(input_size, width, dtype=self.dtype),
-            nn.BatchNorm1d(width, dtype=self.dtype),
             nn.ELU(),
         ]
 
@@ -65,7 +65,7 @@ class MLPRegressor(nn.Module):
 
         # Add output layers
         layers.append(nn.Linear(width, output_width, dtype=self.dtype))
-        layers.append(nn.Linear(output_width, output_width, dtype=self.dtype))
+        # layers.append(nn.Linear(output_width, output_width, dtype=self.dtype))
 
         return nn.Sequential(*layers)
 
