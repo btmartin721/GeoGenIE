@@ -13,17 +13,21 @@ import scipy.stats as stats
 import seaborn as sns
 import torch
 import wget
+from esda.moran import Moran
+from libpysal.weights import DistanceBand
 from optuna import exceptions as optuna_exceptions
 from optuna import visualization
+from scipy.spatial.distance import euclidean
 from scipy.stats import gamma
 from shapely.geometry import Point
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import RBF, WhiteKernel
+from sklearn.gaussian_process.kernels import RBF, Matern, WhiteKernel
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import ConfusionMatrixDisplay
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import PolynomialFeatures
+from splot.esda import moran_scatterplot
 
 from geogenie.samplers.samplers import GeographicDensitySampler, custom_gpr_optimizer
 from geogenie.utils.exceptions import TimeoutException
@@ -399,6 +403,40 @@ class PlotGenIE:
         fig.savefig(outfile, facecolor="white", bbox_inches="tight")
         plt.close()
 
+    def _calculate_vector_errors(self, actual_coords, predicted_coords):
+        """
+        Calculates the vector difference errors between actual and predicted coordinates.
+        """
+        vector_errors = np.array(
+            [euclidean(act, pred) for act, pred in zip(actual_coords, predicted_coords)]
+        )
+        return vector_errors
+
+    def _calculate_spatial_autocorrelation(self, errors, coords):
+        """
+        Calculates spatial autocorrelation (Moran's I) for the errors.
+        """
+        weights = DistanceBand.from_array(
+            coords, threshold=1.0
+        )  # Adjust threshold based on your data
+        mi = Moran(errors, weights)
+        return mi.I
+
+    def _run_gpr_with_matern_kernel(
+        self, actual_coords, vector_errors, n_restarts_optimizer=50
+    ):
+        """
+        Runs Gaussian Process Regression using the Matern kernel.
+        """
+        kernel = 1 * Matern(
+            length_scale=1.0, length_scale_bounds=(1e-2, 1e6)
+        ) + WhiteKernel(noise_level=0.5, noise_level_bounds=(1e-10, 1e6))
+        gp = GaussianProcessRegressor(
+            kernel=kernel, n_restarts_optimizer=n_restarts_optimizer
+        )
+        gp.fit(actual_coords, vector_errors)
+        return gp
+
     def plot_geographic_error_distribution(
         self,
         actual_coords,
@@ -406,7 +444,7 @@ class PlotGenIE:
         url,
         dataset,
         buffer=0.1,
-        marker_scale_factor=3,
+        marker_scale_factor=2,
         min_colorscale=0,
         max_colorscale=300,
         n_contour_levels=20,
@@ -430,18 +468,36 @@ class PlotGenIE:
         Notes:
             - This method produces two subplots: one showing the spatial distribution of prediction errors and the others showing the uncertainty of these predictions.
         """
-        # Calculate Haversine error for each pair of points
+        # # Calculate Haversine error for each pair of points
+        # haversine_errors = haversine_distances_agg(
+        #     actual_coords, predicted_coords, np.array
+        # )
+
+        # if len(haversine_errors.shape) > 1:
+        #     msg = f"Invalid shape found in haversine_error estimations: {haversine_errors.shape}"
+        #     self.logger.error(msg)
+        #     raise ValueError(msg)
+
+        # # Define the parameter grid
+        # gp = self._run_gpr(actual_coords, haversine_errors, n_restarts_optimizer=50)
+
+        # Calculate vector difference errors
         haversine_errors = haversine_distances_agg(
             actual_coords, predicted_coords, np.array
         )
 
-        if len(haversine_errors.shape) > 1:
-            msg = f"Invalid shape found in haversine_error estimations: {haversine_errors.shape}"
-            self.logger.error(msg)
-            raise ValueError(msg)
+        sigma = 0.01
+        for i in range(2):
+            actual_coords[:, i] = np.random.normal(actual_coords[:, i], sigma)
 
-        # Define the parameter grid
-        gp = self._run_gpr(actual_coords, haversine_errors)
+        # Spatial autocorrelation analysis
+        # Adjust the threshold as needed. 1000 = 1 km
+        weights = DistanceBand.from_array(actual_coords, threshold=1000.0)
+
+        mi = Moran(haversine_errors, weights)
+
+        # Run GPR with Matern kernel
+        gp = self._run_gpr(actual_coords, haversine_errors, n_restarts_optimizer=50)
 
         # Create a grid over the area of interest
         grid_x, grid_y = np.meshgrid(
@@ -478,7 +534,20 @@ class PlotGenIE:
         vmax_std = min(roundup(np.max(error_std)), 100)
 
         # Define colormap and normalization
-        cmap = plt.get_cmap("coolwarm_r")
+        # cmap = plt.get_cmap("plasma_r")
+
+        tp_cmap = colors.LinearSegmentedColormap.from_list(
+            "", ["#55CDFC", "#FFFFFF", "#F7A8B8"]
+        )
+
+        cmap = colors.LinearSegmentedColormap.from_list(
+            "", ["#FF1B8D", "#FFDA00", "#1BB3FF"]
+        )
+
+        uncertainty_cmap = colors.LinearSegmentedColormap.from_list(
+            "", ["#FF1B8D", "#FFDA00", "#1BB3FF"]
+        )
+
         norm = colors.Normalize(vmin=min_colorscale, vmax=vmax)
         norm_std = colors.Normalize(vmin=0, vmax=vmax_std)
 
@@ -494,9 +563,10 @@ class PlotGenIE:
                 num=n_contour_levels,
                 endpoint=True,
             ),
+            extend="max",
         )
 
-        uncertainty_cmap = plt.get_cmap("coolwarm_r")
+        # uncertainty_cmap = plt.get_cmap("plasma_r")
         uncert_contour = ax2.contourf(
             grid_x,
             grid_y,
@@ -509,6 +579,7 @@ class PlotGenIE:
                 num=n_contour_levels,
                 endpoint=True,
             ),
+            extend="max",
         )
 
         cbar = self._make_colorbar(
@@ -525,6 +596,27 @@ class PlotGenIE:
             n_contour_levels,
             ax2,
             uncert_contour,
+        )
+
+        # Error Vector Visualization (Quiver plot)
+        # Calculate error vectors
+        error_vectors = predicted_coords - actual_coords
+
+        # # Normalize error vectors for visualization
+        # norms = np.sqrt((error_vectors**2).sum(axis=1))
+        # error_vectors_normalized = error_vectors / norms[:, np.newaxis]
+
+        ax.quiver(
+            actual_coords[:, 0],
+            actual_coords[:, 1],
+            error_vectors[:, 0],
+            error_vectors[:, 1],
+            color="red",
+            scale=21,
+            headwidth=3,
+            headlength=5,
+            headaxislength=4.5,
+            alpha=0.7,
         )
 
         # Load and plot dynamic boundaries
@@ -602,7 +694,7 @@ class PlotGenIE:
         ax.set_xlabel("Longitude")
         ax.set_ylabel("Latitude")
 
-    def _run_gpr(self, actual_coords, haversine_errors, n_restarts_optimizer=25):
+    def _run_gpr(self, actual_coords, haversine_errors, n_restarts_optimizer=50):
         """
         Runs Gaussian Process Regression (GPR) on actual coordinates against Haversine errors to model the spatial distribution of prediction errors.
 
@@ -622,7 +714,7 @@ class PlotGenIE:
         # no upper bound
         kernel = 1 * RBF(
             length_scale=1.0, length_scale_bounds=(1e-2, 1e6)
-        ) + WhiteKernel(noise_level=1, noise_level_bounds=(1e-10, 1e6))
+        ) + WhiteKernel(noise_level=0.5, noise_level_bounds=(1e-10, 1e6))
         gp = GaussianProcessRegressor(
             kernel=kernel,
             optimizer=custom_gpr_optimizer,
@@ -751,7 +843,7 @@ class PlotGenIE:
         Notes:
             - This method sets up a colorbar with specified min and max values, and a defined number of levels.
         """
-        cbar = plt.colorbar(contour, ax=ax, extend="both", fraction=0.046, pad=0.1)
+        cbar = plt.colorbar(contour, ax=ax, extend="max", fraction=0.046, pad=0.1)
 
         cbar.set_ticks(
             np.linspace(
@@ -856,8 +948,13 @@ class PlotGenIE:
         plt.figure(figsize=(12, 12))
 
         # Colormap and normalization
-        vmax = min(roundup(np.max(x)), 300)
-        cmap = plt.get_cmap("coolwarm_r")
+        vmax = min(roundup(np.max(x)), 150)
+
+        cmap = colors.LinearSegmentedColormap.from_list(
+            "", ["#FF1B8D", "#FFDA00", "#1BB3FF"]
+        )
+
+        # cmap = plt.get_cmap("plasma_r")
         norm = colors.Normalize(vmin=0, vmax=vmax)
 
         # Create the plot
@@ -1025,10 +1122,14 @@ class PlotGenIE:
             x -= x % -100
             return x
 
-        vmax = min(roundup(np.max(errors)), 300)
+        vmax = min(roundup(np.max(errors)), 150)
 
         # Colormap and normalization
-        cmap = plt.get_cmap("coolwarm_r")
+        # cmap = plt.get_cmap("plasma_r")
+
+        cmap = colors.LinearSegmentedColormap.from_list(
+            "", ["#FF1B8D", "#FFDA00", "#1BB3FF"]
+        )
         norm = colors.Normalize(vmin=0, vmax=vmax)
 
         # Histogram (Density Plot with Gradient)
@@ -1036,7 +1137,7 @@ class PlotGenIE:
 
         # Compute KDE
         kde = stats.gaussian_kde(errors)
-        x_values = np.linspace(np.min(errors), np.max(errors), 300)
+        x_values = np.linspace(np.min(errors), np.max(errors), 150)
         kde_values = kde(x_values)
 
         # Normalize the KDE values
