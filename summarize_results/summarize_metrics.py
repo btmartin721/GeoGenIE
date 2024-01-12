@@ -137,7 +137,7 @@ def create_facet_grid(df):
     plt.tight_layout()
 
     # Save the plot
-    plt.savefig("best_metrics_final_gb_nn/summary_facet_grid_selected_metrics.png")
+    plt.savefig("final_analysis/summary_facet_grid_selected_metrics.png")
     plt.close()
     print(
         "Facet grid plot saved to final_analysis/plots/summary_facet_grid_selected_metrics.pdf."
@@ -145,6 +145,6 @@ def create_facet_grid(df):
 
 
 # Example usage
-directory_path = "best_metrics_final_gb_nn/"
+directory_path = "final_analysis/"
 df = read_json_files(directory_path)
 create_facet_grid(df)
