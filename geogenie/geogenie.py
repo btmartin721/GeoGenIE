@@ -2,6 +2,7 @@ import csv
 import json
 import logging
 import os
+import sys
 import time
 import traceback
 from functools import wraps
@@ -15,21 +16,23 @@ import torch.nn as nn
 import torch.optim as optim
 import xgboost as xgb
 from scipy.stats import pearsonr, spearmanr
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import mean_squared_error, median_absolute_error
-from torch.utils.data import DataLoader
+from sklearn.metrics import mean_squared_error
 
 from geogenie.models.models import MLPRegressor
-from geogenie.optimize.boostrap import Bootstrap
+from geogenie.optimize.bootstrap import Bootstrap
 from geogenie.optimize.optuna_opt import Optimize
 from geogenie.plotting.plotting import PlotGenIE
-from geogenie.samplers.samplers import GeographicDensitySampler, synthetic_resampling
-from geogenie.utils.callbacks import EarlyStopping
-from geogenie.utils.data import CustomDataset
+from geogenie.samplers.interpolate import run_genotype_interpolator
+from geogenie.samplers.samplers import synthetic_resampling
+from geogenie.utils.callbacks import callback_init
 from geogenie.utils.data_structure import DataStructure
-from geogenie.utils.loss import weighted_rmse_loss
+from geogenie.utils.loss import WeightedDRMSLoss, WeightedHuberLoss, weighted_rmse_loss
 from geogenie.utils.scorers import calculate_rmse, haversine_distances_agg, kstest
-from geogenie.utils.utils import geo_coords_is_valid, validate_is_numpy
+from geogenie.utils.utils import (
+    geo_coords_is_valid,
+    validate_is_numpy,
+    load_directory_of_locs,
+)
 
 os.environ["TQDM_DISABLE"] = "1"
 
@@ -132,6 +135,8 @@ class GeoGenIE:
             "data",
             "shapefile",
             "benchmarking",
+            "bootstrap_predictions",
+            "bootstrap_metrics",
         ]
 
         output_dir = self.args.output_dir
@@ -155,17 +160,21 @@ class GeoGenIE:
             self.device,
             output_dir,
             prefix,
+            self.args.basemap_fips,
+            self.args.highlight_basemap_counties,
             show_plots=self.args.show_plots,
             fontsize=self.args.fontsize,
             filetype=self.args.filetype,
             dpi=self.args.plot_dpi,
         )
 
+        self.boot = None
+
     def load_data(self):
         """Loads genotypes from VCF file using pysam, then preprocesses the data by imputing, embedding, and transforming the input data."""
         if self.args.vcf is not None:
-            self.data_structure = DataStructure(self.args.vcf, dtype=self.dtype)
-        self.data_structure.load_and_preprocess_data(self.args)
+            self.ds = DataStructure(self.args.vcf, dtype=self.dtype)
+        self.ds.load_and_preprocess_data(self.args)
 
     def save_model(self, model, filename):
         """Saves the trained model to a file.
@@ -202,9 +211,9 @@ class GeoGenIE:
         if self.args.verbose >= 2:
             self.logger.info("\n\n")
 
-        X_train = self.data_structure.data["X_train"]
-        y_train = self.data_structure.data["y_train"]
-        sample_weights = self.data_structure.samples_weight
+        X_train = self.ds.data["X_train"]
+        y_train = self.ds.data["y_train"]
+        sample_weights = self.ds.samples_weight
 
         centroids = None
         if self.args.oversample_method.lower() != "none":
@@ -254,10 +263,10 @@ class GeoGenIE:
             sample_weights = sample_weights.copy()
 
         if self.args.use_gradient_boosting:
-            X_train_val = self.data_structure.data["X_train_val"]
-            y_train_val = self.data_structure.data["y_train_val"]
-            X_val = self.data_structure.data["X_val"]
-            y_val = self.data_structure.data["y_val"]
+            X_train_val = self.ds.data["X_train_val"]
+            y_train_val = self.ds.data["y_train_val"]
+            X_val = self.ds.data["X_val"]
+            y_val = self.ds.data["y_val"]
 
         sample_weights_val = np.ones((X_val.shape[0],))
 
@@ -309,14 +318,12 @@ class GeoGenIE:
         rmse = mean_squared_error(y_val, y_pred, squared=False)
 
         if not objective_mode:
-            self.data_structure.train_loader.dataset.features = torch.tensor(
+            self.ds.train_loader.dataset.features = torch.tensor(
                 features, dtype=self.dtype
             )
-            self.data_structure.train_loader.dataset.labels = torch.tensor(
-                labels, dtype=self.dtype
-            )
+            self.ds.train_loader.dataset.labels = torch.tensor(labels, dtype=self.dtype)
 
-            self.data_structure.train_loader.dataset.sample_weights = torch.tensor(
+            self.ds.train_loader.dataset.sample_weights = torch.tensor(
                 sample_weights, dtype=self.dtype
             )
 
@@ -349,7 +356,7 @@ class GeoGenIE:
             features, labels, sample_weights
         )
 
-        labels = self.data_structure.norm.inverse_transform(labels)
+        labels = self.ds.norm.inverse_transform(labels)
         geo_coords_is_valid(labels)
 
         dfX = pd.DataFrame(features)
@@ -357,7 +364,7 @@ class GeoGenIE:
         dfX["sample_weights"] = sample_weights
         df_smote = pd.concat([dfX, dfy], axis=1)
         ytmp = df[["x", "y"]].to_numpy()
-        ytmp = self.data_structure.norm.inverse_transform(ytmp)
+        ytmp = self.ds.norm.inverse_transform(ytmp)
         df["x"] = ytmp[:, 0]
         df["y"] = ytmp[:, 1]
 
@@ -366,7 +373,7 @@ class GeoGenIE:
             bins_resampled,
             df,
             self.args.n_bins,
-            self.args.shapefile_url,
+            self.args.shapefile,
             buffer=self.args.bbox_buffer,
             marker_scale_factor=self.args.sample_point_scale,
         )
@@ -380,6 +387,9 @@ class GeoGenIE:
         optimizer,
         trial=None,
         objective_mode=False,
+        do_bootstrap=False,
+        early_stopping=None,
+        lr_scheduler=None,
     ):
         """
         Train the PyTorch model with given parameters.
@@ -391,199 +401,93 @@ class GeoGenIE:
             optimizer: Optimizer.
             trial (optuna.Trial): Current Optuna trial. Defaults to None.
             objective_mode (bool): Whether to return just the model for Optuna's objective function. Defaults to False.
+            do_bootstrap (bool): True if iin botstrap mode. False otherwise. Defaults to False.
+            early_stopping (EarlyStopping): Early stopping callback to use with training. Must be provided if objective_mode is True. Defaults to None.
+            lr_scheduler (torch.optim.lr_scheduler.ReduceLROnPlateau): Learning rate scheduler to use with training. Must be provided if ``objective_mode=True``\. Defaults to None.
 
         Returns:
             Model and training statistics, or just the model if in objective mode.
         """
-        early_stopping = EarlyStopping(
-            output_dir=self.args.output_dir,
-            prefix=self.args.prefix,
-            patience=self.args.early_stop_patience,
-            verbose=self.args.verbose >= 2,
-            delta=0,
-        )
+        if early_stopping is None and (objective_mode or do_bootstrap):
+            msg = "Must provide 'early_stopping' argument if 'objective_mode=True', but got NoneType."
+            self.logger.error(msg)
+            raise TypeError(msg)
 
-        lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer,
-            mode="min",
-            factor=self.args.lr_scheduler_factor,
-            patience=self.args.lr_scheduler_patience,
-            verbose=self.args.verbose >= 2,
-        )
+        if lr_scheduler is None and (objective_mode or do_bootstrap):
+            msg = "Must provide 'lr_scheduler' argument if 'objective_mode=True', but got NoneType."
+            self.logger.error(msg)
+            raise TypeError(msg)
 
-        train_losses, val_losses, epoch_times = [], [], []
-        rolling_window_size = 20
-        total_time = 0
+        if not objective_mode:
+            early_stopping, lr_scheduler = callback_init(optimizer, self.args)
 
-        epochs = self.args.max_epochs
+        train_losses, val_losses = [], []
 
-        if self.args.verbose >= 2:
-            self.logger.info("\n\n")
-
+        self.train_loader_interp = train_loader
         centroids = None
-        if self.args.oversample_method.lower() != "none":
+        if (
+            self.args.oversample_method.lower() != "none"
+            and not do_bootstrap
+            and not objective_mode
+        ):
             (
+                train_loader,
+                centroids,
                 features,
                 labels,
                 sample_weights,
-                centroids,
-                df,
-                bins,
-                centroids_orig,
-                bins_resampled,
-            ) = synthetic_resampling(
-                train_loader.dataset.features,
-                train_loader.dataset.labels,
-                train_loader.dataset.sample_weights,
-                self.args.n_bins,
-                self.args,
-                method=self.args.oversample_method,
-                smote_neighbors=self.args.oversample_neighbors,
-            )
+            ) = run_genotype_interpolator(train_loader, self.args, self.ds, self.dtype)
 
-            if features is None or labels is None:
-                if objective_mode:
-                    return None
-                else:
-                    msg = "Synthetic data augmentation failed. Try adjusting the parameters supplied to SMOTE or SMOTER."
-                    self.logger.error(msg)
-                    raise ValueError(msg)
+            self.train_loader_interp = train_loader
 
-            if not objective_mode:
-                self.visualize_oversampling(
-                    features,
-                    labels,
-                    sample_weights,
-                    df,
-                    bins_resampled,
-                )
-
-            train_dataset = CustomDataset(
-                features, labels, sample_weights=sample_weights, dtype=self.dtype
-            )
-
-            kwargs = {"batch_size": train_loader.batch_size}
-
-            if self.args.use_weighted == "none":
-                sample_weights = torch.ones_like(
-                    sample_weights, dtype=self.dtype, device=self.device
-                )
-                kwargs["shuffle"] = True
-            else:
-                if self.args.use_weighted in ["sampler", "both"]:
-                    kwargs = self._reset_weighted_sampler(
-                        sample_weights, train_dataset, kwargs
-                    )
-
-                if self.args.use_weighted in ["loss", "both"]:
-                    if not isinstance(sample_weights, torch.Tensor):
-                        sample_weights = torch.tensor(
-                            sample_weights, dtype=self.dtype, device=self.device
-                        )
-
-                    if self.args.use_weighted != "both":
-                        kwargs["shuffle"] = True
-
-            train_loader = DataLoader(train_dataset, **kwargs)
-            train_loader.dataset.sample_weights = sample_weights
-
-        for epoch in range(epochs):
+        for epoch in range(self.args.max_epochs):
             # Training
-            start_time, avg_train_loss = self.train_step(
+            avg_train_loss = self.train_step(
                 train_loader, model, optimizer, self.args.grad_clip, objective_mode
             )
-            if avg_train_loss is None:
+            if avg_train_loss is None or np.isnan(avg_train_loss):
                 # If errored out, then start_time will be string containing
                 # exception.
-                self.logger.warning(
-                    f"Model training failed at epoch {epoch}: {start_time}"
-                )
+                self.logger.warning(f"Model training failed at epoch {epoch}")
+
+                if objective_mode and trial is not None:
+                    raise optuna.exceptions.TrialPruned()
                 return None, None
             train_losses.append(avg_train_loss)
+
             # Validation
             avg_val_loss = self.test_step(val_loader, model)
             val_losses.append(avg_val_loss)
 
-            if self.args.verbose >= 2:
-                self.logger.info(
-                    f"Epoch {epoch+1}/{epochs} - "
-                    f"Train Loss: {avg_train_loss:.4f} - "
-                    f"Final Val Loss: {avg_val_loss:.4f}"
-                )
-
-            end_time = time.time()
-            epoch_duration = end_time - start_time
-            epoch_times.append(epoch_duration)
-
-            # Logging
-            if self.args.verbose >= 2 and epoch % (rolling_window_size * 2) == 0:
-                self.logger.info(
-                    f"Current model train time ({epoch}/{epochs}): "
-                    f"{total_time:.2f}s, - "
-                    f"Rolling Average Time: "
-                    f"{total_time/len(epoch_times):.2f} seconds"
-                )
-
             # Early Stopping and LR Scheduler
             early_stopping(avg_val_loss, model)
-            lr_scheduler.step(avg_val_loss)
-
             if early_stopping.early_stop:
                 if self.args.verbose >= 2:
-                    self.logger.info("Early stopping triggered.")
+                    self.logger.info(f"Early stopping triggered at epoch {epoch}")
                 break
+
+            lr_scheduler.step(avg_val_loss)
 
             if trial is not None and trial.should_prune():
                 raise optuna.exceptions.TrialPruned()
 
-        log_message = (
-            f"Training Completed - "
-            f"Final Train Loss: {train_losses[-1]:.4f} - "
-            f"Final Val Loss: {val_losses[-1]:.4f}"
-        )
+        if objective_mode or do_bootstrap:
+            return model
 
-        if self.args.verbose >= 2:
-            self.logger.info(log_message)
-
-        rolling_avgs, rolling_stds = self.compute_rolling_statistics(
-            epoch_times, rolling_window_size
-        )
-
-        if objective_mode:
-            return model, np.mean(val_losses)
-        else:
-            if self.args.oversample_method.lower() != "none":
-                self.data_structure.train_loader.dataset.features = torch.tensor(
-                    features, dtype=self.dtype
+        if self.args.oversample_method.lower() != "none":
+            features = torch.tensor(features, dtype=self.dtype)
+            labels = torch.tensor(labels, dtype=self.dtype)
+            if sample_weights is not None:
+                sample_weights = torch.tensor(sample_weights, dtype=self.dtype)
+            else:
+                sample_weights = torch.ones(
+                    (features.numpy().shape[0]), dtype=self.dtype
                 )
-                self.data_structure.train_loader.dataset.labels = torch.tensor(
-                    labels, dtype=self.dtype
-                )
+            self.ds.train_loader.dataset.features = features
+            self.ds.train_loader.dataset.labels = labels
+            self.ds.train_loader.dataset.sample_weights = sample_weights
 
-                if sample_weights is not None:
-                    self.data_structure.train_loader.dataset.sample_weights = (
-                        torch.tensor(sample_weights, dtype=self.dtype)
-                    )
-                else:
-                    self.data_structure.train_loader.dataset.sample_weights = (
-                        torch.ones(sample_weights, dtype=self.dtype)
-                    )
-            return (
-                model,
-                train_losses,
-                val_losses,
-                rolling_avgs,
-                rolling_stds,
-                total_time,
-                centroids,
-            )
-
-    def _reset_weighted_sampler(self, sample_weights, train_dataset, kwargs):
-        weighted_sampler = self.data_structure.weighted_sampler
-        weighted_sampler.indices = np.arange(len(train_dataset))
-        weighted_sampler.weights = sample_weights
-        kwargs["sampler"] = weighted_sampler
-        return kwargs
+        return model, train_losses, val_losses, centroids
 
     def train_step(self, train_loader, model, optimizer, grad_clip, objective_mode):
         """
@@ -597,46 +501,53 @@ class GeoGenIE:
             objective_mode (bool): Whether using objective mode.
 
         Returns:
-            tuple: A tuple containing:
-                - start_time (float): The start time of the training epoch.
-                - avg_train_loss (float): The average training loss for the epoch.
+            float: The average training loss for the epoch.
 
         Notes:
             - The method iterates over batches from the train_loader, performing forward and backward passes, and updates the model parameters.
             - If grad_clip is True, it applies gradient clipping to prevent exploding gradients.
-            - The method returns the start time of the training epoch and the average training loss.
+            - The method returns the average training loss.
         """
-        start_time = time.time()  # Start time for the epoch
         model.train()
         total_loss = []
 
-        try:
-            for batch in train_loader:
-                data, targets, sample_weight = batch
+        for batch in train_loader:
+            data, targets, sample_weight = self._batch_init(model, batch)
+            optimizer.zero_grad()
 
-                data = torch.tensor(data, dtype=self.dtype).to(model.device)
-                targets = torch.tensor(targets, dtype=self.dtype).to(model.device)
-                sample_weight = torch.tensor(sample_weight, dtype=self.dtype).to(
-                    model.device
-                )
-
-                optimizer.zero_grad()
+            try:
                 outputs = model(data)
                 loss = self.criterion(outputs, targets, sample_weight=sample_weight)
                 loss.backward()
-
                 if grad_clip:
                     # Gradient clipping.
                     nn.utils.clip_grad_norm_(model.parameters(), 5.0)
+
                 optimizer.step()
-                total_loss.append(loss.item())
-            avg_train_loss = np.mean(total_loss)
-        except Exception as e:
-            if objective_mode:
-                return str(e), None
-            else:
-                raise e
-        return start_time, avg_train_loss
+            except Exception as e:
+                if objective_mode:
+                    self.logger.warning(f"Optuna Trial failed: {str(e)}")
+                    return None
+                else:
+                    raise e
+            total_loss.append(loss.item())
+        avg_train_loss = np.mean(total_loss)
+        return avg_train_loss
+
+    def _batch_init(self, model, batch):
+        data, targets, sample_weight = batch
+
+        if not isinstance(data, torch.Tensor):
+            data = torch.tensor(data, dtype=self.dtype)
+        if not isinstance(targets, torch.Tensor):
+            targets = torch.tensor(targets, dtype=self.dtype)
+        if not isinstance(sample_weight, torch.Tensor):
+            sample_weight = torch.tensor(sample_weight, dtype=self.dtype)
+        return (
+            data.to(model.device),
+            targets.to(model.device),
+            sample_weight.to(model.device),
+        )
 
     def test_step(self, val_loader, model):
         """
@@ -658,13 +569,7 @@ class GeoGenIE:
         total_val_loss = []
         with torch.no_grad():
             for batch in val_loader:
-                data, targets, sample_weight = batch
-                data = torch.tensor(data, dtype=self.dtype).to(model.device)
-                targets = torch.tensor(targets, dtype=self.dtype).to(model.device)
-                sample_weight = torch.tensor(sample_weight, dtype=self.dtype).to(
-                    model.device
-                )
-
+                data, targets, _ = self._batch_init(model, batch)
                 outputs = model(data)
                 val_loss = self.criterion(outputs, targets)
                 total_val_loss.append(val_loss.item())
@@ -702,21 +607,26 @@ class GeoGenIE:
         model,
         data_loader,
         outfile,
-        best_params,
         return_truths=False,
         use_rf=False,
+        log_metrics=True,
+        bootstrap=False,
+        is_train=False,
+        dataset=None,
     ):
-        """
-        Predict locations using the trained model and evaluate predictions.
+        """Predict locations using the trained model and evaluate predictions.
 
         Args:
             args (argparse.Namespace): argparsed arguments from command-line.
             model (torch.nn.Module): Trained PyTorch model for predictions.
             data_loader (torch.utils.data.DataLoader): DataLoader containing the dataset for prediction.
             outfile (str): Output filename.
-            best_params(dict): Dictionary with best parameters from Optuna search and/ or user-specified parameters.
             return_truths (bool): Whether to return truths as well as predictions. Defaults to False.
             use_rf (bool): Whether to use RandomForest or GradientBoosting models instead of deep learning model. Defaults to False.
+            log_metrics (bool): Whether to log metrics to STDOUT and STDERR.
+            bootstrap (bool): Whether doing bootstrapping. If True, then will not make plots or print stats to log (but will still record stats in JSON files). Defaults to False.
+            is_train (bool): Whether using train dataset. If True, does not make some of the plots for train dataset. Defaults to False.
+            dataset (str): "test" or "val". Defaults to None.
 
         Returns:
             pandas.DataFrame: DataFrame with predicted locations and corresponding sample IDs.
@@ -726,11 +636,16 @@ class GeoGenIE:
             ground_truth = data_loader.dataset.labels.numpy()
         else:
             predictions, ground_truth = self.model_predict(model, data_loader)
-        sample_weights = data_loader.dataset.sample_weights.numpy()
 
         # Rescale predictions and ground truth to original scale
         predictions, ground_truth, metrics = self.calculate_prediction_metrics(
-            outfile, predictions, ground_truth, sample_weights, best_params
+            outfile,
+            predictions,
+            ground_truth,
+            log_metrics,
+            bootstrap,
+            is_train,
+            dataset,
         )
 
         if return_truths:
@@ -738,10 +653,17 @@ class GeoGenIE:
         return predictions, metrics
 
     def calculate_prediction_metrics(
-        self, outfile, predictions, ground_truth, sample_weights, best_params
+        self,
+        outfile,
+        predictions,
+        ground_truth,
+        log_stats,
+        bootstrap,
+        is_train=False,
+        dataset=None,
     ):
         def rescale_predictions(y):
-            return self.data_structure.norm.inverse_transform(y)
+            return self.ds.norm.inverse_transform(y)
 
         def mad(data):
             return np.median(np.abs(data - np.median(data)))
@@ -752,141 +674,205 @@ class GeoGenIE:
         def within_threshold(data, threshold):
             return np.mean(data < threshold)
 
-        def rmse(predictions, targets):
-            return np.sqrt(((predictions - targets) ** 2).mean())
-
-        predictions = rescale_predictions(predictions)
         ground_truth = rescale_predictions(ground_truth)
+        geo_coords_is_valid(ground_truth)
+
+        if self.boot is None or bootstrap:
+            predictions = rescale_predictions(predictions)
+            geo_coords_is_valid(predictions)
+
+            # Evaluate predictions
+            z_scores, metrics = self.get_all_stats(
+                predictions,
+                ground_truth,
+                mad,
+                coefficient_of_variation,
+                within_threshold,
+            )
+
+            # return the evaluation metrics along with the predictions
+            metrics_dict = self._create_metrics_dictionary(metrics)
+
+        if self.boot is not None and not bootstrap and not is_train:
+            if dataset is None:
+                msg = "dataset argument cannot by NoneType."
+                self.logger.error(msg)
+                raise TypeError(msg)
+
+            pth = Path(self.args.output_dir)
+            locdir = pth.joinpath("bootstrap_predictions", dataset)
+
+            gdf = load_directory_of_locs(locdir)
+
+            data = []
+            for sample_id in gdf["sampleID"].unique():
+                sample_gdf = gdf[gdf["sampleID"] == sample_id]
+                centroid = sample_gdf.geometry.unary_union.centroid
+                data.append({"sampleID": sample_id, "x": centroid.x, "y": centroid.y})
+            dfpred = pd.DataFrame(data)
+            predictions = dfpred[["x", "y"]].to_numpy()
+            geo_coords_is_valid(predictions)
+            metrics_dict = self._aggregate_test_metrics(dataset)
+
+        if is_train:
+            metrics = self.get_all_stats(
+                predictions,
+                ground_truth,
+                mad,
+                coefficient_of_variation,
+                within_threshold,
+            )
+
+            # return the evaluation metrics along with the predictions
+            metrics_dict = self._create_metrics_dictionary(metrics)
+
+        if log_stats and not bootstrap:
+            self.print_stats_to_logger(metrics_dict)
 
         # Calculate Haversine error for each pair of points
         haversine_errors = haversine_distances_agg(ground_truth, predictions, np.array)
 
-        geo_coords_is_valid(predictions)
-        geo_coords_is_valid(ground_truth)
+        if self.boot is not None and not bootstrap:
+            z_scores = (haversine_errors - np.mean(haversine_errors)) / np.std(
+                haversine_errors
+            )
 
-        # Evaluate predictions
-        (
-            rmse,
-            mean_dist,
-            median_dist,
-            std_dist,
-            spearman_corr_haversine,
-            spearman_corr_x,
-            spearman_corr_y,
-            spearman_p_value_haversine,
-            spearman_p_value_x,
-            spearman_p_value_y,
-            pearson_corr_haversine,
-            pearson_corr_x,
-            pearson_corr_y,
-            pearson_p_value_haversine,
-            pearson_p_value_x,
-            pearson_p_value_y,
-            rho,
-            rho_p,
-            haversine_mad,
-            cv,
-            iqr,
-            percentiles,
-            percentage_within_20km,
-            percentage_within_50km,
-            percentage_within_75km,
-            z_scores,
-            mean_absolute_z_score,
-            haversine_rmse,
-            ks,
-            pval,
-            skew,
-        ) = self.get_all_stats(
-            predictions, ground_truth, mad, coefficient_of_variation, within_threshold
-        )
+        if not bootstrap and not is_train:
+            self.plotting.plot_error_distribution(haversine_errors, outfile)
 
-        self.print_stats_to_logger(
-            mean_dist,
-            median_dist,
-            std_dist,
-            spearman_corr_x,
-            spearman_corr_y,
-            spearman_p_value_x,
-            spearman_p_value_y,
-            pearson_corr_x,
-            pearson_corr_y,
-            pearson_p_value_x,
-            pearson_p_value_y,
-            rho,
-            rho_p,
-            haversine_mad,
-            cv,
-            iqr,
-            percentiles,
-            percentage_within_20km,
-            percentage_within_50km,
-            percentage_within_75km,
-            mean_absolute_z_score,
-            haversine_rmse,
-            ks,
-            pval,
-            skew,
-        )
+            outfile2 = outfile.split("/")[-1]
+            outfile2 = outfile2.split("_")
+            for part in outfile2:
+                if part.startswith("val"):
+                    dataset = "validation"
+                elif part == "test":
+                    dataset = "test"
+                else:
+                    dataset = "train"
 
-        self.plotting.plot_error_distribution(haversine_errors, outfile)
+            outfile_cumulative_dist = (
+                f"{self.args.prefix}_{dataset}_cumulative_error_distribution.png"
+            )
 
-        outfile2 = outfile.split("/")[-1]
-        outfile2 = outfile2.split("_")
-        for part in outfile2:
-            if part.startswith("val"):
-                dataset = "validation"
-            elif part == "test":
-                dataset = "test"
+            outfile_zscores = f"{self.args.prefix}_{dataset}_zscores.png"
 
-        outfile_cumulative_dist = (
-            f"{self.args.prefix}_{dataset}_cumulative_error_distribution.png"
-        )
+            self.plotting.plot_cumulative_error_distribution(
+                haversine_errors,
+                outfile_cumulative_dist,
+                np.array(
+                    [
+                        metrics_dict["percentile_25"],
+                        metrics_dict["percentile_50"],
+                        metrics_dict["percentile_75"],
+                    ]
+                ),  # percentiles np.ndarray
+                metrics_dict["median_dist"],
+                metrics_dict["mean_dist"],
+            )
+            self.plotting.plot_zscores(z_scores, haversine_errors, outfile_zscores)
 
-        outfile_zscores = f"{self.args.prefix}_{dataset}_zscores.png"
+        return predictions, ground_truth, metrics_dict
 
-        self.plotting.plot_cumulative_error_distribution(
-            haversine_errors,
-            outfile_cumulative_dist,
-            percentiles,
-            median_dist,
-            mean_dist,
-        )
-        self.plotting.plot_zscores(z_scores, haversine_errors, outfile_zscores)
+    def _aggregate_test_metrics(self, dataset):
+        """
+        Analyzes the given data to calculate mean, median, standard deviation, and 95% CI for each column.
 
-        # return the evaluation metrics along with the predictions
-        metrics = {
-            "root_mean_squared_error": rmse,
-            "haversine_rmse": haversine_rmse,
-            "mean_dist": mean_dist,
-            "median_dist": median_dist,
-            "stdev_dist": std_dist,
-            "kolmogorov_smirnov": ks,
-            "kolmogorov-smirnov_pval": pval,
-            "skewness": skew,
-            "rho": rho,  # Spearman's for each sample as a whole.
-            "rho_p": rho_p,  # Spearman's for each sample as a whole.
-            "spearman_corr_longitude": spearman_corr_x,
-            "spearman_corr_latitude": spearman_corr_y,
-            "spearman_pvalue_longitude": spearman_p_value_x,
-            "spearman_pvalue_latitude": spearman_p_value_y,
-            "pearson_corr_longitude": pearson_corr_x,
-            "pearson_corr_latitude": pearson_corr_y,
-            "pearson_pvalue_longitude": pearson_p_value_x,
-            "pearson_pvalue_latitude": pearson_p_value_y,
-            "mad_haversine": haversine_mad,
-            "coeffecient_of_variation": cv,
-            "interquartile_range": iqr,
-            "percentile_25": percentiles[0],
-            "percentile_50": percentiles[1],
-            "percentiles_75": percentiles[2],
-            "percent_within_20km": percentage_within_20km,
-            "percent_within_50km": percentage_within_50km,
-            "percent_within_75km": percentage_within_75km,
-            "mean_absolute_z_score": mean_absolute_z_score,
-        }
+        Args:
+            dataset (str): Which dataset to use: {"test", "val"}.
 
-        return predictions, ground_truth, metrics
+        Returns:
+            dict: Dictionary with column names as keys and their means as values.
+        """
+        pth = Path(self.args.output_dir)
+        pth = pth.joinpath("bootstrap_metrics", dataset)
+        pth.mkdir(exist_ok=True, parents=True)
+        of = f"{self.args.prefix}_bootstrap_{dataset}_metrics.csv"
+        infile = pth.joinpath(of)
+
+        # Reading data into DataFrame
+        df = pd.read_csv(infile)
+
+        # Initializing dictionary for results
+        results = {}
+
+        # Initializing an empty DataFrame for aggregated data
+        aggregated_data = pd.DataFrame()
+
+        for column in df.columns:
+            # Calculating mean, median, std
+            mean = df[column].mean()
+            median = df[column].median()
+            std = df[column].std()
+
+            # Calculating 95% confidence interval
+            ci = 1.96 * (std / np.sqrt(len(df)))
+
+            # Adding to results dictionary
+            results[column] = mean
+
+            # Adding to aggregated DataFrame
+            aggregated_data.at["mean", column] = mean
+            aggregated_data.at["median", column] = median
+            aggregated_data.at["std", column] = std
+            aggregated_data.at["95% CI lower", column] = mean - ci
+            aggregated_data.at["95% CI upper", column] = mean + ci
+
+        pth = Path(self.args.output_dir)
+        pth = pth.joinpath("bootstrap_summaries")
+        pth.mkdir(exist_ok=True, parents=True)
+        of = f"aggregated_bootstrap_{dataset}_metrics.csv"
+        outfile = pth.joinpath(of)
+
+        # Writing aggregated data to CSV
+        aggregated_data.to_csv(outfile, header=True, index=False)
+
+        return results
+
+    def _create_metrics_dictionary(self, values):
+        """
+        Creates a dictionary for metrics from a list of values.
+
+        Args:
+        values (list): List of values in the specified order, with 'percentiles' being a NumPy array at index 16.
+
+        Returns:
+        dict: Dictionary with metrics.
+        """
+
+        # List of keys for the dictionary
+        keys = [
+            "root_mean_squared_error",
+            "mean_dist",
+            "median_dist",
+            "stdev_dist",
+            "kolmogorov_smirnov",
+            "kolmogorov_smirnov_pval",
+            "skewness",
+            "rho",
+            "rho_p",
+            "spearman_corr_longitude",
+            "spearman_corr_latitude",
+            "spearman_pvalue_longitude",
+            "spearman_pvalue_latitude",
+            "pearson_corr_longitude",
+            "pearson_corr_latitude",
+            "pearson_pvalue_longitude",
+            "pearson_pvalue_latitude",
+            "mad_haversine",
+            "coefficient_of_variation",
+            "interquartile_range",
+            "percentile_25",
+            "percentile_50",
+            "percentile_75",
+            "percent_within_20km",
+            "percent_within_50km",
+            "percent_within_75km",
+            "mean_absolute_z_score",
+        ]
+
+        # Creating the dictionary
+        metrics = dict(zip(keys, values))
+        return metrics
 
     def get_all_stats(
         self, predictions, ground_truth, mad, coefficient_of_variation, within_threshold
@@ -898,29 +884,18 @@ class GeoGenIE:
 
         haversine_errors = haversine_distances_agg(ground_truth, predictions, np.array)
 
-        # Ideal distances array - all zeros indicating no error
-        ideal_distances = np.zeros_like(haversine_errors)
-
         (
-            spearman_corr_haversine,
             spearman_corr_x,
             spearman_corr_y,
-            spearman_p_value_haversine,
             spearman_p_value_x,
             spearman_p_value_y,
-        ) = self.get_correlation_coef(
-            predictions, ground_truth, haversine_errors, ideal_distances, spearmanr
-        )
+        ) = self.get_correlation_coef(predictions, ground_truth, spearmanr)
         (
-            pearson_corr_haversine,
             pearson_corr_x,
             pearson_corr_y,
-            pearson_p_value_haversine,
             pearson_p_value_x,
             pearson_p_value_y,
-        ) = self.get_correlation_coef(
-            predictions, ground_truth, haversine_errors, ideal_distances, pearsonr
-        )
+        ) = self.get_correlation_coef(predictions, ground_truth, pearsonr)
 
         rho, rho_p = spearmanr(predictions.ravel(), ground_truth.ravel())
 
@@ -945,139 +920,107 @@ class GeoGenIE:
 
         mean_absolute_z_score = np.mean(np.abs(z_scores))
 
-        haversine_rmse = mean_squared_error(
-            haversine_errors.reshape(-1, 1),
-            np.zeros_like(haversine_errors).reshape(-1, 1),
-            squared=False,
-        )
-
         # 0 is best, negative means overestimations, positive means
         # underestimations
         ks, pval, skew = kstest(ground_truth, predictions)
         return (
-            rmse,
-            mean_dist,
-            median_dist,
-            std_dist,
-            spearman_corr_haversine,
-            spearman_corr_x,
-            spearman_corr_y,
-            spearman_p_value_haversine,
-            spearman_p_value_x,
-            spearman_p_value_y,
-            pearson_corr_haversine,
-            pearson_corr_x,
-            pearson_corr_y,
-            pearson_p_value_haversine,
-            pearson_p_value_x,
-            pearson_p_value_y,
-            rho,
-            rho_p,
-            haversine_mad,
-            cv,
-            iqr,
-            percentiles,
-            percentage_within_20km,
-            percentage_within_50km,
-            percentage_within_75km,
             z_scores,
-            mean_absolute_z_score,
-            haversine_rmse,
-            ks,
-            pval,
-            skew,
+            [
+                rmse,
+                mean_dist,
+                median_dist,
+                std_dist,
+                ks,
+                pval,
+                skew,
+                rho,
+                rho_p,
+                spearman_corr_x,
+                spearman_corr_y,
+                spearman_p_value_x,
+                spearman_p_value_y,
+                pearson_corr_x,
+                pearson_corr_y,
+                pearson_p_value_x,
+                pearson_p_value_y,
+                haversine_mad,
+                cv,
+                iqr,
+                percentiles[0],
+                percentiles[1],
+                percentiles[2],
+                percentage_within_20km,
+                percentage_within_50km,
+                percentage_within_75km,
+                mean_absolute_z_score,
+            ],
         )
 
-    def print_stats_to_logger(
-        self,
-        mean_dist,
-        median_dist,
-        std_dist,
-        spearman_corr_x,
-        spearman_corr_y,
-        spearman_p_value_x,
-        spearman_p_value_y,
-        pearson_corr_x,
-        pearson_corr_y,
-        pearson_p_value_x,
-        pearson_p_value_y,
-        rho,
-        rho_p,
-        haversine_mad,
-        cv,
-        iqr,
-        percentiles,
-        percentage_within_20km,
-        percentage_within_50km,
-        percentage_within_75km,
-        mean_absolute_z_score,
-        haversine_rmse,
-        ks,
-        pval,
-        skew,
-    ):
-        self.logger.info(f"Validation Haversine Error (km) = {mean_dist}")
-        self.logger.info(f"Median Validation Error (km) = {median_dist}")
-        self.logger.info(f"Standard deviation for Haversine Error (km) = {std_dist}")
-
-        self.logger.info(f"Root Mean Squared Error (km) = {haversine_rmse}")
+    def print_stats_to_logger(self, metrics):
+        self.logger.info(f"Validation Haversine Error (km) = {metrics['mean_dist']}")
+        self.logger.info(f"Median Validation Error (km) = {metrics['median_dist']}")
         self.logger.info(
-            f"Median Absolute Deviation of Prediction Error (km) = {haversine_mad}"
-        )
-        self.logger.info(f"Coeffiecient of Variation for Prediction Error = {cv}")
-        self.logger.info(f"Interquartile Range of Prediction Error (km) = {iqr}")
-
-        for perc, output in zip([25, 50, 75], percentiles):
-            self.logger.info(f"{perc} percentile of prediction error (km) = {output}")
-
-        self.logger.info(
-            f"Percentage of samples with error within 20 km = {percentage_within_20km}"
-        )
-        self.logger.info(
-            f"Percentage of samples with error within 50 km = {percentage_within_50km}"
-        )
-        self.logger.info(
-            f"Percentage of samples with error within 75 km = {percentage_within_75km}"
+            f"Standard deviation for Haversine Error (km) = {metrics['stdev_dist']}"
         )
 
         self.logger.info(
-            f"Mean Absolute Z-scores of Prediction Error (km) = {mean_absolute_z_score}"
+            f"Root Mean Squared Error (km) = {metrics['root_mean_squared_error']}"
+        )
+        self.logger.info(
+            f"Median Absolute Deviation of Prediction Error (km) = {metrics['mad_haversine']}"
+        )
+        self.logger.info(
+            f"Coeffiecient of Variation for Prediction Error = {metrics['coefficient_of_variation']}"
+        )
+        self.logger.info(
+            f"Interquartile Range of Prediction Error (km) = {metrics['interquartile_range']}"
+        )
+
+        for perc in [25, 50, 75]:
+            p = f"percentile_{perc}"
+            self.logger.info(
+                f"{perc} percentile of prediction error (km) = {metrics[p]}"
+            )
+
+        for perc in [20, 50, 75]:
+            p = f"percent_within_{perc}km"
+
+            self.logger.info(
+                f"Percentage of samples with error within {perc} km = {metrics[p]}"
+            )
+
+        self.logger.info(
+            f"Mean Absolute Z-scores of Prediction Error (km) = {metrics['mean_absolute_z_score']}"
         )
 
         self.logger.info(
-            f"Spearman's Correlation Coefficient = {rho}, P-value = {rho_p}"
+            f"Spearman's Correlation Coefficient for Longitude = {metrics['spearman_corr_longitude']}, P-value = {metrics['spearman_pvalue_longitude']}"
         )
         self.logger.info(
-            f"Spearman's Correlation Coefficient for Longitude = {spearman_corr_x}, P-value = {spearman_p_value_x}"
+            f"Spearman's Correlation Coefficient for Latitude = {metrics['spearman_corr_latitude']}, P-value = {metrics['spearman_pvalue_latitude']}"
         )
         self.logger.info(
-            f"Spearman's Correlation Coefficient for Latitude = {spearman_corr_y}, P-value = {spearman_p_value_y}"
+            f"Pearson's Correlation Coefficient for Longitude = {metrics['pearson_corr_longitude']}, P-value = {metrics['pearson_pvalue_longitude']}"
         )
         self.logger.info(
-            f"Pearson's Correlation Coefficient for Longitude = {pearson_corr_x}, P-value = {pearson_p_value_x}"
-        )
-        self.logger.info(
-            f"Pearson's Correlation Coefficient for Latitude = {pearson_corr_y}, P-value = {pearson_p_value_y}"
+            f"Pearson's Correlation Coefficient for Latitude = {metrics['pearson_corr_latitude']}, P-value = {metrics['pearson_pvalue_latitude']}"
         )
 
         # 0 is best, positive means more undeerestimations
         # negative means more overestimations.
-        self.logger.info(f"Skewness = {skew}")
+        self.logger.info(f"Skewness = {metrics['skewness']}")
 
         # Goodness of fit test.
         # Small P-value means poor fit.
         # I.e., significantly deviates from reference distribution.
-        self.logger.info(f"Kolmogorov-Smirnov Test = {ks}, P-value = {pval}")
+        self.logger.info(
+            f"Kolmogorov-Smirnov Test = {metrics['kolmogorov_smirnov']}, P-value = {metrics['kolmogorov_smirnov_pval']}"
+        )
 
-    def get_correlation_coef(
-        self, predictions, ground_truth, haversine_errors, ideal_distances, corr_func
-    ):
-        corr_haversine, p_value_haversine = spearmanr(haversine_errors, ideal_distances)
-
+    def get_correlation_coef(self, predictions, ground_truth, corr_func):
         corr_x, p_value_x = corr_func(predictions[:, 0], ground_truth[:, 0])
-
         corr_y, p_value_y = corr_func(predictions[:, 1], ground_truth[:, 1])
-        return corr_haversine, corr_x, corr_y, p_value_haversine, p_value_x, p_value_y
+        return corr_x, corr_y, p_value_x, p_value_y
 
     def model_predict(self, model, data_loader):
         model.eval()
@@ -1122,7 +1065,6 @@ class GeoGenIE:
             device (torch.device): Device for training ('cpu' or 'cuda').
             best_params (dict): Dictionary of parameters to use with model training.
             ModelClass (torch.nn.Module): Callable subclass for PyTorch model.
-            criterion (callable): PyTorch callable loss function.
 
         Returns:
             A tuple containing the best model, training losses, and validation losses.
@@ -1144,29 +1086,19 @@ class GeoGenIE:
                 ).to(device)
 
                 optimizer = self.extract_best_params(best_params, model)
-                # train_loader = self.get_sample_weights(train_loader, best_params)
 
                 # Train the model
-                (
-                    trained_model,
-                    train_losses,
-                    val_losses,
-                    _,
-                    __,
-                    total_train_time,
-                    centroids,
-                ) = self.train_model(
+                (trained_model, train_losses, val_losses, centroids) = self.train_model(
                     train_loader,
                     val_loader,
                     model,
                     optimizer,
                     trial=None,
                     objective_mode=False,
+                    do_bootstrap=False,
                 )
 
             else:
-                start_time = time.time()
-                # train_loader = self.get_sample_weights(train_loader, best_params)
                 (
                     trained_model,
                     _,
@@ -1176,15 +1108,6 @@ class GeoGenIE:
                     ____,
                     centroids,
                 ) = self.train_rf(best_params, objective_mode=False)
-
-                end_time = time.time()
-                total_train_time = end_time - start_time
-
-            if self.args.verbose >= 1:
-                self.logger.info(
-                    f"Standard training completed in {total_train_time / 60} "
-                    f"minutes",
-                )
 
             if ModelClass != "GB":
                 return trained_model, train_losses, val_losses, centroids
@@ -1218,14 +1141,10 @@ class GeoGenIE:
     ):
         """write predicted locations to file."""
         if self.args.verbose >= 1:
-            self.logger.info("Writing predicted coorinates to dataframe.")
+            self.logger.info("Writing predicted coordinates to dataframe.")
 
         pred_locations_df = pd.DataFrame(pred_locations, columns=["x", "y"])
-        sample_data = sample_data.reset_index()
-        sample_data = sample_data.iloc[pred_indices].copy()
-
-        pred_locations_df.reset_index(drop=True)
-        pred_locations_df["sampleID"] = sample_data["sampleID"].tolist()
+        pred_locations_df["sampleID"] = self.ds.samples[pred_indices]
         pred_locations_df = pred_locations_df[["sampleID", "x", "y"]]
         pred_locations_df.to_csv(filename, header=True, index=False)
         return pred_locations_df
@@ -1257,34 +1176,30 @@ class GeoGenIE:
             dict: Best parameters found by Optuna optimization.
         """
         if not self.args.do_gridsearch:
-            self.logger.info("Optuna parameter search is not enabled.")
+            self.logger.warning("Optuna parameter search is not enabled.")
             return None
 
         if self.args.verbose >= 1:
             self.logger.info("Starting Optuna parameter search.")
 
         opt = Optimize(
-            self.data_structure.train_loader,
-            self.data_structure.val_loader,
-            self.data_structure.test_loader,
-            self.data_structure.samples_weight,
-            self.data_structure.densities,
-            self.data_structure.weighted_sampler,
+            self.ds.train_loader,
+            self.ds.val_loader,
+            self.ds.test_loader,
+            self.ds.samples_weight,
+            self.ds.densities,
+            self.ds.weighted_sampler,
             self.device,
             self.args,
+            self.ds,
             show_progress_bar=False,
             n_startup_trials=10,
             dtype=self.dtype,
         )
 
-        if self.args.use_gradient_boosting:
-            best_trial, study = opt.perform_optuna_optimization(
-                self.criterion, ModelClass, self.train_rf
-            )
-        else:
-            best_trial, study = opt.perform_optuna_optimization(
-                self.criterion, ModelClass, self.train_model
-            )
+        gb = self.args.use_gradient_boosting
+        func = self.train_rf if gb else self.train_model
+        best_trial, study = opt.perform_optuna_optimization(ModelClass, func)
         opt.process_optuna_results(study, best_trial)
 
         if self.args.verbose >= 1:
@@ -1301,44 +1216,34 @@ class GeoGenIE:
             ModelClass (torch.nn.Module): The PyTorch model class to use.
             best_params (dict): Dictionary of best parameters found by Optuna or specified by the user.
         """
-        if not self.args.bootstrap:
+        if not self.args.do_bootstrap:
             self.logger.warning("Bootstrap training is not enabled.")
             return
 
         if self.args.verbose >= 1:
             self.logger.info("Starting bootstrap training.")
 
-        boot = Bootstrap(
-            self.data_structure.train_loader,
-            self.data_structure.val_loader,
-            self.data_structure.indices["val_indices"],
-            self.args.nboots,
-            self.args.max_epochs,
+        self.boot = Bootstrap(
+            self.ds.train_loader,
+            self.ds.val_loader,
+            self.ds.test_loader,
+            self.ds.indices["val_indices"],
+            self.ds.indices["test_indices"],
+            self.ds.sample_data,
+            self.ds.samples,
+            self.args,
+            self.ds,
+            best_params,
+            self.ds.weighted_sampler,
             self.device,
-            self.data_structure.samples_weight,
-            best_params["width"],
-            best_params["nlayers"],
-            best_params["dropout_prop"],
-            best_params["learning_rate"],
-            best_params["l2_reg"],
-            self.args.early_stop_patience,
-            self.args.output_dir,
-            self.args.prefix,
-            self.data_structure.sample_data,
-            verbose=self.args.verbose,
-            show_plots=self.args.show_plots,
-            fontsize=self.args.fontsize,
-            filetype=self.args.filetype,
-            dpi=self.args.plot_dpi,
         )
 
-        boot.perform_bootstrap_training(
+        self.boot.perform_bootstrap_training(
             self.train_model,
             self.predict_locations,
             self.write_pred_locations,
+            self.make_unseen_predictions,
             ModelClass,
-            self.criterion,
-            self.data_structure.coord_scaler,
         )
 
         if self.args.verbose >= 1:
@@ -1349,7 +1254,6 @@ class GeoGenIE:
         model,
         train_losses,
         val_losses,
-        best_params,
         dataset="val",
         centroids=None,
         use_rf=False,
@@ -1363,13 +1267,13 @@ class GeoGenIE:
             val_losses: List of validation losses.
             best_params (dict): Dictionary of best parameters from Optuna search and/ or user-defined parameters.
             dataset (str): Whether 'val' or 'test' dataset.
-            centroids (np.ndarray): Centroids if using synthetic resampling with 'kmeans' or 'optics' options.; otherwise None. Defaults to None.
+            centroids (np.ndarray): Centroids if using synthetic resampling with 'kerneldensity', 'none', or 'kmeans' options.; otherwise None. Defaults to None.
             use_rf (bool): Whether to use RandomForest model. If False, uses deep learning model instead. Defaults to False (deep learning model).
         """
         if self.args.verbose >= 1:
             self.logger.info(f"Evaluating the model on the {dataset} set.")
 
-        if dataset not in ["val", "test"]:
+        if dataset not in {"val", "test"}:
             self.logger.error(
                 "Only 'val' or 'test' are supported for the 'dataset' option."
             )
@@ -1381,17 +1285,18 @@ class GeoGenIE:
         prefix = self.args.prefix
 
         middir = dataset
-        if dataset.startswith("val"):
-            middir = dataset + "idation" if dataset.endswith("val") else dataset
-            loader = self.data_structure.val_loader
+        if dataset.startswith("val") or dataset == "validation":
+            middir = "validation"
+            loader = self.ds.val_loader
         else:
-            loader = self.data_structure.test_loader
+            loader = self.ds.test_loader
 
-        y_train = self.data_structure.train_loader.dataset.labels.numpy()
-        X_train = self.data_structure.train_loader.dataset.features.numpy()
-        y_train = self.data_structure.norm.inverse_transform(y_train)
+        y_train = self.ds.train_loader.dataset.labels.numpy()
+        X_train = self.ds.train_loader.dataset.features.numpy()
+        y_train = self.ds.norm.inverse_transform(y_train)
+
         if centroids is not None:
-            centroids = self.data_structure.norm.inverse_transform(centroids)
+            centroids = self.ds.norm.inverse_transform(centroids)
 
         if use_rf:
             y_train_pred = model.predict(X_train)
@@ -1407,13 +1312,25 @@ class GeoGenIE:
             model,
             loader,
             val_errordist_outfile,
-            best_params,
             return_truths=True,
             use_rf=use_rf,
+            dataset=dataset,
+        )
+
+        train_preds, train_metrics, y_train = self.predict_locations(
+            model,
+            self.train_loader_interp,
+            None,  # Don't make errordist plot for train data.
+            return_truths=True,
+            use_rf=use_rf,
+            log_metrics=False,
+            is_train=True,
         )
 
         geo_coords_is_valid(val_preds)
         geo_coords_is_valid(y_true)
+        geo_coords_is_valid(train_preds)
+        geo_coords_is_valid(y_train)
 
         # Save validation results to file
         val_metric_outfile = os.path.join(
@@ -1424,28 +1341,42 @@ class GeoGenIE:
             outdir, middir, f"{prefix}_{middir}_predictions.txt"
         )
 
+        train_metric_outfile = os.path.join(
+            outdir, "training", f"{prefix}_train_metrics.json"
+        )
+
         val_preds_df = self.write_pred_locations(
             val_preds,
-            self.data_structure.indices[f"{dataset}_indices"],
-            self.data_structure.sample_data,
+            self.ds.indices[f"{dataset}_indices"],
+            self.ds.sample_data,
             val_preds_outfile,
         )
 
         with open(val_metric_outfile, "w") as fout:
             json.dump({k: v for k, v in val_metrics.items()}, fout, indent=2)
+        with open(train_metric_outfile, "w") as fout:
+            json.dump(
+                {
+                    k: v
+                    for k, v in train_metrics.items()
+                    if not isinstance(v, np.ndarray)
+                },
+                fout,
+                indent=2,
+            )
 
         if self.args.verbose >= 1:
             self.logger.info("Validation metrics saved.")
+
+        if self.args.verbose >= 1:
+            self.logger.info("Training metrics saved.")
 
         if dataset.startswith("val"):
             # Save training and validation losses to file
             train_outfile = os.path.join(
                 outdir, "training", f"{prefix}_train_{dataset}_results.json"
             )
-            training_results = {
-                "train_losses": train_losses,
-                f"{dataset}_losses": val_losses,
-            }
+            training_results = {"train_losses": train_losses, f"val_losses": val_losses}
         else:
             train_outfile = os.path.join(
                 outdir, "training", f"{prefix}_train_results.json"
@@ -1467,7 +1398,7 @@ class GeoGenIE:
         self.plotting.plot_geographic_error_distribution(
             y_true,
             val_preds,
-            self.args.shapefile_url,
+            self.args.shapefile,
             dataset,
             buffer=self.args.bbox_buffer,
             marker_scale_factor=self.args.sample_point_scale,
@@ -1481,18 +1412,23 @@ class GeoGenIE:
             y_train,
             y_true,
             dataset,
-            self.args.shapefile_url,
+            self.args.shapefile,
             buffer=self.args.bbox_buffer,
         )
 
         self.plotting.polynomial_regression_plot(
             y_true, val_preds, dataset, dtype=self.dtype
         )
+        self.plotting.polynomial_regression_plot(
+            self.train_loader_interp.dataset.labels,
+            train_preds,
+            "train",
+            dtype=self.dtype,
+        )
 
-        if self.args.verbose >= 1:
-            self.logger.info("Training history plotted.")
-
-    def make_unseen_predictions(self, model, device, use_rf=False):
+    def make_unseen_predictions(
+        self, model, device, use_rf=False, col_indices=None, boot_rep=None
+    ):
         if self.args.verbose >= 1:
             # Predictions on unseen data
             self.logger.info("Making predictions on unseen data...")
@@ -1500,38 +1436,53 @@ class GeoGenIE:
         outdir = self.args.output_dir
         prefix = self.args.prefix
 
-        if not use_rf:
-            dtype = self.dtype
+        is_summary = True if boot_rep is None and self.boot is not None else False
 
-            # Convert X_pred to a PyTorch tensor and move it to the correct
-            # device (GPU or CPU)
-            pred_tensor = torch.tensor(
-                self.data_structure.data["X_pred"], dtype=dtype
-            ).to(device)
-
-            with torch.no_grad():
-                # Make predictions
-                pred_locations_scaled = model(pred_tensor)
-
-            pred_locations = self.data_structure.norm.inverse_transform(
-                pred_locations_scaled.cpu().numpy()
-            )
+        if is_summary:
+            pred_locations_df = self.boot.boot_real_df_.copy()
+            pred_locations = pred_locations_df[["x_mean", "y_mean"]].to_numpy()
         else:
-            pred_locations_scaled = model.predict(self.data_structure.data["X_pred"])
-            pred_locations = self.data_structure.norm.inverse_transform(
-                pred_locations_scaled
-            )
+            X_pred = self.ds.data["X_pred"].copy()
+            if col_indices is not None:
+                if boot_rep is None:
+                    msg = "'boot_rep' must be provided if 'col_indices' is not None."
+                    self.logger.error(msg)
+                    raise TypeError(msg)
+                X_pred = X_pred[:, col_indices]
 
-        pred_outfile = os.path.join(
-            outdir,
-            "predictions",
-            f"{prefix}_predictions.txt",
-        )
+            if not use_rf:
+                dtype = self.dtype
+
+                # Convert X_pred to a PyTorch tensor and move it to the correct
+                # device (GPU or CPU)
+                pred_tensor = torch.tensor(X_pred, dtype=dtype).to(device)
+
+                with torch.no_grad():
+                    # Make predictions
+                    pred_locations_scaled = model(pred_tensor)
+
+                pred_locations = self.ds.norm.inverse_transform(
+                    pred_locations_scaled.cpu().numpy()
+                )
+            else:
+                pred_locations_scaled = model.predict(X_pred)
+                pred_locations = self.ds.norm.inverse_transform(pred_locations_scaled)
+
+        pth = Path(outdir)
+        if col_indices is None:
+            basedir = "predictions"
+        else:
+            basedir = "bootstrap_predictions"
+            prefix += f"_bootrep{boot_rep}"
+        of = f"{prefix}_unknown_predictions.csv"
+        pth = pth.joinpath(basedir, "unknown")
+        pth.mkdir(exist_ok=True, parents=True)
+        pred_outfile = pth.joinpath(of)
 
         real_preds = self.write_pred_locations(
             pred_locations,
-            self.data_structure.pred_indices,
-            self.data_structure.sample_data,
+            self.ds.pred_indices,
+            self.ds.sample_data,
             pred_outfile,
         )
 
@@ -1564,10 +1515,19 @@ class GeoGenIE:
             # Creates DataStructure instance.
             # Loads and preprocesses data.
             self.load_data()
-            self.data_structure.define_params(self.args)
-            best_params = self.data_structure.params
+            self.ds.define_params(self.args)
+            best_params = self.ds.params
 
-            self.criterion = weighted_rmse_loss
+            if self.args.criterion == "drms":
+                self.criterion = WeightedDRMSLoss()
+            elif self.args.criterion == "rmse":
+                self.criterion = weighted_rmse_loss
+            elif self.args.criterion == "huber":
+                self.criterion = WeightedHuberLoss(delta=0.5, smoothing_factor=0.1)
+            else:
+                msg = f"Invalid '--criterion' argument provided. Expected one of 'drms', 'rmse', or 'huber', but got: {self.args.criterion}"
+                self.logger.error(msg)
+                raise ValueError(msg)
 
             modelclass = "GB" if self.args.use_gradient_boosting else MLPRegressor
 
@@ -1579,10 +1539,10 @@ class GeoGenIE:
                     )
                 else:
                     best_params = self.optimize_parameters(ModelClass=modelclass)
-                    self.data_structure.params = best_params
+                    self.ds.params = best_params
                     # Add only new keys from data_structure.params to
                     # best_params
-                    for key, value in self.data_structure.params.items():
+                    for key, value in self.ds.params.items():
                         if key not in best_params:
                             best_params[key] = value
                     if self.args.verbose >= 1:
@@ -1590,10 +1550,10 @@ class GeoGenIE:
 
             if self.args.load_best_params is not None:
                 best_params = self.load_best_params(self.args.load_best_params)
-                self.data_structure.params = best_params
+                self.ds.params = best_params
 
                 # Add only new keys from data_structure.params to best_params
-                for key, value in self.data_structure.params.items():
+                for key, value in self.ds.params.items():
                     if key not in best_params:
                         best_params[key] = value
                 if self.args.verbose >= 1:
@@ -1611,8 +1571,8 @@ class GeoGenIE:
                 val_losses,
                 centroids,
             ) = self.perform_standard_training(
-                self.data_structure.train_loader,
-                self.data_structure.test_loader,
+                self.ds.train_loader,
+                self.ds.val_loader,
                 device,
                 best_params,
                 modelclass,
@@ -1623,7 +1583,6 @@ class GeoGenIE:
                 best_model,
                 train_losses,
                 val_losses,
-                best_params,
                 dataset="val",
                 centroids=centroids,
                 use_rf=use_rf,
@@ -1633,7 +1592,6 @@ class GeoGenIE:
                 best_model,
                 train_losses,
                 val_losses,
-                best_params,
                 dataset="test",
                 centroids=centroids,
                 use_rf=use_rf,
