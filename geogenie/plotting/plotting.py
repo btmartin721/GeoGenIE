@@ -1,11 +1,18 @@
+import json
 import logging
 import os
+import sys
+import tempfile
 import warnings
+import zipfile
 from pathlib import Path
+from urllib.parse import urlparse
 
 import geopandas as gpd
 import matplotlib as mpl
-import matplotlib.colors as colors
+import matplotlib.colors as mcolors
+import matplotlib.lines as mlines
+import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -27,12 +34,11 @@ from sklearn.linear_model import LinearRegression
 from sklearn.metrics import ConfusionMatrixDisplay
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import PolynomialFeatures
-from splot.esda import moran_scatterplot
 
 from geogenie.samplers.samplers import GeographicDensitySampler, custom_gpr_optimizer
 from geogenie.utils.exceptions import TimeoutException
 from geogenie.utils.scorers import haversine_distances_agg
-from geogenie.utils.utils import time_limit
+from geogenie.utils.utils import load_directory_of_locs, time_limit
 
 warnings.filterwarnings(action="ignore", category=UserWarning)
 warnings.filterwarnings(action="ignore", category=ConvergenceWarning)
@@ -45,6 +51,8 @@ class PlotGenIE:
         device,
         output_dir,
         prefix,
+        basemap_fips,
+        basemap_highlights,
         show_plots=False,
         fontsize=18,
         filetype="png",
@@ -57,6 +65,8 @@ class PlotGenIE:
             device (str): The device used for plotting, typically 'cpu' or 'cuda'.
             output_dir (str): The directory where plots will be saved.
             prefix (str): A prefix added to the names of saved plot files.
+            basemap_fips (str): FIPS code for base map.
+            basemap_highlights (list): List of counties to highlight gray on base map.
             show_plots (bool, optional): Flag to determine if plots should be displayed inline. Defaults to False.
             fontsize (int, optional): Font size used in plots. Defaults to 18.
             filetype (str, optional): File type/format for saving plots. Defaults to 'png'.
@@ -66,6 +76,8 @@ class PlotGenIE:
             device (str): The device used for plotting, typically 'cpu' or 'cuda'.
             output_dir (str): The directory where plots will be saved.
             prefix (str): A prefix added to the names of saved plot files.
+            basemap_fips (str): FIPS code for base map.
+            basemap_highlights (list): List of counties to highlight gray on base map.
             show_plots (bool): Flag to determine if plots should be displayed inline. Defaults to False.
             fontsize (int): Font size used in plots. Defaults to 18.
             filetype (str): File type/format for saving plots. Defaults to 'png'.
@@ -80,6 +92,8 @@ class PlotGenIE:
         self.device = device
         self.output_dir = output_dir
         self.prefix = prefix
+        self.basemap_fips = basemap_fips
+        self.basemap_highlights = basemap_highlights
         self.show_plots = show_plots
         self.fontsize = fontsize
         self.filetype = filetype
@@ -321,32 +335,427 @@ class PlotGenIE:
             self.logger.error(f"Could not create plot: {e}")
             raise
 
+    def _read_json_files(self, directory):
+        """
+        Reads all JSON files in the specified directory that match the pattern '*_test_metrics.json'
+        and aggregates their contents into a pandas DataFrame, focusing only on selected metrics.
+        """
+        data = []
+        for f in os.listdir(directory):
+            if f.endswith("_metrics.json"):
+                with open(os.path.join(directory, f), "r") as f:
+                    json_data = json.load(f)
+                    json_data["config"] = str(f).split("/")[-1].split(".")[0]
+                    data.append(json_data)
+        return pd.DataFrame(data)
+
+    def create_metrics_facet_grid(self):
+        """
+        Creates a facet grid of histograms for each selected metric in the DataFrame.
+        """
+
+        metric_dir = os.path.join(self.output_dir, "bootstrap")
+
+        df = self._read_json_files(metric_dir)
+
+        plt.figure(figsize=(32, 48))
+
+        df.drop(
+            [
+                "rho_p",
+                "spearman_pvalue_longitude",
+                "spearman_pvalue_latitude",
+                "spearman_pvalue_longitude",
+                "spearman_pvalue_latitude",
+                "pearson_pvalue_latitude",
+                "pearson_pvalue_longitude",
+            ],
+            axis=1,
+            inplace=True,
+        )
+
+        df = df.loc[
+            :,
+            df.columns.isin(
+                [
+                    "mean_dist",
+                    "median_dist",
+                    "stdev_dist",
+                    "percent_within_20km",
+                    "percent_within_50km",
+                    "percent_within_75km",
+                    "percentile_25",
+                    "percentile_50",
+                    "percentile_75",
+                    "percentiles_75",
+                    "mad_haversine",
+                    "coeffecient_of_variation",
+                    "pearson_corr_longitude",
+                    "pearson_corr_latitude",
+                    "spearman_corr_longitude",
+                    "spearman_corr_latitude",
+                    "skewness",
+                    "config",
+                ]
+            ),
+        ]
+
+        # Melting the DataFrame for FacetGrid compatibility
+        df_melted = df.melt(var_name="Metric", value_name="Value", id_vars=["config"])
+
+        df_melted = self.update_metric_labels(df_melted)
+
+        df_melted.sort_values(by=["Metric", "config"], ascending=False, inplace=True)
+
+        df_melted["config"] = df_melted["config"].str.split("_").str[:-2].str.join("_")
+
+        col_order = [
+            "Mean Error",
+            "Median Error",
+            "Median Absolute Deviation",
+            "StdDev of Error",
+            "25th Percentile of Error",
+            "50th Percentile of Error",
+            "75th Percentile of Error",
+            "Coefficient of Variation",
+            "Skewness",
+            "% Samples within 20 km",
+            "% Samples within 50 km",
+            "% Samples within 75 km",
+            "$R^2$ (Longitude)",
+            "$R^2$ (Latitude)",
+            "Rho (Longitude)",
+            "Rho (Latitude)",
+        ]
+
+        df_melted = df_melted[df_melted["Metric"].isin(col_order)]
+        df_melted["Metric"] = pd.Categorical(
+            df_melted["Metric"], categories=col_order, ordered=True
+        )
+        df_melted.sort_values("Metric", inplace=True)
+
+        df_melted, labels = self.update_config_labels(df_melted)
+
+        col_wrap = 4
+
+        metrics_requiring_reverse_palette = [
+            "$R^2$ (Longitude)",
+            "$R^2$ (Latitude)",
+            "Rho (Longitude)",
+            "Rho (Latitude)",
+            "Skewness",
+            "% Samples within 20 km",
+            "% Samples within 50 km",
+            "% Samples within 75 km",
+        ]
+
+        # Predefined y-axis order
+        y_axis_order = [
+            "Locator",
+            "GeoGenie Base (Unoptimized)",
+            "GeoGenie Base",
+            "GeoGenie + Loss",
+            "GeoGenie + Sampler",
+            "GeoGenie + Loss + Sampler",
+            "GeoGenie Base + Interpolation",
+            "GeoGenie Loss + Interpolation",
+            "GeoGenie Sampler + Interpolation",
+            "GeoGenie Loss + Sampler + Interpolation",
+        ]
+
+        def map_palette(
+            data, metric, ax, y_axis_order, metrics_requiring_reverse_palette
+        ):
+            """
+            Maps the appropriate color palette to the data for a given metric.
+
+            Args:
+                data (pd.DataFrame): The DataFrame containing the data for the current metric.
+                metric (str): The name of the metric.
+                ax (matplotlib.axes.Axes): The Axes object to plot on.
+                y_axis_order (list): The order of categories on the y-axis.
+                metrics_requiring_reverse_palette (list): Metrics that require a reversed color palette.
+            """
+            is_reverse_metric = metric in metrics_requiring_reverse_palette
+
+            min_val, max_val = data["Value"].min(), data["Value"].max()
+            normalized_values = (
+                (data["Value"] - min_val) / (max_val - min_val)
+                if max_val != min_val
+                else np.zeros(len(data["Value"]))
+            )
+
+            # Choose the appropriate palette
+            palette = sns.color_palette(
+                "viridis" if is_reverse_metric else "viridis_r",
+                as_cmap=True,
+            )
+
+            # Map normalized values to colors in the palette
+            unique_configs = data["config"].unique()
+            color_map = {
+                config: palette(norm_val)
+                for config, norm_val in zip(unique_configs, normalized_values)
+            }
+
+            # Create a barplot with the mapped colors
+            sns.barplot(
+                x="Value",
+                y="config",
+                hue="config",
+                data=data,
+                ax=ax,
+                palette=color_map,
+                order=y_axis_order,
+            )
+
+        # Initialize the FacetGrid object
+        g = sns.FacetGrid(
+            data=df_melted,
+            col="Metric",
+            col_wrap=col_wrap,
+            sharex=False,
+            col_order=col_order,
+        )
+
+        # Iterate over each subplot and apply the custom map_palette function
+        for ax, (metric, metric_data) in zip(
+            g.axes.flat, df_melted.groupby("Metric", observed=False)
+        ):
+            map_palette(
+                metric_data, metric, ax, y_axis_order, metrics_requiring_reverse_palette
+            )
+            ax.set_title(metric, fontsize=17)
+            ax.set_ylabel("Configuration", fontsize=17)
+            ax.set_xlabel("Metric Value", fontsize=17)
+            ax.tick_params(axis="both", which="major", labelsize=15)
+
+        plt.subplots_adjust(hspace=0.5, wspace=0.5)
+
+        # Save the plot
+        plt.savefig(
+            "all_comparisons_final/summary_facet_grid_selected_metrics.png",
+            facecolor="white",
+            bbox_inches="tight",
+            dpi=300,
+        )
+        plt.close()
+        print(
+            "Facet grid plot saved to all_comparisons_final/summary_facet_grid_selected_metrics.png."
+        )
+
     def plot_bootstrap_aggregates(self, df):
-        """Make a KDE plot with bootstrap distributions."""
-        plt.figure(figsize=(10, 6))
+        """Make KDE and bar plots with bootstrap distributions and CIs."""
+        fig, ax = plt.subplots(2, 1, figsize=(8, 16))
 
-        df_r2 = df[["r2_long", "r2_lat"]]
+        df_errordist = df[["mean_dist", "median_dist"]].copy()
 
-        df_melt = df_r2.melt()
+        df_errordist.rename(
+            columns={
+                "mean_dist": "Mean Haversine Error (km)",
+                "median_dist": "Median Haversine Error (km)",
+            },
+            inplace=True,
+        )
 
-        sns.kdeplot(
-            data=df_melt,
+        df_corr = df[
+            [
+                "pearson_corr_longitude",
+                "pearson_corr_latitude",
+                "spearman_corr_longitude",
+                "spearman_corr_latitude",
+            ]
+        ].copy()
+
+        df_corr.rename(
+            columns={
+                "pearson_corr_longitude": "$R^2$ (Longitude)",
+                "pearson_corr_latitude": "$R^2$ (Latitude)",
+                "spearman_corr_longitude": "Rho (Longitude)",
+                "spearman_corr_latitude": "Rho (Latitude)",
+            },
+            inplace=True,
+        )
+
+        df_melt_errordist = df_errordist.melt()
+        df_melt_corr = df_corr.melt()
+
+        ax[0] = sns.kdeplot(
+            data=df_melt_errordist,
             x="value",
             hue="variable",
             fill=True,
             palette="Set2",
             legend=True,
+            ax=ax[0],
         )
-        plt.title("Distribution of Bootstrapped Error")
-        plt.xlabel("Distance Error")
-        plt.ylabel("Density")
+        ax[1] = sns.kdeplot(
+            data=df_melt_corr,
+            x="value",
+            hue="variable",
+            fill=True,
+            palette="Set2",
+            legend=True,
+            ax=ax[1],
+        )
+
+        ax[0].set_title("Distribution of Bootstrapped Error")
+        ax[0].set_xlabel("Distance Error")
+        ax[0].set_ylabel("Density")
+
+        sns.move_legend(
+            ax[0],
+            loc="center",
+            bbox_to_anchor=(0.5, 1.45),
+            fancybox=True,
+            shadow=True,
+            ncol=len(df_melt_errordist["variable"].unique()),
+        )
+
+        ax[0].legend_.set_title("Metric")
+
+        ax[1].set_title("Distribution of Bootstrapped Error")
+        ax[1].set_xlabel("Correlation Coefficient")
+        ax[1].set_ylabel("Density")
+        sns.move_legend(
+            ax[1],
+            loc="center",
+            bbox_to_anchor=(0.5, 1.45),
+            fancybox=True,
+            shadow=True,
+            ncol=len(df_melt_corr["variable"].unique()) // 2,
+        )
+
+        ax[1].legend_.set_title("Metric")
+
+        plt.subplots_adjust(hspace=1.05)
+
         if self.show_plots:
             plt.show()
 
-        fn = f"{self.prefix}_bootstrap_error_distribution.{self.filetype}"
+        fn = f"{self.prefix}_bootstrap_error_distributions.{self.filetype}"
         outfile = self.outbasepath.with_name(fn)
-        plt.savefig(outfile, facecolor="white", bbox_inches="tight")
+        fig.savefig(outfile, facecolor="white", bbox_inches="tight")
         plt.close()
+
+        pride = mcolors.LinearSegmentedColormap.from_list(
+            "pride", ["#FF0018", "#FFA52C", "#FFFF41", "#008018", "#0000F9", "#86007D"]
+        )
+
+        fig, ax = plt.subplots(1, 2, figsize=(16, 12))
+        ax[0] = sns.boxplot(
+            data=df_melt_errordist,
+            x="variable",
+            y="value",
+            hue="variable",
+            fill=True,
+            palette="Dark2",
+            legend=True,
+            ax=ax[0],
+        )
+        ax[1] = sns.boxplot(
+            data=df_melt_corr,
+            x="variable",
+            y="value",
+            hue="variable",
+            palette="Dark2",
+            legend=True,
+            ax=ax[1],
+        )
+
+        ax[0].set_title("Bootstrapped Prediction Error")
+        ax[0].set_xlabel("Metric")
+        ax[0].set_ylabel("Prediction Error (km)")
+        ax[0].set_xticklabels("")
+        sns.move_legend(
+            ax[0], loc="center", bbox_to_anchor=(0.5, 1.15), fancybox=True, shadow=True
+        )
+
+        ax[1].set_title("Bootstrapped Prediction Error")
+        ax[1].set_xlabel("Metric")
+        ax[1].set_ylabel("Correlation Coefficient")
+        sns.move_legend(
+            ax[1],
+            loc="center",
+            bbox_to_anchor=(0.5, 1.15),
+            fancybox=True,
+            shadow=True,
+            ncol=2,
+        )
+        ax[1].set_xticklabels("")
+
+        plt.subplots_adjust(wspace=1.05)
+
+        if self.show_plots:
+            plt.show()
+
+        fn = f"{self.prefix}_bootstrap_error_barplots.{self.filetype}"
+        outfile = self.outbasepath.with_name(fn)
+        fig.savefig(outfile, facecolor="white", bbox_inches="tight")
+        plt.close()
+
+    def update_metric_labels(self, df):
+        """
+        Update metric labels in the dataframe based on specified mappings.
+
+        Args:
+            df (pd.DataFrame): The dataframe to be updated.
+
+        Returns:
+            pd.DataFrame: The updated dataframe.
+        """
+        metric_map = {
+            "mean_dist": "Mean Error",
+            "median_dist": "Median Error",
+            "stdev_dist": "StdDev of Error",
+            "percent_within_20km": "% Samples within 20 km",
+            "percent_within_50km": "% Samples within 50 km",
+            "percent_within_75km": "% Samples within 75 km",
+            "mad_haversine": "Median Absolute Deviation",
+            "coeffecient_of_variation": "Coefficient of Variation",
+            "percentile_25": "25th Percentile of Error",
+            "percentile_50": "50th Percentile of Error",
+            "percentiles_75": "75th Percentile of Error",  # typo in the original data
+            "pearson_corr_longitude": "$R^2$ (Longitude)",
+            "pearson_corr_latitude": "$R^2$ (Latitude)",
+            "spearman_corr_longitude": "Rho (Longitude)",
+            "spearman_corr_latitude": "Rho (Latitude)",
+            "skewness": "Skewness",
+        }
+
+        for original, new in metric_map.items():
+            df.loc[df["Metric"] == original, "Metric"] = new
+
+        return df
+
+    def update_config_labels(self, df):
+        """
+        Update config labels in the dataframe based on the file list patterns.
+
+        Args:
+            df (pd.DataFrame): The dataframe to be updated.
+
+        Returns:
+            pd.DataFrame: The updated dataframe.
+        """
+        # Mapping of file name starts to corresponding labels
+        config_map = {
+            "locator": "Locator",
+            "nn_base_unopt": "GeoGenie Base (Unoptimized)",
+            "nn_base_opt": "GeoGenie Base",
+            "nn_loss_opt": "GeoGenie + Loss",
+            "nn_sampler_opt": "GeoGenie + Sampler",
+            "nn_both_opt": "GeoGenie + Loss + Sampler",
+            "nn_base_smote_opt": "GeoGenie Base + Interpolation",
+            "nn_loss_smote_opt": "GeoGenie Loss + Interpolation",
+            "nn_sampler_smote_opt": "GeoGenie Sampler + Interpolation",
+            "nn_both_smote_opt": "GeoGenie Loss + Sampler + Interpolation",
+        }
+        # Iterate over the mapping and update the dataframe
+        for key, value in config_map.items():
+            df.loc[df["config"].str.startswith(key), "config"] = value
+
+        return df, list(config_map.values())
 
     def plot_scatter_samples_map(
         self,
@@ -536,20 +945,20 @@ class PlotGenIE:
         # Define colormap and normalization
         # cmap = plt.get_cmap("plasma_r")
 
-        tp_cmap = colors.LinearSegmentedColormap.from_list(
+        tp_cmap = mcolors.LinearSegmentedColormap.from_list(
             "", ["#55CDFC", "#FFFFFF", "#F7A8B8"]
         )
 
-        cmap = colors.LinearSegmentedColormap.from_list(
+        cmap = mcolors.LinearSegmentedColormap.from_list(
             "", ["#FF1B8D", "#FFDA00", "#1BB3FF"]
         )
 
-        uncertainty_cmap = colors.LinearSegmentedColormap.from_list(
+        uncertainty_cmap = mcolors.LinearSegmentedColormap.from_list(
             "", ["#FF1B8D", "#FFDA00", "#1BB3FF"]
         )
 
-        norm = colors.Normalize(vmin=min_colorscale, vmax=vmax)
-        norm_std = colors.Normalize(vmin=0, vmax=vmax_std)
+        norm = mcolors.Normalize(vmin=min_colorscale, vmax=vmax)
+        norm_std = mcolors.Normalize(vmin=0, vmax=vmax_std)
 
         contour = ax.contourf(
             grid_x,
@@ -867,7 +1276,7 @@ class PlotGenIE:
 
     def _plot_map(self, actual_coords, url, output_dir, buffer, ax):
         """
-        Plots a base map using shapefile data from a specified URL, overlaid with geographical points.
+        Plots a base map using shapefile data from a specified URL or file path.
 
         Args:
             actual_coords (np.array): Array of geographical coordinates to plot.
@@ -888,19 +1297,7 @@ class PlotGenIE:
             self.logger.error("Invalid coordinates detected.")
             raise ValueError("Invalid coordinates in actual_coords.")
 
-        outshp = os.path.join(output_dir, "shapefile")
-        mapfile = os.path.join(outshp, url.split("/")[-1])
-
-        if not os.path.exists(mapfile):
-            wget.download(url, outshp, bar=None)
-
-        try:
-            mapdata = gpd.read_file(mapfile)
-        except Exception:
-            self.logger.error(f"Could not read map file {mapfile} from url {url}.")
-            raise
-
-        mapdata.crs = "epsg:4326"
+        mapdata = self._extract_basemap_path_url(url, output_dir)
 
         # Set the limits with a buffer
         x_min, x_max = actual_coords[:, 0].min(), actual_coords[:, 0].max()
@@ -923,6 +1320,59 @@ class PlotGenIE:
         )
 
         return ax
+
+    def _extract_basemap_path_url(self, url, output_dir=None):
+        """Extract base map from provided URL or file path.
+
+        Args:
+            url (str): Either a valid URL or file path.
+            output_dir (str): Output directory to save base map to, if downloading from URL. Defaults to None.
+
+        Returns:
+            geopandas.GeoDataFrame: Base map as geopandas dataframe.
+
+        """
+        if output_dir is None:
+            output_dir = self.output_dir
+
+        outshp = Path(output_dir)
+
+        # Check if is url or is file path.
+        is_url = False if urlparse(url).scheme == "" else True
+        fn = url.split("/")[-1] if is_url else Path(url)
+
+        if not is_url:
+            fn = fn.name
+
+        dest = outshp.joinpath("shapefile", fn)
+
+        if is_url and not dest.exists():
+            try:
+                wget.download(url, outshp, bar=None)
+            except Exception as e:
+                msg = f"Error downloading shapefile from {url}: {e}."
+                self.logger.error(msg)
+                raise e
+
+        if not is_url and not Path(url).is_file():
+            msg = f"Could not find shapefile in provided path: {mapfile}"
+            self.logger.error(msg)
+            raise FileNotFoundError(msg)
+
+        # Extract shapefile directory, if necessary.
+        mapfile = self._extract_shapefile(url)
+
+        try:
+            mapdata = gpd.read_file(mapfile)
+        except Exception as e:
+            self.logger.error(f"Could not read map file {mapfile} from {url}.")
+            raise e
+
+        mapdata.crs = "epsg:4326"
+
+        if self.basemap_fips is not None:
+            mapdata = mapdata[mapdata["STATEFP"] == self.basemap_fips]
+        return mapdata
 
     def plot_cumulative_error_distribution(self, data, fn, percentiles, median, mean):
         """
@@ -950,12 +1400,12 @@ class PlotGenIE:
         # Colormap and normalization
         vmax = min(roundup(np.max(x)), 150)
 
-        cmap = colors.LinearSegmentedColormap.from_list(
+        cmap = mcolors.LinearSegmentedColormap.from_list(
             "", ["#FF1B8D", "#FFDA00", "#1BB3FF"]
         )
 
         # cmap = plt.get_cmap("plasma_r")
-        norm = colors.Normalize(vmin=0, vmax=vmax)
+        norm = mcolors.Normalize(vmin=0, vmax=vmax)
 
         # Create the plot
         ax = sns.histplot(
@@ -1058,7 +1508,7 @@ class PlotGenIE:
         plt.figure(figsize=(12, 12))
 
         cmap = plt.colormaps.get_cmap("Purples")
-        norm = colors.Normalize(vmin=np.min(z), vmax=np.max(z))
+        norm = mcolors.Normalize(vmin=np.min(z), vmax=np.max(z))
 
         ax = sns.histplot(
             x=z,
@@ -1127,10 +1577,10 @@ class PlotGenIE:
         # Colormap and normalization
         # cmap = plt.get_cmap("plasma_r")
 
-        cmap = colors.LinearSegmentedColormap.from_list(
+        cmap = mcolors.LinearSegmentedColormap.from_list(
             "", ["#FF1B8D", "#FFDA00", "#1BB3FF"]
         )
-        norm = colors.Normalize(vmin=0, vmax=vmax)
+        norm = mcolors.Normalize(vmin=0, vmax=vmax)
 
         # Histogram (Density Plot with Gradient)
         plt.subplot(1, 3, 1)
@@ -1202,7 +1652,11 @@ class PlotGenIE:
             - This function calculates the Haversine error for each pair of actual and predicted coordinates.
             - It then computes the KDE values for these errors and plots a regression to analyze the relationship.
         """
-        if dataset != "test" and not dataset.startswith("val"):
+        if (
+            dataset != "test"
+            and not dataset.startswith("val")
+            and not dataset == "train"
+        ):
             msg = (
                 f"'dataset' parameter must be either 'test' or 'validation': {dataset}."
             )
@@ -1236,7 +1690,7 @@ class PlotGenIE:
         xfit = np.linspace(np.min(x), np.max(x), 1000)
         yfit = poly_model.predict(xfit[:, np.newaxis])
 
-        r, p = stats.spearmanr(x, y)
+        r, p = stats.pearsonr(x, y)
         if p < 0.0001:
             p = "< 0.0001"
         elif p < 0.001:
@@ -1250,8 +1704,7 @@ class PlotGenIE:
             fit_reg=True,
             n_boot=1000,
             line_kws={"lw": 5, "color": "darkorchid"},
-            order=degree,
-            label=r"$\rho$" + f" = {r:.2f}\nP-value {p}",
+            label=f"Pearson's R = {r:.2f}\nP-value {p}",
         )
 
         # Plotting the results
@@ -1816,3 +2269,319 @@ class PlotGenIE:
             plt.show()
         plt.savefig(filename, facecolor="white", bbox_inches="tight")
         plt.close()
+
+    def _calculate_centroid(self, gdf):
+        """
+        Calculate the centroid of a set of geographic points.
+
+        Args:
+            gdf (gpd.GeoDataFrame): GeoDataFrame containing point geometries.
+
+        Returns:
+            gpd.GeoSeries: Centroids.
+        """
+        return gdf.geometry.unary_union.centroid
+
+    def _extract_shapefile(self, zip_path):
+        """
+        Extract a zipped shapefile.
+
+        Args:
+            zip_path (str): Path to the zipped shapefile.
+
+        Returns:
+            str: Path to the extracted shapefile directory, which will be a temporary directory, or if the directory was already unzipped then just returns the original file path.
+        """
+        if zip_path.endswith(".zip"):
+            # Create a temporary directory
+            temp_dir = tempfile.mkdtemp()
+
+            # Extract the zip file
+            with zipfile.ZipFile(zip_path, "r") as zip_ref:
+                zip_ref.extractall(temp_dir)
+
+            return temp_dir
+        return zip_path
+
+    def plot_boot_ci_data(
+        self, df, stats_df, sample_id, shapefile, known_locality=None
+    ):
+        """
+        Plot bootstrapped locality data with mean, confidence intervals, and DRMS.
+
+        Args:
+            df (pd.DataFrame): DataFrame containing 'x' and 'y' coordinates (decimal degrees), plus summary stats for the bootstrap replicates.
+            stats_df (dict): Summary statistics containing the means, std_dev, and 95% CIs for 'x' and 'y'.
+            sample_id (str): Sample ID to use in output filename.
+            shapefile (str): Shapefile path or URL. Can be zipped or unzipped.
+            known_locality (str): Path to file containing known localities for prediction data. If undefined, then no recorded locality marker is plotted. Defaults to None.
+        """
+        gray_counties = self.basemap_highlights
+
+        df_known = pd.read_csv(known_locality, sep="\t")
+        df_known = df_known[df_known["sampleID"] == sample_id]
+        sample_gdf = self._get_known_pred_locations(df)
+        gdf_known = self._get_known_pred_locations(df_known)
+
+        gdf = self._extract_basemap_path_url(shapefile)
+
+        coords = np.array(list(sample_gdf.geometry.apply(lambda p: (p.x, p.y))))
+
+        # Calculate Mean Coordinates
+        centroids = self._calculate_centroid(sample_gdf)
+
+        if known_locality is not None:
+            centroid_known = self._calculate_centroid(gdf_known)
+
+        mean_lon, mean_lat = centroids.x, centroids.y
+
+        # Calculate bounds with buffer
+        xmin, ymin, xmax, ymax = sample_gdf.total_bounds
+
+        fig, ax = plt.subplots(figsize=(8, 6))
+
+        # Plot base map.
+        gdf.plot(ax=ax, color="none", edgecolor="black")
+        gdf = self._hightlight_counties(gray_counties, gdf, ax)
+
+        # Apply Gaussian Kernel Density Estimation
+        kde = stats.gaussian_kde(coords.T)
+
+        # Create grid for KDE
+        xx, yy = np.mgrid[xmin:xmax:100j, ymin:ymax:100j]
+        grid = np.vstack([xx.ravel(), yy.ravel()])
+        z = kde(grid)
+        zz = np.reshape(z, xx.shape)
+
+        # Calculate cumulative density for the levels
+        z_sorted = np.sort(z.ravel())
+        cumulative_z = np.cumsum(z_sorted)
+        total_z = cumulative_z[-1]
+
+        # Find levels for 50%, 70%, and 90% of the total cumulative density
+        level_50 = z_sorted[np.searchsorted(cumulative_z, 0.50 * total_z)]
+        level_70 = z_sorted[np.searchsorted(cumulative_z, 0.70 * total_z)]
+        level_90 = z_sorted[np.searchsorted(cumulative_z, 0.90 * total_z)]
+
+        # Ensure levels are in ascending order
+        levels = np.sort([level_50, level_70, level_90])
+
+        # Plot density contours as lines
+        # Use a colorblind-friendly palette
+        colors = ["#E69F00", "#56B4E9", "#CC79A7"]  # Orange, Sky Blue, Magenta
+
+        # Plot density contours as lines
+        contour = ax.contour(xx, yy, zz, levels=levels, colors=colors)
+
+        # Create custom legend for the contours
+        contour_lines = [mlines.Line2D([0], [0], color=color, lw=2) for color in colors]
+
+        grays = [mpatches.Patch(facecolor="darkgrey", edgecolor="k")]
+
+        labels = ["90% Density", "70% Density", "50% Density"]
+
+        # Plot bootstrapped points with reduced opacity
+        ax.scatter(coords[:, 0], coords[:, 1], alpha=0.3, color="gray")
+
+        # Ensure the mean marker is visible
+        ax.scatter(
+            mean_lon, mean_lat, s=100, color="k", marker="X", label="Predicted Locality"
+        )
+
+        if known_locality is not None:
+            ax.scatter(
+                centroid_known.x,
+                centroid_known.y,
+                s=100,
+                color="k",
+                marker="^",  # triangle symbol
+                label="Recorded Locality",
+            )
+
+        ax.set_xlabel("Longitude")
+        ax.set_ylabel("Latitude")
+        ax.set_title(f"{sample_id}: Bootstrapped Locality Predictions")
+
+        handles, labs = ax.get_legend_handles_labels()
+        contour_lines += handles + grays
+        labels += labs + ["CWD Mgmt Zone"]
+
+        ax.legend(
+            contour_lines,
+            labels,
+            loc="center",
+            bbox_to_anchor=(0.5, 1.3),
+            fancybox=True,
+            shadow=True,
+            ncol=2,
+        )
+
+        if self.show_plots:
+            plt.show()
+
+        pth = Path(self.output_dir)
+        od = pth.joinpath("plots", "sample_prediction_plots")
+        od.mkdir(exist_ok=True, parents=True)
+        of = f"{self.prefix}_bootstrap_confidence_plot_{sample_id}.{self.filetype}"
+        fn = od.joinpath(of)
+
+        fig.savefig(fn, bbox_inches="tight", facecolor="white")
+        plt.close()
+
+    def _plot_single_sample_boot_error(
+        self,
+        sample_gdf,
+        sample_id,
+        shapefile,
+        sample_gdf_known=None,
+    ):
+        """
+        Plot the bootstrapped points using a Gaussian KDE, including contour lines for density, and highlight the centroid for a given sample on a basemap with US state county lines.
+
+        Args:
+            sample_gdf (gpd.GeoDataFrame): GeoDataFrame containing coordinates for a single sample.
+            sample_id (str): Sample ID to plot.
+            shapefile (str): Directory or URL containing the county shapefile. Shapefile should be zipped.
+            sample_gdf_known (GeoPandas.DataFrame): GeoPandas DataFrame with known coordinates for predicted values. Defaults to None.
+        """
+        gray_counties = self.basemap_highlights
+
+        gdf = self._extract_basemap_path_url(shapefile)
+
+        coords = np.array(list(sample_gdf.geometry.apply(lambda p: (p.x, p.y))))
+
+        # Calculate Mean Coordinates
+        centroids = self._calculate_centroid(sample_gdf)
+
+        if sample_gdf_known is not None:
+            centroid_known = self._calculate_centroid(sample_gdf_known)
+
+        mean_lon, mean_lat = centroids.x, centroids.y
+
+        # Calculate bounds with buffer
+        xmin, ymin, xmax, ymax = sample_gdf.total_bounds
+
+        fig, ax = plt.subplots(figsize=(8, 6))
+
+        # Plot base map.
+        gdf.plot(ax=ax, color="none", edgecolor="black")
+        gdf = self._hightlight_counties(gray_counties, gdf, ax)
+
+        # Apply Gaussian Kernel Density Estimation
+        kde = stats.gaussian_kde(coords.T)
+
+        # Create grid for KDE
+        xx, yy = np.mgrid[xmin:xmax:100j, ymin:ymax:100j]
+        grid = np.vstack([xx.ravel(), yy.ravel()])
+        z = kde(grid)
+        zz = np.reshape(z, xx.shape)
+
+        # Calculate cumulative density for the levels
+        z_sorted = np.sort(z.ravel())
+        cumulative_z = np.cumsum(z_sorted)
+        total_z = cumulative_z[-1]
+
+        # Find levels for 50%, 70%, and 90% of the total cumulative density
+        level_50 = z_sorted[np.searchsorted(cumulative_z, 0.50 * total_z)]
+        level_70 = z_sorted[np.searchsorted(cumulative_z, 0.70 * total_z)]
+        level_90 = z_sorted[np.searchsorted(cumulative_z, 0.90 * total_z)]
+
+        # Ensure levels are in ascending order
+        levels = np.sort([level_50, level_70, level_90])
+
+        # Plot density contours as lines
+        # Use a colorblind-friendly palette
+        colors = ["#E69F00", "#56B4E9", "#CC79A7"]  # Orange, Sky Blue, Magenta
+
+        # Plot density contours as lines
+        contour = ax.contour(xx, yy, zz, levels=levels, colors=colors)
+
+        # Create custom legend for the contours
+        contour_lines = [mlines.Line2D([0], [0], color=color, lw=2) for color in colors]
+
+        grays = [mpatches.Patch(facecolor="darkgrey", edgecolor="k")]
+
+        labels = ["90% Density", "70% Density", "50% Density"]
+
+        # Plot bootstrapped points with reduced opacity
+        ax.scatter(coords[:, 0], coords[:, 1], alpha=0.3, color="gray")
+
+        # Ensure the mean marker is visible
+        ax.scatter(
+            mean_lon, mean_lat, s=100, color="k", marker="X", label="Predicted Locality"
+        )
+
+        if sample_gdf_known is not None:
+            ax.scatter(
+                centroid_known.x,
+                centroid_known.y,
+                s=100,
+                color="k",
+                marker="^",  # triangle symbol
+                label="Recorded Locality",
+            )
+
+        handles, labs = ax.get_legend_handles_labels()
+        contour_lines += handles + grays
+        labels += labs + ["CWD Mgmt Zone"]
+
+        ax.legend(
+            contour_lines,
+            labels,
+            loc="center",
+            bbox_to_anchor=(0.5, 1.3),
+            fancybox=True,
+            shadow=True,
+            ncol=2,
+        )
+        ax.set_title(f"Sample {sample_id}")
+
+        pth = Path(self.output_dir)
+        od = pth.joinpath("plots", "sample_prediction_plots")
+        od.mkdir(exist_ok=True, parents=True)
+        of = f"{self.prefix}_bootstrap_prediction_{sample_id}.{self.filetype}"
+        fn = od.joinpath(of)
+
+        plt.savefig(fn, bbox_inches="tight", facecolor="white")
+        plt.close(fig)
+
+    def _hightlight_counties(self, gray_counties, gdf, ax=None):
+        if gray_counties is not None:
+            # Filtering the counties to be colored gray
+            gray_county_gdf = gdf[gdf["NAME"].isin(gray_counties)]
+            gray_county_gdf.plot(ax=ax, color="darkgray", edgecolor="k", alpha=0.5)
+            return gray_county_gdf
+        return gdf
+
+    def plot_samples_boot_error(
+        self,
+        directory,
+        basemap,
+        selected_samples=None,
+        known_coords=None,
+    ):
+        """
+        Function to process and plot data for selected samples.
+
+        Args:
+            directory (str): Directory containing CSV files.
+            basemap (str): Path to the zipped basemap shapefile or a URL to download the base map.
+            selected_samples (list of str, optional): List of sampleIDs to be plotted. Plots all if None.
+            known_coords (str): Path to known coordinates for predicted samples. For validation. If None, then doesn't plot the real coordinates. Defaults to None.
+        """
+        gdf = load_directory_of_locs(directory)
+        df_known = pd.read_csv(known_coords, sep="\t")
+
+        for sample_id in gdf["sampleID"].unique():
+            if selected_samples is None or sample_id in selected_samples:
+                sample_gdf = gdf[gdf["sampleID"] == sample_id]
+                sample_df_known = df_known[df_known["sampleID"] == sample_id]
+                sample_gdf_known = self._get_known_pred_locations(sample_df_known)
+                self._plot_single_sample_boot_error(
+                    sample_gdf, sample_id, basemap, sample_gdf_known=sample_gdf_known
+                )
+
+    def _get_known_pred_locations(self, df_known):
+        return gpd.GeoDataFrame(
+            df_known, geometry=gpd.points_from_xy(df_known.x, df_known.y)
+        )
