@@ -359,3 +359,68 @@ class LongLatToCartesianTransformer(BaseEstimator, TransformerMixin):
         lon = np.degrees(np.arctan2(y, x))
 
         return np.column_stack((lon, lat))
+
+
+from sklearn.base import BaseEstimator, TransformerMixin
+import numpy as np
+
+
+class SinCosCoordinateTransformer(BaseEstimator, TransformerMixin):
+    """
+    A scikit-learn compatible transformer for converting geographic coordinates
+    to and from sine and cosine values.
+    """
+
+    def fit(self, X, y=None):
+        """
+        Fit method for compatibility with scikit-learn's transformer interface.
+        No fitting is necessary for this transformer.
+
+        Args:
+            X (array-like): The data to fit.
+            y (None, optional): Ignored. This parameter exists for compatibility with scikit-learn's interface.
+
+        Returns:
+            SinCosCoordinateTransformer: The fitted transformer.
+        """
+        # No fitting needed, so just return self
+        return self
+
+    def transform(self, X):
+        """
+        Transform method to convert geographic coordinates to sine and cosine values.
+
+        Args:
+            X (array-like): The data to transform. Assumes the first column is longitude and the second is latitude.
+
+        Returns:
+            np.ndarray: Transformed data with sine and cosine values.
+        """
+        sin_cos_transformed = np.zeros((X.shape[0], 4))
+
+        # Assuming X[:, 0] is longitude and X[:, 1] is latitude
+        sin_cos_transformed[:, 0] = np.sin(np.radians(X[:, 0]))  # sin(longitude)
+        sin_cos_transformed[:, 1] = np.cos(np.radians(X[:, 0]))  # cos(longitude)
+        sin_cos_transformed[:, 2] = np.sin(np.radians(X[:, 1]))  # sin(latitude)
+        sin_cos_transformed[:, 3] = np.cos(np.radians(X[:, 1]))  # cos(latitude)
+
+        return sin_cos_transformed
+
+    def inverse_transform(self, X):
+        """
+        Inverse transform method to convert sine and cosine values back to geographic coordinates.
+
+        Args:
+            X (array-like): The data to inverse transform. Assumes the order [sin(longitude), cos(longitude), sin(latitude), cos(latitude)].
+
+        Returns:
+            np.ndarray: Inverse transformed data with longitude and latitude values.
+        """
+        longitudes = np.degrees(np.arctan2(X[:, 0], X[:, 1]))
+        latitudes = np.degrees(np.arctan2(X[:, 2], X[:, 3]))
+
+        # Adjusting the ranges
+        longitudes = np.mod(longitudes + 180, 360) - 180
+        latitudes = np.clip(latitudes, -90, 90)
+
+        return np.stack([longitudes, latitudes], axis=1)
