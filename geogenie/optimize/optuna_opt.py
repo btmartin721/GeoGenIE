@@ -19,8 +19,10 @@ from torch import optim
 from torch.utils.data import DataLoader
 
 from geogenie.plotting.plotting import PlotGenIE
+from geogenie.samplers.interpolate import run_genotype_interpolator
+from geogenie.utils.callbacks import callback_init
 from geogenie.utils.data import CustomDataset
-from geogenie.utils.loss import weighted_rmse_loss
+from geogenie.utils.loss import weighted_rmse_loss, WeightedDRMSLoss, WeightedHuberLoss
 from geogenie.utils.scorers import haversine_distances_agg
 
 
@@ -75,6 +77,7 @@ class Optimize:
         weighted_sampler,
         device,
         args,
+        ds,
         show_progress_bar=False,
         n_startup_trials=10,
         dtype=torch.float32,
@@ -87,6 +90,7 @@ class Optimize:
         self.weighted_sampler = weighted_sampler
         self.device = device
         self.args = args
+        self.ds = ds
         self.show_progress_bar = show_progress_bar
         self.n_startup_trials = n_startup_trials
         self.verbose = args.verbose
@@ -103,6 +107,8 @@ class Optimize:
             device,
             args.output_dir,
             args.prefix,
+            args.basemap_fips,
+            args.highlight_basemap_counties,
             show_plots=args.show_plots,
             fontsize=args.fontsize,
             filetype=args.filetype,
@@ -158,23 +164,33 @@ class Optimize:
             trained_model, val_loss = self.run_rf_training(
                 trial, param_dict, train_func
             )
+
+            if np.isnan(val_loss):
+                raise optuna.exceptions.TrialPruned()
+            if val_loss is None:
+                raise optuna.exceptions.TrialPruned()
+
         else:
             # Model, loss, and optimizer
-            trained_model, val_loss = self.run_training(
-                trial, ModelClass, train_func, param_dict
-            )
+            trained_model = self.run_training(trial, ModelClass, train_func, param_dict)
 
         if trained_model is None:
             raise optuna.exceptions.TrialPruned()
 
-        _, haversine_error = self.evaluate_model(
-            self.val_loader, trained_model, weighted_rmse_loss
-        )
+        if self.args.criterion == "drms":
+            criterion = WeightedDRMSLoss()
+        elif self.args.crtierion == "rmse":
+            criterion = weighted_rmse_loss
+        elif self.args.criterion == "huber":
+            criterion = WeightedHuberLoss(delta=0.5, smoothing_factor=0.1)
+        else:
+            msg = f"Invalid '--criterion' argument provided. Expected one of 'drms', 'rmse', or 'huber', but got: {self.args.criterion}"
+            self.logger.error(msg)
+            raise ValueError(msg)
 
-        if np.isnan(val_loss):
-            raise optuna.exceptions.TrialPruned()
-        if val_loss is None:
-            raise optuna.exceptions.TrialPruned()
+        haversine_error = self.evaluate_model(
+            self.test_loader, trained_model, criterion
+        )
 
         return haversine_error
 
@@ -211,6 +227,8 @@ class Optimize:
             weight_decay=param_dict["l2_weight"],
         )
 
+        early_stop, lr_scheduler = callback_init(optimizer, self.args, trial=trial)
+
         # Train model
         trained_model = train_func(
             self.train_loader,
@@ -219,6 +237,8 @@ class Optimize:
             optimizer,
             trial=trial,
             objective_mode=True,
+            early_stopping=early_stop,
+            lr_scheduler=lr_scheduler,
         )
 
         return trained_model
@@ -315,13 +335,13 @@ class Optimize:
             "dropout_prop": dropout_prop,
         }
 
-    def evaluate_model(self, val_loader, model, criterion):
+    def evaluate_model(self, test_loader, model, criterion):
         if self.model_type == "DL":
             model.eval()
             total_loss = 0.0
             total_haversine = 0.0
             with torch.no_grad():
-                for batch in val_loader:
+                for batch in test_loader:
                     if len(batch) == 3:
                         inputs, labels, sample_weights = batch
                         inputs, labels, sample_weights = (
@@ -347,28 +367,26 @@ class Optimize:
 
                     total_loss += loss.item()
                     total_haversine += haverror
-            return total_loss / len(val_loader), total_haversine / len(val_loader)
+            return total_haversine / len(test_loader)
         else:
-            X_true = val_loader.dataset.features.numpy()
-            y_true = val_loader.dataset.labels.numpy()
+            X_true = test_loader.dataset.features.numpy()
+            y_true = test_loader.dataset.labels.numpy()
             y_pred = model.predict(X_true)
 
             total_haversine = haversine_distances_agg(y_true, y_pred, np.mean)
-            return None, total_haversine
+            return total_haversine
 
-    def perform_optuna_optimization(self, criterion, ModelClass, train_func):
+    def perform_optuna_optimization(self, ModelClass, train_func):
         """
         Perform parameter optimization using Optuna.
 
         Args:
-            criterion (callable): Loss criterion to use.
             ModelClass (MLPRegressor or XGBoost): Model class to use.
             train_func (callable): Function to train model.
 
         Returns:
             tuple: Best trial and the Optuna study object.
         """
-        self.dataset = self.train_loader.dataset
 
         # Enable log propagation to the root logger
         enable_propagation()
@@ -376,13 +394,16 @@ class Optimize:
         # Disable Optuna's default handler to avoid double logging
         disable_default_handler()
 
+        if self.args.oversample_method != "none":
+            self.train_loader, _, __, ___, ____ = run_genotype_interpolator(
+                self.train_loader, self.args, self.ds, self.dtype
+            )
+
+        self.dataset = self.train_loader.dataset
+
         # Define the objective function for Optuna
         def objective(trial):
-            return self.objective_function(
-                trial,
-                ModelClass,
-                train_func,
-            )
+            return self.objective_function(trial, ModelClass, train_func)
 
         # Optuna Optimization setup
         sampler = samplers.TPESampler(
