@@ -4,13 +4,35 @@ import signal
 import sys
 from contextlib import contextmanager
 
+import geopandas as gpd
 import numpy as np
+import pandas as pd
 import torch
 from sklearn.cluster import OPTICS, KMeans
 
 from geogenie.utils.exceptions import TimeoutException
 
 logger = logging.getLogger(__name__)
+
+
+def load_directory_of_locs(directory):
+    """
+    Load all CSV files from the given directory and concatenate them into a single geopandas.GeoDataFrame.
+
+    Args:
+        directory (str): Path to the directory containing CSV files.
+
+    Returns:
+        geopandas.GeoDataFrame: Combined GeoDataFrame containing all data.
+    """
+    files = [
+        os.path.join(directory, f)
+        for f in os.listdir(directory)
+        if f.endswith(".csv") or f.endswith(f"txt")
+    ]
+    df = pd.concat([pd.read_csv(f) for f in files], ignore_index=True)
+    gdf = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.x, df.y))
+    return gdf
 
 
 @contextmanager
