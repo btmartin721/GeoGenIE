@@ -194,6 +194,12 @@ def setup_parser(test_mode=False):
         help="Tab-delimited file with 'sampleID', 'x', 'y'. Align SampleIDs with VCF",
     )
     data_group.add_argument(
+        "--known_sample_data",
+        type=str,
+        default=None,
+        help="Same as sample_data, except includes known localities instead of nan values in the corresponding '--sample_data' file. This is so that the per-sample, bootstrapped output plots can have a recorded locality in addition to the predicted locality. If not provided, then only predicted localities will be shown. Defaults to None (no recorded locality shown)",
+    )
+    data_group.add_argument(
         "--min_mac",
         type=validate_positive_int,
         default=2,
@@ -268,6 +274,12 @@ def setup_parser(test_mode=False):
         type=validate_positive_float,
         default=0.25,
         help="Dropout rate (0-1) to prevent overfitting. Default: 0.2.",
+    )
+    model_group.add_argument(
+        "--criterion",
+        type=validate_lower_str,
+        default="rmse",
+        help=f"Model loss criterion to use. Valid options include: 'rmse', 'huber', and 'drms'. RMSE is Root Mean Squared Error (i.e., euclidean distance) and 'drms' is Distance Root Mean Square. 'huber' is Huber loss. All criteria are weighted if using the '--use_weighted' argument with 'loss', 'sampler', or 'both'.",
     )
     model_group.add_argument(
         "--load_best_params",
@@ -393,7 +405,7 @@ def setup_parser(test_mode=False):
         "--oversample_method",
         type=validate_lower_str,
         default="none",
-        help="Synthetic oversampling/ undersampling method to use. Valid options include 'kmeans', 'optics', 'kerneldensity', or 'none'. Default: 'none' (do not use over-sampling).",
+        help="Synthetic oversampling/ undersampling method to use. Valid options include 'kmeans', 'kmeans', 'kerneldensity', or 'none'. Default: 'none' (do not use over-sampling).",
     )
     geo_sampler_group.add_argument(
         "--oversample_neighbors",
@@ -559,11 +571,33 @@ def setup_parser(test_mode=False):
     )
 
     plotting_group.add_argument(
-        "--shapefile_url",
+        "--shapefile",
         type=str,
         default="https://www2.census.gov/geo/tiger/GENZ2018/shp/cb_2018_us_state_500k.zip",
-        help="URL for shapefile used when plotting prediction error. This is a map of the continental USA, so if you need a different base map, you can supply your own URL here.",
+        help=f"URL or file path for shapefile used when plotting prediction error. The default is a map of the continental USA, so if you need a different base map, you can supply your own URL or zipped shapefile here. Note that if '--basemap_fips_code is not provided, then the map will be zoomed to the bounding box of the samples. plus '--bbox_buffer. Default: Continental USA basemap, downloaded from census.gov URL.",
     )
+
+    plotting_group.add_argument(
+        "--basemap_fips",
+        type=str,
+        default=None,
+        help="FIPS code for basemap. If provided, the bsae map will be of the US state for the provided FIPS code. If no FIPS code is provided, then the base map will be zoomed to the sampling bounding box, plus '--bbox_buffer'. Default: Do not use FIPS code.",
+    )
+
+    plotting_group.add_argument(
+        "--highlight_basemap_counties",
+        type=str,
+        default=None,
+        help="Comma-separated string of county names to use with the base map. Provided counties will be highlighted in gray on the base map. If not provided, then no counties are highlighted. Default: Do not highlight any counties.",
+    )
+
+    plotting_group.add_argument(
+        "--samples_to_plot",
+        type=str,
+        default=None,
+        help="Comma-separated string of sampleIDs to plot the predictions for. Provided sampleIDs will be plotted over a base map with contours signifying 90%, 70%, and 50% of the bootstrap density (i.e., density of all predicted localities from the bootstrap replicates). If not provided, then all samples are plotted in separate plots. Default: Plot all samples.",
+    )
+
     plotting_group.add_argument(
         "--n_contour_levels",
         type=validate_positive_int,
@@ -705,8 +739,17 @@ def setup_parser(test_mode=False):
     validate_smote(parser, args)
     validate_gb_params(parser, args)
     validate_dtype(parser, args)
+    args.samples_to_plot = validate_str2list(args.samples_to_plot)
+    args.highlight_basemap_counties = validate_str2list(args.highlight_basemap_counties)
 
     return args
+
+
+def validate_str2list(arg):
+    s = arg.strip()
+    l = s.split(",")
+    l = [x.strip() for x in l]
+    return l
 
 
 def validate_dtype(parser, args):
@@ -769,11 +812,10 @@ def validate_colorscale(parser, args):
 def validate_smote(parser, args):
     if args.oversample_method not in [
         "kmeans",
-        "optics",
         "kerneldensity",
         "none",
     ]:
-        msg = f"'--oversample_method' value must be one of 'kmeans', 'optics', 'kerneldensity', or 'none', but got: {args.oversample_method}'"
+        msg = f"'--oversample_method' value must be one of 'kmeans', 'kerneldensity', or 'none', but got: {args.oversample_method}'"
         logger.error(msg)
         parser.error(msg)
 
