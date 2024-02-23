@@ -118,6 +118,7 @@ class GTseqToVCF:
             "GC",
             "--",
             "NN",
+            "00",
         }
 
         # Validate the genotype columns to ensure they contain valid allele
@@ -145,7 +146,7 @@ class GTseqToVCF:
         def get_ref_alt(genotypes):
             # Flatten the genotype pairs and count occurrences, excluding missing data
             allele_counts = Counter(
-                "".join(genotypes).replace("--", "").replace("NN", "")
+                "".join(genotypes).replace("--", "").replace("NN", "").replace("00", "")
             )
             if allele_counts:
                 # Get the most common alleles
@@ -203,12 +204,16 @@ class GTseqToVCF:
 
     def create_vcf_header(self):
         # VCF header lines start with '##' and the column header line starts with '#'
+
+        self.sample_ids = [
+            x.split("_")[-1] for x in self.sample_ids if x.startswith("GTseek")
+        ]
         sample_ids = "\t".join(self.sample_ids)
 
         self.header = [
             "##fileformat=VCFv4.2",
             "##source=GTseqToVCFConverter",
-            "##reference=GenomeRef\n",
+            "##reference=GenomeRef",
             '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">',
             "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t"
             + sample_ids.strip("\n"),
@@ -224,13 +229,19 @@ class GTseqToVCF:
         self.data.columns = ["CHROM", "POS"] + self.sample_ids + ["REF", "ALT", "ID"]
         self.data = self.data.set_index("ID")
 
+        self.snp_ids = sorted(
+            self.snp_ids, key=lambda x: (x.split("_")[0], int(x.split("_")[1]))
+        )
+
         # Replace genotype strings with VCF format genotypes
         for snp in self.snp_ids:
             ref_allele = self.data.at[snp, "REF"]
             alt_allele = self.data.at[snp, "ALT"]
+
             for sample in self.sample_ids:
                 genotype = self.data.at[snp, sample]
                 alleles = np.array([genotype[i : i + 1] for i in range(len(genotype))])
+
                 alleles[alleles == ref_allele] = "0"
                 alleles[alleles == alt_allele] = "1"
                 alleles[alleles == "."] = "."
@@ -331,7 +342,10 @@ class GTseqToVCF:
 # Example usage of the GTseqToVCF class with the new method
 if __name__ == "__main__":
     # Create an instance of the class with the path to your data file
-    converter = GTseqToVCF("./WTD_Prod1_Genotypes.csv", str2drop=["Ovi_", "_PRNP_"])
+    converter = GTseqToVCF(
+        "/Users/btm002/Documents/wtd/locator_old/gtseq2vcf/WTD_Prod1_Genotypes.csv",
+        str2drop=["Ovi_", "_PRNP_"],
+    )
 
     # Load and preprocess the data
     converter.load_data()
@@ -344,7 +358,12 @@ if __name__ == "__main__":
     converter.format_genotype_data()
 
     # Write the VCF to a file
-    converter.write_vcf("output_path/WTD_Prod1_Genotypes.vcf")
+    converter.write_vcf(
+        "/Users/btm002/Documents/wtd/locator_old/gtseq2vcf/output_path2/WTD_Prod1_Genotypes.vcf"
+    )
 
     # Subset the VCF by locus IDs and write to a new file
-    converter.subset_vcf_by_locus_ids("phase6.vcf.gz", "output_path")
+    converter.subset_vcf_by_locus_ids(
+        "/Users/btm002/Documents/wtd/locator_old/gtseq2vcf/phase6.vcf.gz",
+        "/Users/btm002/Documents/wtd/locator_old/gtseq2vcf/output_path2",
+    )
