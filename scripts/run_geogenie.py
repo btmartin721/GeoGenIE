@@ -13,6 +13,7 @@ def main(args):
     )
     setup_logger(logfile)
     genie = GeoGenIE(args)
+
     genie.train_test_predict()
 
 
