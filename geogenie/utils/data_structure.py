@@ -22,7 +22,7 @@ from torch.utils.data import DataLoader
 
 from geogenie.outliers.detect_outliers import GeoGeneticOutlierDetector
 from geogenie.plotting.plotting import PlotGenIE
-from geogenie.samplers.samplers import GeographicDensitySampler, do_kde_binning
+from geogenie.samplers.samplers import GeographicDensitySampler
 
 # from geogenie.utils.transformers import MCA
 from geogenie.utils.data import CustomDataset
@@ -382,40 +382,40 @@ class DataStructure:
         Returns:
             tuple: tuple containing indices and data for training, validation, and testing.
         """
-
         if self.verbose >= 1:
             self.logger.info(
-                "Splitting data into train, validation, and test datasets.",
+                "Splitting data into train, validation, and test datasets."
             )
 
-        if train_split - val_split <= 0:
-            raise ValueError(
-                "The difference between train_split - val_split must be >= 0."
-            )
+        if train_split + val_split >= 1:
+            raise ValueError("The sum of train_split and val_split must be < 1.")
 
         # Split non-NaN samples into training + validation and test sets
         (
-            X_train,
-            X_test_val,
-            y_train,
-            y_test_val,
-            train_indices,
-            test_val_indices,
+            X_train_val,
+            X_test,
+            y_train_val,
+            y_test,
+            train_val_indices,
+            test_indices,
         ) = train_test_split(
             self.X,
             self.y,
             self.true_idx,
-            train_size=train_split,
+            train_size=train_split + val_split,
             random_state=seed,
             shuffle=True,
         )
 
-        # Split training data into actual training and validation sets
-        (X_test, X_val, y_test, y_val, test_indices, val_indices) = train_test_split(
-            X_test_val,
-            y_test_val,
-            test_val_indices,
-            test_size=0.5,
+        # Calculate validation size relative to the train_val set
+        val_size = val_split / (train_split + val_split)
+
+        # Split train_val data into actual training and validation sets
+        (X_train, X_val, y_train, y_val, train_indices, val_indices) = train_test_split(
+            X_train_val,
+            y_train_val,
+            train_val_indices,
+            test_size=val_size,
             random_state=seed,
             shuffle=True,
         )
@@ -449,7 +449,7 @@ class DataStructure:
         self.data.update(data)
 
         self.indices = {
-            "test_val_indices": test_val_indices,
+            "train_val_indices": train_val_indices,
             "train_indices": train_indices,
             "val_indices": val_indices,
             "test_indices": test_indices,
@@ -537,6 +537,8 @@ class DataStructure:
             "cpu",
             args.output_dir,
             args.prefix,
+            args.basemap_fips,
+            args.highlight_basemap_counties,
             show_plots=args.show_plots,
             fontsize=args.fontsize,
             filetype=args.filetype,
@@ -605,7 +607,7 @@ class DataStructure:
                 )
 
             self.plotting.plot_outliers(
-                self.mask, self.locs, args.shapefile_url, buffer=args.bbox_buffer
+                self.mask, self.locs, args.shapefile, buffer=args.bbox_buffer
             )
 
         # placeholder=True makes it not do transform.
@@ -695,12 +697,13 @@ class DataStructure:
 
     def run_outlier_detection(self, args, X, indices, y, index, filter_stage_indices):
         outlier_detector = GeoGeneticOutlierDetector(
+            args,
             pd.DataFrame(X, index=index),
             pd.DataFrame(y, index=index),
             output_dir=args.output_dir,
             prefix=args.prefix,
             n_jobs=args.n_jobs,
-            url=args.shapefile_url,
+            url=args.shapefile,
             buffer=0.1,
             show_plots=args.show_plots,
             seed=args.seed,
