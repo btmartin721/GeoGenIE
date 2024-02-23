@@ -169,6 +169,23 @@ def haversine(lon1, lat1, lon2, lat2):
     return c * r
 
 
+def haversine_numpy(lon1, lat1, lon2, lat2):
+    """
+    Calculate the great circle distance between two points
+    on the earth (specified in decimal degrees) using numpy.
+    """
+    # Convert decimal degrees to radians
+    lon1, lat1, lon2, lat2 = map(np.radians, [lon1, lat1, lon2, lat2])
+
+    # Haversine formula
+    dlon = lon2 - lon1
+    dlat = lat2 - lat1
+    a = np.sin(dlat / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2) ** 2
+    c = 2 * np.arcsin(np.sqrt(a))
+    r = 6371  # Radius of earth in kilometers
+    return c * r
+
+
 @numba.njit(fastmath=True)
 def haversine_distance(coord1, coord2):
     """
@@ -192,3 +209,10 @@ def haversine_distance(coord1, coord2):
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
     return radius * c
+
+
+def compute_drms(std_dev_x, std_dev_y):
+    """
+    Calculate the Distance Root Mean Squared (DRMS).
+    """
+    return np.sqrt(std_dev_x**2 + std_dev_y**2)
