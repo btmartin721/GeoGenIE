@@ -18,6 +18,7 @@ class GeoGeneticOutlierDetector:
 
     def __init__(
         self,
+        args,
         genetic_data,
         geographic_data,
         output_dir,
@@ -57,6 +58,7 @@ class GeoGeneticOutlierDetector:
 
         geo_coords_is_valid(self.geographic_data)
 
+        self.args = args
         self.output_dir = output_dir
         self.prefix = prefix
         self.n_jobs = n_jobs
@@ -69,6 +71,8 @@ class GeoGeneticOutlierDetector:
             "cpu",
             output_dir,
             prefix,
+            self.args.basemap_fips,
+            self.args.highlight_basemap_counties,
             show_plots=False,
             fontsize=fontsize,
             filetype=filetype,
