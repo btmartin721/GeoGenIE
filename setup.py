@@ -71,6 +71,8 @@ setup(
         "dev": [
             "demes",
             "msprime",
+            "pdf2image",
+            "PyPDF2",
             "pytest",
             "snpio",
             "sphinx",
