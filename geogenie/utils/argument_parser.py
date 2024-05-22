@@ -197,19 +197,19 @@ def setup_parser(test_mode=False):
         "--known_sample_data",
         type=str,
         default=None,
-        help="Same as sample_data, except includes known localities instead of nan values in the corresponding '--sample_data' file. This is so that the per-sample, bootstrapped output plots can have a recorded locality in addition to the predicted locality. If not provided, then only predicted localities will be shown. Defaults to None (no recorded locality shown)",
+        help="Same as sample_data. This is redundant, and may be removed in future versions, but is currently required if you want the recorded localities present on the CI plots. Default: None (no recorded localities shown)",
     )
     data_group.add_argument(
         "--min_mac",
         type=validate_positive_int,
         default=2,
-        help="Minimum minor allele count to retain SNPs. Default: 2.",
+        help="Minimum minor allele count (MAC) to retain SNPs. Default: 2.",
     )
     data_group.add_argument(
         "--max_SNPs",
         type=int,
         default=None,
-        help="Max number of SNPs to randomly subset. Default: Use all SNPs.",
+        help="Max number of SNPs to randomly subset. Default: None (Use all SNPs).",
     )
 
     # Embedding settings.
@@ -221,12 +221,12 @@ def setup_parser(test_mode=False):
         "--embedding_type",
         type=validate_lower_str,
         default="none",
-        help="Embedding to use with input SNP dataset. Supported options are: 'pca', 'polynomial', 'tsne', 'none' (no embedding). Default: 'none' (no embedding).",
+        help="Embedding to use with input SNP dataset. Supported options are: 'pca', 'kernelpca', 'nmf', 'lle', 'mca', 'mds', 'polynomial', 'tsne', and 'none' (no embedding). Default: 'none' (no embedding).",
     )
     embed_group.add_argument(
         "--n_components",
         default=None,
-        help="Number of components to use with 'pca' or 'tsne' embeddings. If not specified, then 'n_components' will be optimized if using PCA, otherwise a value is required.'. Default: Search for optimal 'n_components.' parameter. Default: Search optimal components.",
+        help="Number of components to use with 'pca' or 'tsne' embeddings. If not specified, then 'n_components' will be optimized if using PCA, otherwise a value is required.'. Default: Search for optimal 'n_components.' parameter. Default: None (Search optimal components).",
     )
     embed_group.add_argument(
         "--embedding_sensitivity",
@@ -261,13 +261,13 @@ def setup_parser(test_mode=False):
         "--nlayers",
         type=validate_positive_int,
         default=10,
-        help="Number of hidden layers in the network. Default: 10.",
+        help="Number of hidden layers in the network. Increase for underfitting. Default: 10.",
     )
     model_group.add_argument(
         "--width",
         type=validate_positive_int,
         default=256,
-        help="Number of neurons (units) per layer. Default: 256.",
+        help="Number of neurons per layer. If `--factor` is less than 1.0, then `width` will be reduced with each successive hidden layer, and `width` would represent the initial width. Default: 256.",
     )
     model_group.add_argument(
         "--dropout_prop",
@@ -285,7 +285,7 @@ def setup_parser(test_mode=False):
         "--load_best_params",
         type=str,
         default=None,
-        help="Specify filename to load best paramseters from previous Optuna parameter search. Default: None (don't load best parameters).",
+        help="Specify filename to load best paramseters from previous Optuna parameter search Should be a .json file. Can be found in '<output_dir>/optimize/<prefix>_best_params.json'. Default: None (don't load best parameters).",
     )
     model_group.add_argument(
         "--use_gradient_boosting",
@@ -313,37 +313,37 @@ def setup_parser(test_mode=False):
         "--max_epochs",
         type=validate_positive_int,
         default=5000,
-        help="Max training epochs. Default: 5000.",
+        help="`--max_epochs`: Maximum training epochs. An early stopping mechanism is implemented, so it is advisable to set this to a very high number and let the early stopping mechanism determine when to stop training. Default: 5000.",
     )
     training_group.add_argument(
         "--learning_rate",
         type=validate_positive_float,
         default=1e-3,
-        help="Learning rate for optimizer. Default: 0.001.",
+        help="`--learning_rate`: Learning rate for optimizer. Subject to a learning rate scheduler that reduces the learning rate with no improvement after `lr_scheduler_patience` epochs. Default: 0.001.",
     )
     training_group.add_argument(
         "--l2_reg",
         type=validate_positive_float,
         default=0.0,
-        help="L2 regularization weight. Default: 0 (none).",
+        help="`--l2_reg`: L2 regularization weight. Can help to reduce overfitting. Default: 0.0 (no regularization).",
     )
     training_group.add_argument(
         "--early_stop_patience",
         type=validate_positive_int,
         default=48,
-        help="Epochs to wait before reducing learning rate after no improvement. Default: 100.",
+        help="Epochs to wait after no improvement before activating early stopping mechanism. Default: 100.",
     )
     training_group.add_argument(
         "--train_split",
         type=validate_split,
-        default=0.9,
-        help="Training data proportion (0-1). Default: 0.85.",
+        default=0.8,
+        help="Training data proportion. `--val_split` + `--train_split` must sum to 1.0. NOTE: `--train_split` will be further reduced by `--train_split - `--val_split` to create a 'test sample' hold-out subset. Default: 0.8",
     )
     training_group.add_argument(
         "--val_split",
         type=validate_split,
         default=0.1,
-        help="Validation data proportion (0-1). Default: 0.15.",
+        help="--val_split`: Validation data proportion. `--val_split` + `--train_split` must sum to 1.0. Default: 0.2.",
     )
     training_group.add_argument(
         "--do_bootstrap",
@@ -354,14 +354,32 @@ def setup_parser(test_mode=False):
     training_group.add_argument(
         "--nboots",
         type=validate_positive_int,
-        default=50,
-        help="Number of bootstrap replicates. Used if 'bootstrap' is True. Default: 50.",
+        default=100,
+        help="`--nboots`: Number of bootstrap replicates. Has no effect if `--do_bootstrap` is disabled. Default: 100.",
+    )
+    training_group.add_argument(
+        "--feature_prop",
+        type=validate_positive_float,
+        default=0.8,
+        help="Prooprtion of features (i.e., loci) to use for bootstrapping. Default: 0.8.",
+    )
+    training_group.add_argument(
+        "--important_feature_prop",
+        type=validate_positive_float,
+        default=0.2,
+        help="Proportion of most important features (i.e., loci) to ensure in all bootstrap replicates. Default: 0.2.",
+    )
+    training_group.add_argument(
+        "--n_importance_estimators",
+        type=validate_positive_int,
+        default=100,
+        help="Number of RandomForestRegressor estimators to use for estimating feature (i.e., loci) importances when bootstrapping. Default: 100.",
     )
     training_group.add_argument(
         "--do_gridsearch",
         action="store_true",
         default=False,
-        help="Perform grid search for parameter optimization. Default: False.",
+        help="Perform Optuna parameter search to optimize model parameters. Default: False.",
     )
     training_group.add_argument(
         "--n_iter",
@@ -371,7 +389,7 @@ def setup_parser(test_mode=False):
     )
     training_group.add_argument(
         "--lr_scheduler_patience",
-        default=17,
+        default=16,
         type=validate_positive_int,
         help="Learning rate scheduler patience.",
     )
@@ -379,18 +397,18 @@ def setup_parser(test_mode=False):
         "--lr_scheduler_factor",
         type=validate_positive_float,
         default=0.5,
-        help="Factor to reduce learning rate scheduler by.",
+        help="Factor to reduce learning rate when learning rate scheduler is triggered. Default: 0.5.",
     )
     training_group.add_argument(
         "--factor",
         type=validate_positive_float,
         default=1.0,
-        help="Factor to scale neural network widths by. Defaults to 1.0 (no width reduction)",
+        help="Factor to scale neural network widths with each successive hidden layer. Default: 1.0 (no width reduction).",
     )
     training_group.add_argument(
         "--grad_clip",
         action="store_true",
-        help="If true, does gradient clipping to reduce overfitting.",
+        help="Enable gradient clipping, which can reduce the effect of explosive gradients.",
     )
 
     # Geographic Density Sampler Arguments
@@ -405,7 +423,7 @@ def setup_parser(test_mode=False):
         "--oversample_method",
         type=validate_lower_str,
         default="none",
-        help="Synthetic oversampling/ undersampling method to use. Valid options include 'kmeans', 'kmeans', 'kerneldensity', or 'none'. Default: 'none' (do not use over-sampling).",
+        help="Synthetic oversampling/ undersampling method to use. Valid options include 'kmeans' or 'none'. Default: 'none' (no oversampling).",
     )
     geo_sampler_group.add_argument(
         "--oversample_neighbors",
@@ -417,30 +435,31 @@ def setup_parser(test_mode=False):
         "--n_bins",
         type=validate_positive_int,
         default=8,
-        help="Number of bins to use with synthetic resampling.",
+        help="Number of KMeans bins (i.e., K clusters) to use with synthetic resampling.",
     )
     geo_sampler_group.add_argument(
         "--use_kmeans",
-        action="store_true",
-        help="Use KMeans clustering in the Weighted Geographic Density Sampler. Default: False",
+        action="store_false",
+        default=True,
+        help="Use KMeans clustering to calculate sample weights. Default: True",
     )
     geo_sampler_group.add_argument(
         "--use_kde",
         action="store_true",
-        default=True,
-        help="Use Kernel Density Estimation in the Weighted Geographic Density Sampler. Default: True.",
+        default=False,
+        help="Use Kernel Density Estimation (KDE) in to calculate sample weights. Default: False.",
     )
     geo_sampler_group.add_argument(
         "--w_power",
         type=validate_positive_float,
         default=1.0,
-        help="Power for inverse density weighting. Set higher for more aggressive inverse weighting of sampling density. Default: 1.0",
+        help="Exponential Power for inverse density weighting. Set this to a larger value if the sampling densities are not differentiated enough. Default: 1.0.",
     )
     geo_sampler_group.add_argument(
         "--max_clusters",
         type=validate_positive_int,
         default=10,
-        help="Maximum number of clusters for KMeans when used with the geographic density sampler. Default: 10",
+        help="Maximum number of clusters for KMeans when used with the to calculate sample weights. Default: 10",
     )
     geo_sampler_group.add_argument(
         "--max_neighbors",
@@ -451,22 +470,22 @@ def setup_parser(test_mode=False):
     geo_sampler_group.add_argument(
         "--focus_regions",
         action=EvaluateAction,
-        help="Provide geographic regions of interest to focus sampling density weights on. E.g., '[(lon_min1, lon_max1, lat_min1, lat_max1), ...]'.",
+        help="Specify geographic regions of interest using minimum and maximum longitude and latitude coordinates for sampling density weights. Should be in the format: `[(lon_min1, lon_max1, lat_min1, lat_max1), (<region2>), (...), (<regionN>)]`. Multiple regions can be specified.",
     )
     geo_sampler_group.add_argument(
         "--normalize_sample_weights",
         action="store_true",
-        help="Whether to normalize density-based sample weights. Default: False (Do not normalize).",
+        help="Whether to normalize density-based sample weights from 0 to 1. Default: False (no normalization).",
     )
 
     outlier_detection_group = parser.add_argument_group(
         "Arguments for outlier detection based on IBD.",
-        description="Parameters to adjust for the 'outlier_detection_group. This will perform outlier detection and remove significant outliers from the training and validation data.",
+        description="Parameters to adjust for the 'outlier_detection_group. This will perform outlier detection and remove significant outliers from the data prior to training.",
     )
     outlier_detection_group.add_argument(
         "--detect_outliers",
         action="store_true",
-        help="Perform outlier detection to remove outliers.",
+        help="Enable outlier detection to remove geographic and/ or genetic outliers. Default: False.",
     )
 
     outlier_detection_group.add_argument(
@@ -502,19 +521,19 @@ def setup_parser(test_mode=False):
         "--prefix",
         type=str,
         default="output",
-        help="Output file prefix. Default: 'output'.",
+        help="Output file prefix. Used for all output files and plots. Default: 'output'.",
     )
     output_group.add_argument(
         "--sqldb",
         type=str,
         default=None,
-        help="SQLite3 database directory. Default: None (don't use database)",
+        help="SQLite3 database directory to use with Optuna parameeter optimization. Default: None (no database, with Optuna non-resumeable).",
     )
     output_group.add_argument(
         "--output_dir",
         type=str,
         default="./output",
-        help="Specify directory to store output files. Default: ./output.",
+        help="Directory to store output files and plots. Default: './output'.",
     )
     output_group.add_argument(
         "--seed",
@@ -571,9 +590,16 @@ def setup_parser(test_mode=False):
     )
 
     plotting_group.add_argument(
+        "--remove_splines",
+        action="store_true",
+        default=False,
+        help="Remove axis splines from map plots. Defaults to False (don't remoe splines).",
+    )
+
+    plotting_group.add_argument(
         "--shapefile",
         type=str,
-        default="https://www2.census.gov/geo/tiger/GENZ2018/shp/cb_2018_us_state_500k.zip",
+        default="https://www2.census.gov/geo/tiger/GENZ2018/shp/cb_2018_us_county_500k.zip",
         help=f"URL or file path for shapefile used when plotting prediction error. The default is a map of the continental USA, so if you need a different base map, you can supply your own URL or zipped shapefile here. Note that if '--basemap_fips_code is not provided, then the map will be zoomed to the bounding box of the samples. plus '--bbox_buffer. Default: Continental USA basemap, downloaded from census.gov URL.",
     )
 
@@ -595,7 +621,7 @@ def setup_parser(test_mode=False):
         "--samples_to_plot",
         type=str,
         default=None,
-        help="Comma-separated string of sampleIDs to plot the predictions for. Provided sampleIDs will be plotted over a base map with contours signifying 90%, 70%, and 50% of the bootstrap density (i.e., density of all predicted localities from the bootstrap replicates). If not provided, then all samples are plotted in separate plots. Default: Plot all samples.",
+        help="Comma-separated string of sampleIDs to plot contour predictions for. Provided sampleIDs will be plotted over a base map with contours signifying 90, 70, and 50 percent of the bootstrap density (i.e., density of all predicted localities from the bootstrap replicates). If not provided, then all samples are plotted in separate plots. If set to an integer, then it will select '--samples_to_plot' random samples to plot. Default: None (Plot all samples).",
     )
 
     plotting_group.add_argument(
@@ -734,7 +760,7 @@ def setup_parser(test_mode=False):
     validate_max_neighbors(parser, args)
     validate_embeddings(parser, args)
     validate_seed(args)
-    validate_weighted_opts(parser, args)
+    args = validate_weighted_opts(parser, args)
     validate_colorscale(parser, args)
     validate_smote(parser, args)
     validate_gb_params(parser, args)
@@ -746,10 +772,14 @@ def setup_parser(test_mode=False):
 
 
 def validate_str2list(arg):
-    s = arg.strip()
-    l = s.split(",")
-    l = [x.strip() for x in l]
-    return l
+    if arg is not None:
+        if not arg.isdigit():
+            if isinstance(arg, str):
+                s = arg.strip()
+                l = s.split(",")
+                l = [x.strip() for x in l]
+                return l
+    return arg
 
 
 def validate_dtype(parser, args):
@@ -791,10 +821,18 @@ def validate_gb_params(parser, args):
 
 
 def validate_weighted_opts(parser, args):
-    if args.use_weighted not in ["sampler", "loss", "both", "none"]:
+    if args.use_weighted not in ["loss", "none"]:
         msg = f"Invalid option passed to 'use_weighted': {args.use_weighted}"
         logger.error(msg)
         parser.error(msg)
+
+    if args.use_weighted in {"loss"}:
+        if not args.use_kmeans:
+            args.use_kmeans = True
+        logger.warning(
+            "use_weighted was set to 'loss', but 'use_kmeans' was False. Setting 'use_kmeans' to True."
+        )
+    return args
 
 
 def validate_colorscale(parser, args):

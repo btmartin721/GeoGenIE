@@ -1,14 +1,14 @@
 import json
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from pathlib import Path
 
-import scipy.stats as stats
 import numpy as np
 import pandas as pd
-import geopandas as gpd
 import torch
+from sklearn.ensemble import RandomForestRegressor
 from torch import optim
 from torch.utils.data import DataLoader
 
@@ -16,7 +16,6 @@ from geogenie.plotting.plotting import PlotGenIE
 from geogenie.samplers.interpolate import run_genotype_interpolator
 from geogenie.utils.callbacks import callback_init
 from geogenie.utils.data import CustomDataset
-from geogenie.utils.scorers import haversine_numpy, compute_drms
 
 
 class Bootstrap:
@@ -76,30 +75,103 @@ class Bootstrap:
             self.args.prefix,
             self.args.basemap_fips,
             self.args.highlight_basemap_counties,
+            self.args.shapefile,
             show_plots=self.args.show_plots,
             fontsize=self.args.fontsize,
             filetype=self.args.filetype,
             dpi=self.args.plot_dpi,
+            remove_splines=self.args.remove_splines,
         )
 
-    def bootstrap_training_generator(self, ModelClass, train_func):
-        """Generator for training models on bootstrapped samples.
+    def _resample_loaders(self, train_loader, val_loader, test_loader):
+        """
+        Resample only the validation and test data loaders using bootstrapping.
 
         Args:
-            ModelClass (torch.nn.Module): PyTorch model to train.
-            train_func (callable): Callable function with PyTorch training loop.
+            train_loader: DataLoader for the training dataset (not resampled).
+            val_loader: DataLoader for the validation dataset (to be resampled).
+            test_loader: DataLoader for the test dataset (to be resampled).
 
-        Yields:
-            Trained model for each bootstrap sample.
-            Training losses.
-            Validation losses.
-            Total train time.
+        Returns:
+            Tuple containing the original train loader and resampled validation and test loaders.
         """
-        for boot in range(self.nboots):
-            if self.args.verbose >= 1:
-                self.logger.info(
-                    f"Starting bootstrap iteration {boot + 1}/{self.nboots}"
-                )
+        train_loader, resampled_indices = self._resample_boot(
+            train_loader, None, is_val=False
+        )
+        val_loader, _ = self._resample_boot(val_loader, resampled_indices, is_val=True)
+        test_loader, __ = self._resample_boot(
+            test_loader, resampled_indices, is_val=True
+        )
+
+        return (train_loader, val_loader, test_loader, resampled_indices)
+
+    def _resample_boot(self, loader, sampled_feature_indices=None, is_val=False):
+        """
+        Apply resampling to a given DataLoader.
+
+        Args:
+            loader (torch.utils.data.DataLoader): The DataLoader to resample.
+            sampled_feature_indices (np.ndarray): Numpy array of feature indices to use if is_val is True. Defaults to None.
+            is_val (bool): If True, then it's a validation or test dataset. Otherwise, it's a training dataset.
+
+        Returns:
+            DataLoader: The resampled DataLoader.
+        """
+        dataset = loader.dataset
+        features = dataset.features.numpy().copy()
+        labels = dataset.labels.numpy()
+        sample_weights = dataset.sample_weights.numpy()
+
+        if sampled_feature_indices is None or not is_val:
+            sample_size = int(self.args.feature_prop * features.shape[1])
+            sampled_feature_indices = np.random.choice(
+                np.arange(features.shape[1]), size=sample_size, replace=True
+            )
+
+        features = features[:, sampled_feature_indices]
+
+        if sampled_feature_indices is None:
+            raise TypeError(
+                "sampled_feature_indices was not set correctly; got NoneType."
+            )
+
+        features = features[:, sampled_feature_indices]
+
+        use_sampler = {"sampler", "both"}
+        shuffle = not is_val and not self.args.use_weighted in use_sampler
+        kwargs = {"batch_size": loader.batch_size, "shuffle": shuffle}
+
+        dataset = CustomDataset(
+            features, labels, sample_weights=sample_weights, dtype=self.dtype
+        )
+
+        return DataLoader(dataset, **kwargs), sampled_feature_indices
+
+    def get_important_features(self, features, labels):
+        n_est = self.args.n_importance_estimators
+        seed = self.args.seed
+
+        # Feature importance using a Random Forest Regressor
+        model = RandomForestRegressor(n_estimators=n_est, n_jobs=-1, random_state=seed)
+
+        model.fit(features, labels)
+        feature_importances = model.feature_importances_
+
+        # Sort features by importance
+        importance_sorted_indices = np.argsort(feature_importances)[::-1]
+
+        # Get feature_prop features.
+        sample_size = int(self.args.feature_prop * features.shape[1])
+
+        # Fixed proportion from top features
+        # e.g., 20% from top features (adjustable)
+        top_features = int(self.args.important_feature_prop * sample_size)
+        top_indices = importance_sorted_indices[:top_features]
+        return importance_sorted_indices, sample_size, top_features, top_indices
+
+    def train_one_bootstrap(self, boot, ModelClass, train_func):
+        try:
+            self.logger.info(f"Starting bootstrap iteration {boot + 1}/{self.nboots}")
 
             (
                 train_loader,
@@ -110,7 +182,6 @@ class Bootstrap:
                 self.train_loader, self.val_loader, self.test_loader
             )
 
-            # Reinitialize the model and optimizer each bootstrap
             model = ModelClass(
                 len(resampled_indices),
                 width=self.best_params["width"],
@@ -124,78 +195,55 @@ class Bootstrap:
             optimizer = self.extract_best_params(self.best_params, model)
             early_stop, lr_scheduler = callback_init(optimizer, self.args)
 
-            try:
-                # Train the model.
-                trained_model = train_func(
-                    train_loader,
-                    val_loader,
-                    model,
-                    optimizer,
-                    trial=None,
-                    objective_mode=False,
-                    do_bootstrap=True,
-                    early_stopping=early_stop,
-                    lr_scheduler=lr_scheduler,
-                )
-            except Exception as e:
-                self.logger.error(
-                    f"Error during model training in bootstrap iteration {boot + 1}: {str(e)}",
-                )
-                raise e
+            trained_model = train_func(
+                train_loader,
+                val_loader,
+                model,
+                optimizer,
+                trial=None,
+                objective_mode=False,
+                do_bootstrap=True,
+                early_stopping=early_stop,
+                lr_scheduler=lr_scheduler,
+            )
 
-            yield trained_model, resampled_indices, val_loader, test_loader
+            return (trained_model, resampled_indices, val_loader, test_loader)
 
-    def _resample_loaders(self, train_loader, val_loader, test_loader):
-        """
-        Resample the data loaders using bootstrapping.
+        except Exception as e:
+            self.logger.error(
+                f"Error during model training in bootstrap iteration {boot + 1}: {str(e)}"
+            )
+            raise e
 
-        Args:
-            train_loader: DataLoader for the training dataset.
-            val_loader: DataLoader for the validation dataset.
-            test_loader: DataLoader for the test dataset.
-
-        Returns:
-            Tuple containing the resampled train, validation, and test loaders.
-        """
-        num_features = train_loader.dataset.features.size(1)
-
-        # Generating resampled indices using torch.randint
-        resampled_indices = torch.randint(
-            num_features, (num_features,), dtype=torch.long
+    def bootstrap_training_generator(self, ModelClass, train_func):
+        n_jobs = os.cpu_count() if self.args.n_jobs == -1 else self.args.n_jobs
+        self.logger.info(
+            f"Multiprocessing: Using {n_jobs} threads for bootstrapping..."
         )
 
-        train_loader = self._resample_boot(resampled_indices, train_loader)
-        val_loader = self._resample_boot(resampled_indices, val_loader)
-        test_loader = self._resample_boot(resampled_indices, test_loader)
+        with ThreadPoolExecutor(max_workers=n_jobs) as executor:
+            futures = {
+                executor.submit(
+                    self.train_one_bootstrap, boot, ModelClass, train_func
+                ): boot
+                for boot in range(self.nboots)
+            }
 
-        return train_loader, val_loader, test_loader, resampled_indices
-
-    def _resample_boot(self, resampled_indices, loader):
-        """
-        Apply resampling to a given DataLoader.
-
-        Args:
-            resampled_indices (torch.Tensor): The indices to sample from.
-            loader: The DataLoader to resample.
-
-        Returns:
-            DataLoader: The resampled DataLoader.
-        """
-        features = loader.dataset.features.detach().clone()
-        resampled_features = features[:, resampled_indices]
-        resampled_features = resampled_features.to(dtype=self.dtype)
-
-        labels = loader.dataset.labels.detach().clone()
-        sample_weights = loader.dataset.sample_weights.detach().clone()
-
-        kwargs = {"batch_size": self.train_loader.batch_size}
-        sample_weights, kwargs = self._set_loader_kwargs(sample_weights, kwargs)
-
-        dataset = CustomDataset(
-            resampled_features, labels, sample_weights=sample_weights, dtype=self.dtype
-        )
-        loader = DataLoader(dataset, **kwargs)
-        return loader
+            for future in futures:
+                try:
+                    result = future.result()
+                    if result == (None, None, None):
+                        self.logger.error(
+                            f"Bootstrap iteration {futures[future] + 1} had an error."
+                        )
+                        continue
+                    yield result
+                except Exception as exc:
+                    boot = futures[future]
+                    self.logger.error(
+                        f"Bootstrap iteration {boot + 1} generated an exception: {exc}"
+                    )
+                    raise exc
 
     def extract_best_params(self, best_params, model):
         lr = best_params["lr"] if "lr" in best_params else best_params["learning_rate"]
@@ -210,25 +258,23 @@ class Bootstrap:
         optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=l2)
         return optimizer
 
-    def _set_loader_kwargs(self, resampled_weights, kwargs):
+    def _set_loader_kwargs(self, resampled_weights, kwargs, is_val):
         if self.args.use_weighted == "none":
-            kwargs["shuffle"] = True
+            kwargs["shuffle"] = True if not is_val else False
         else:
-            if self.args.use_weighted in {"sampler", "both"}:
-                kwargs["sampler"] = deepcopy(self.weighted_sampler)
+            if self.args.oversample_method == "none":
+                if self.args.use_weighted in {"sampler", "both"}:
+                    kwargs["sampler"] = deepcopy(self.weighted_sampler)
 
-            if self.args.use_weighted in {"loss", "both"}:
-                if not isinstance(resampled_weights, torch.Tensor):
-                    resampled_weights = torch.tensor(
-                        resampled_weights, dtype=self.dtype
-                    )
-
-                if self.args.use_weighted != "both":
-                    kwargs["shuffle"] = True
+                if self.args.use_weighted in {"loss", "both"}:
+                    if self.args.use_weighted != "both":
+                        kwargs["shuffle"] = True if not is_val else False
+        if not isinstance(resampled_weights, torch.Tensor):
+            resampled_weights = torch.tensor(resampled_weights, dtype=self.dtype)
         return resampled_weights, kwargs
 
     def save_bootstrap_results(
-        self, boot, test_metrics, test_preds, write_func, dataset
+        self, boot, test_metrics, test_preds, test_indices, write_func, dataset
     ):
         """
         Save the results of each bootstrap iteration.
@@ -237,6 +283,7 @@ class Bootstrap:
             boot (int): The current bootstrap iteration.
             test_metrics (dict): Test set metrics for the current iteration.
             test_preds (np.array): Predictions made by the model in the current iteration.
+            test_indices (np.ndarray): Indices for current validation or test set.
             write_func (callable): Function to write the predictions to file.
             dataset (str): Which dataset to use. Valid options: {"test", "val"}.
 
@@ -274,7 +321,7 @@ class Bootstrap:
 
         return write_func(
             test_preds,
-            self.test_indices,
+            test_indices,
             self.sample_data,
             outfile,
         )
@@ -304,22 +351,33 @@ class Bootstrap:
             try:
                 # Do this only once, before bootstrapping.
                 (self.train_loader, _, __, ___, _____) = run_genotype_interpolator(
-                    self.train_loader, self.args, self.ds, self.dtype
+                    self.train_loader, self.args, self.ds, self.dtype, self.plotting
                 )
             except Exception as e:
                 msg = f"Unexpected error occurred during genotype interpolation prior to bootstrapping: {str(e)}"
                 self.logger.error(msg)
                 raise e
 
-        bootstrap_gen = self.bootstrap_training_generator(ModelClass, train_func)
-
         bootstrap_preds, bootstrap_test_preds, bootstrap_val_preds = [], [], []
         bootstrap_test_metrics, bootstrap_val_metrics = [], []
 
+        train_features = self.train_loader.dataset.features.numpy()
+        train_labels = self.train_loader.dataset.labels.numpy()
+
+        # (
+        #     self.importance_sorted_indices,
+        #     self.sample_size,
+        #     self.top_features,
+        #     self.top_indices,
+        # ) = self.get_important_features(train_features, train_labels)
+
         # Generator function. Processes one bootstrap at a time.
-        for boot, (model, resampled_indices, val_loader, test_loader) in enumerate(
-            bootstrap_gen
-        ):
+        for boot, (
+            model,
+            resampled_indices,
+            val_loader,
+            test_loader,
+        ) in enumerate(self.bootstrap_training_generator(ModelClass, train_func)):
             if self.verbose >= 1:
                 self.logger.info(
                     f"Processing bootstrap {boot + 1}/{self.nboots}",
@@ -328,6 +386,14 @@ class Bootstrap:
             bootrep_file = os.path.join(
                 outdir, "models", f"{self.args.prefix}_model_bootrep{boot}.pt"
             )
+
+            if isinstance(model, tuple):
+                model = model[0]
+
+            if model is None:
+                msg = f"Model was not trained successfully for bootstrap {boot}"
+                self.logger.error(msg)
+                raise TypeError(msg)
 
             # Save or evaluate the trained model
             torch.save(model.state_dict(), bootrep_file)
@@ -341,6 +407,7 @@ class Bootstrap:
                 use_rf=False,
                 bootstrap=True,
             )
+
             # Process predictions for each bootstrap replicate.
             test_preds, test_metrics = pred_func(
                 model,
@@ -386,9 +453,11 @@ class Bootstrap:
 
             # Save metrics and predictions
             self.save_bootstrap_results(
-                boot, test_metrics, test_preds, write_func, "test"
+                boot, test_metrics, test_preds, self.test_indices, write_func, "test"
             )
-            self.save_bootstrap_results(boot, val_metrics, val_preds, write_func, "val")
+            self.save_bootstrap_results(
+                boot, val_metrics, val_preds, self.val_indices, write_func, "val"
+            )
 
         boot_real_df = self._process_boot_preds(outdir, bootstrap_preds, dataset="pred")
 
@@ -462,45 +531,91 @@ class Bootstrap:
         Returns:
             pd.DataFrame: DataFrame with calculated statistics for each sample.
         """
+
+        if self.args.known_sample_data is not None and dataset != "pred":
+            df_known = pd.read_csv(
+                self.args.known_sample_data,
+                names=["sampleID", "x", "y"],
+                sep="\t",
+                header=0,
+            )
+        else:
+            df_known = None
+
+        if df_known is None and dataset != "pred":
+            self.logger.info("Known coordinates were not provided.")
+
         results = []
 
-        for sample_id, group in df.groupby("sampleID"):
-            mean_x, mean_y = group["x"].mean(), group["y"].mean()
-            std_dev_x, std_dev_y = group["x"].std(), group["y"].std()
-            n = len(group)
+        n_uniq_samples = len(df["sampleID"].unique())
 
-            ci_95_x = 1.96 * std_dev_x / np.sqrt(n)
-            ci_95_y = 1.96 * std_dev_y / np.sqrt(n)
+        if self.args.samples_to_plot is None:
+            plot_indices = np.arange(n_uniq_samples)
 
-            se_x = 1.96 * std_dev_x
-            se_y = 1.96 * std_dev_y
-            drms = compute_drms(std_dev_x, std_dev_y)
+        elif (
+            self.args.samples_to_plot is not None
+            and self.args.samples_to_plot.isdigit()
+        ):
+            plot_indices = np.random.choice(
+                np.arange(n_uniq_samples),
+                size=int(self.args.samples_to_plot),
+                replace=False,
+            )
+        else:
+            df = df.copy()
+            s2p = self.args.samples_to_plot
+            if not isinstance(s2p, str):
+                msg = f"'--samples_to_plot' must be of type str, but got: {type(s2p)}"
+                self.logger.error(msg)
+                raise TypeError(msg)
+            sids = s2p.split(",")
+            sids = [x.strip() for x in sids]
+            plot_indices = np.where(np.isin(df["sampleID"].unique(), sids))[0]
 
-            resd = {
-                "sampleID": sample_id,
-                "x_mean": mean_x,
-                "y_mean": mean_y,
-                "std_dev_x": std_dev_x,
-                "std_dev_y": std_dev_y,
-                "ci_95_x": ci_95_x,
-                "ci_95_y": ci_95_y,
-                "se_x": se_x,
-                "se_y": se_y,
-                "drms": drms,
-            }
+        gdf = self.plotting.processor.to_geopandas(df)
+
+        for i, (group, sample_id, dfk, resd) in enumerate(
+            self.plotting.processor.calculate_statistics(gdf, known_coords=df_known)
+        ):
+
+            if i in plot_indices:
+                self.plotting.plot_sample_with_density(
+                    group,
+                    sample_id,
+                    df_known=dfk,
+                    dataset=dataset,
+                    gray_counties=self.args.highlight_basemap_counties,
+                )
 
             results.append(resd)
 
-            if dataset == "pred" and sample_id in self.args.samples_to_plot:
-                self.plotting.plot_boot_ci_data(
-                    group,
-                    resd,
-                    sample_id,
-                    self.args.shapefile,
-                    self.args.known_sample_data,
-                )
+        dfres = pd.DataFrame(results)
 
-        return pd.DataFrame(results)
+        if df_known is not None:
+            dfres = dfres.sort_values(by="sampleID")
+            df_known = df_known[~df_known["x"].isna()]
+            df_known = df_known[df_known["sampleID"].isin(dfres["sampleID"])]
+            df_known = df_known.sort_values(by="sampleID")
+
+            self.plotting.plot_geographic_error_distribution(
+                df_known[["x", "y"]].to_numpy(),
+                dfres[["x_mean", "y_mean"]].to_numpy(),
+                dataset,
+                buffer=self.args.bbox_buffer,
+                marker_scale_factor=self.args.sample_point_scale,
+                min_colorscale=self.args.min_colorscale,
+                max_colorscale=self.args.max_colorscale,
+                n_contour_levels=self.args.n_contour_levels,
+            )
+
+            self.plotting.polynomial_regression_plot(
+                df_known[["x", "y"]].to_numpy(),
+                dfres[["x_mean", "y_mean"]].to_numpy(),
+                dataset,
+                dtype=self.dtype,
+            )
+
+        return dfres
 
     def _bootrep_metrics_to_csv(self, outdir, outfile, bootstrap_res, dataset):
         """Write bootstrap replicates (rows) containing evaluation metrics (columns) to a CSV file.

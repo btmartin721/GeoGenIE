@@ -1,6 +1,5 @@
 import logging
 import os
-import sys
 import warnings
 
 os.environ["PYTHONWARNINGS"] = "ignore::RuntimeWarning"
@@ -13,11 +12,13 @@ import torch
 from kneed import KneeLocator
 from pysam import VariantFile
 from sklearn.base import clone
+from sklearn.cluster import KMeans
 from sklearn.decomposition import NMF, PCA, KernelPCA
 from sklearn.impute import SimpleImputer
 from sklearn.manifold import MDS, TSNE
+from sklearn.metrics import silhouette_score
 from sklearn.model_selection import GridSearchCV, train_test_split
-from sklearn.preprocessing import PolynomialFeatures, StandardScaler
+from sklearn.preprocessing import PolynomialFeatures
 from torch.utils.data import DataLoader
 
 from geogenie.outliers.detect_outliers import GeoGeneticOutlierDetector
@@ -28,7 +29,7 @@ from geogenie.samplers.samplers import GeographicDensitySampler
 from geogenie.utils.data import CustomDataset
 from geogenie.utils.gtseq2vcf import GTseqToVCF
 from geogenie.utils.scorers import LocallyLinearEmbeddingWrapper
-from geogenie.utils.transformers import MCA
+from geogenie.utils.transformers import MCA, MinMaxScalerGeo
 from geogenie.utils.utils import get_iupac_dict
 
 
@@ -175,9 +176,9 @@ class DataStructure:
         self.debug = debug
 
         self.mask = np.ones_like(self.samples, dtype=bool)
-        self.simputer = SimpleImputer(strategy="most_frequent", missing_values=np.nan)
+        self.simputer = SimpleImputer(missing_values=np.nan, strategy="most_frequent")
 
-        self.norm = StandardScaler()
+        self.norm = MinMaxScalerGeo()
 
     def define_params(self, args):
         self._params = vars(args)
@@ -278,9 +279,11 @@ class DataStructure:
             use_strings (bool): If True, uses 'N' as missing_values argument. Otherwise uses np.nan.
         """
         if transform_only:
-            return self.simputer.transform(X)
-        self.simputer = clone(self.simputer)
-        return self.simputer.fit_transform(X)
+            imputed = self.simputer.transform(X)
+        else:
+            self.simputer = clone(self.simputer)
+            imputed = self.simputer.fit_transform(X)  # ensure it's not fit.
+        return imputed
 
     def sort_samples(self, sample_data_filename):
         """Load sample_data and popmap and sort to match VCF file."""
@@ -299,12 +302,24 @@ class DataStructure:
 
         # Sample ordering check
         self._check_sample_ordering()
-        self.locs = np.array(self.sample_data[["x", "y"]])
+
+        # Ensure correct CRS.
+        gdf = self.plotting.processor.to_geopandas(self.sample_data[["x", "y"]])
+        self.locs = self.plotting.processor.to_numpy(gdf)
+
+        self.mask = self.mask[self.filter_mask]
+        self.mask = self.mask[self.sort_indices]
+        self.samples = self.samples[self.filter_mask]
+        self.samples = self.samples[self.sort_indices]
+        self.is_missing = self.is_missing[:, self.filter_mask]
+        self.is_missing = self.is_missing[:, self.sort_indices]
+        self.genotypes_iupac = self.genotypes_iupac[:, self.filter_mask]
+        self.genotypes_iupac = self.genotypes_iupac[:, self.sort_indices]
 
     def normalize_target(self, y, placeholder=False, transform_only=False):
         """Normalize locations, ignoring NaN."""
         if self.verbose >= 1:
-            self.logger.info("Normalizing coordinates.")
+            self.logger.info("Normalizing coordinates...")
 
         if transform_only:
             y = self.norm.transform(y)
@@ -312,22 +327,72 @@ class DataStructure:
             y = self.norm.fit_transform(y)
 
         if self.verbose >= 1:
-            self.logger.info("Done normalizing.")
+            self.logger.info("Done normalizing coordinates.")
 
         return y
 
     def _check_sample_ordering(self):
-        """Validate sample ordering between 'sample_data' and VCF files."""
-        for i, x in enumerate(self.samples):
-            if self.sample_data["sampleID2"].iloc[i] != x:
-                msg = "Invalid sample ordering. sample IDs in 'sample_data' must match the sample order in the VCF file."
-                self.logger.error(msg)
-                raise ValueError(msg)
+        """Validate sample ordering between 'sample_data' and VCF files.
+        Store a boolean mask and sorting indices for subsetting and reordering arrays later.
+        """
+        # Create a set from sample_data for intersection check
+        sample_data_set = set(self.sample_data["sampleID2"])
+
+        # Create mask for filtering samples present in both self.samples and self.sample_data
+        mask = [sample in sample_data_set for sample in self.samples]
+
+        # Filter self.samples to those present in both lists and create a corresponding index list
+        filtered_samples = []
+        sort_indices = (
+            []
+        )  # This will store the indices that will be used to sort downstream objects
+        for idx, sample in enumerate(self.samples):
+            if sample in sample_data_set:
+                filtered_samples.append(sample)
+                sort_indices.append(idx)
+
+        # Filter and sort self.sample_data to only include rows with sampleID2 present in filtered_samples
+        self.sample_data = self.sample_data[
+            self.sample_data["sampleID2"].isin(filtered_samples)
+        ]
+        self.sample_data.sort_values("sampleID2", inplace=True)
+        self.sample_data.reset_index(drop=True, inplace=True)
+
+        # Sort filtered_samples to match the order in sorted self.sample_data
+        filtered_samples_sorted = sorted(
+            filtered_samples, key=lambda x: list(self.sample_data["sampleID2"]).index(x)
+        )
+
+        # Ensure that filtered_samples_sorted and self.sample_data are in the same order now
+        if not all(
+            self.sample_data["sampleID2"].iloc[i] == x
+            for i, x in enumerate(filtered_samples_sorted)
+        ):
+            msg = "Invalid sample ordering after filtering and sorting. Check the sorting logic."
+            self.logger.error(msg)
+            raise ValueError(msg)
+
+        # Compute sort_indices from self.samples based on
+        # sorted filtered_samples
+        self.sort_indices = [
+            np.where(self.samples == x)[0][0] for x in filtered_samples_sorted
+        ]
+
+        # Store the mask and indices for later use in subsetting and
+        # reordering other numpy arrays or objects
+        self.filter_mask = mask
+
+        self.logger.info(
+            "Sample ordering, filtering mask, and sorting indices stored successfully."
+        )
 
     def snps_to_012(self, min_mac=2, max_snps=None, return_values=True):
         """Convert IUPAC SNPs to 012 encodings."""
         if self.verbose >= 1:
             self.logger.info("Converting SNPs to 012-encodings.")
+
+        self.genotypes = self.genotypes[:, self.filter_mask]
+        self.genotypes = self.genotypes[:, self.sort_indices]
 
         self.genotypes_enc = np.sum(
             self.genotypes, axis=-1, where=~np.all(np.isnan(self.genotypes))
@@ -369,9 +434,20 @@ class DataStructure:
 
         return gt
 
+    def _find_optimal_clusters(self, features):
+        max_k = min(10, features.shape[1])  # Restrict max clusters
+        silhouette_scores = []
+
+        for k in range(2, max_k + 1):
+            kmeans = KMeans(n_clusters=k, random_state=0)
+            cluster_labels = kmeans.fit_predict(features)
+            silhouette_scores.append(silhouette_score(features, cluster_labels))
+
+        optimal_k = np.argmax(silhouette_scores) + 2  # +2 to get the K value
+        return optimal_k
+
     def split_train_test(self, train_split, val_split, seed, args):
-        """
-        Split data into training, validation, and testing sets, handling NaN values in locations.
+        """Splits data with stratification based on K-Means clustering of target variables.
 
         Args:
             train_split (float): Proportion of the data to be used for training.
@@ -387,10 +463,12 @@ class DataStructure:
                 "Splitting data into train, validation, and test datasets."
             )
 
+        val_split /= 2
+
         if train_split + val_split >= 1:
             raise ValueError("The sum of train_split and val_split must be < 1.")
 
-        # Split non-NaN samples into training + validation and test sets
+        # Initial split (non-NaN samples) into training + validation and test sets
         (
             X_train_val,
             X_test,
@@ -401,11 +479,51 @@ class DataStructure:
         ) = train_test_split(
             self.X,
             self.y,
-            self.true_idx,
+            np.arange(self.X.shape[0]),
             train_size=train_split + val_split,
             random_state=seed,
             shuffle=True,
         )
+
+        # Stratification using KMeans on target variables
+        optimal_k = self._find_optimal_clusters(y_train_val)
+        kmeans = KMeans(n_clusters=optimal_k, random_state=seed)
+        cluster_labels = kmeans.fit_predict(y_train_val)
+
+        X_train_val_list, X_test_list, X_train_list, X_val_list = [], [], [], []
+        y_train_val_list, y_test_list, y_train_list, y_val_list = [], [], [], []
+        train_val_indices_list, train_indices_list = [], []
+        val_indices_list, test_indices_list = [], []
+
+        # Combine data into sets based on cluster labels
+        for cluster_id in range(optimal_k):
+            cluster_indices = np.where(cluster_labels == cluster_id)[0]
+            np.random.shuffle(cluster_indices)  # Shuffle within each cluster
+            cluster_size = len(cluster_indices)
+
+            split_index = int(cluster_size * (train_split + val_split))
+
+            train_val_indices_cluster = cluster_indices[:split_index]
+            test_indices_cluster = cluster_indices[split_index:]
+
+            # Append subsets for training
+            X_train_val_list.append(self.X[train_val_indices_cluster])
+            y_train_val_list.append(self.y[train_val_indices_cluster])
+            train_val_indices_list.append(train_val_indices_cluster)
+
+            # Append subsets for validation
+            X_test_list.append(self.X[test_indices_cluster])
+            y_test_list.append(self.y[test_indices_cluster])
+            test_indices_list.append(test_indices_cluster)
+
+        # Concatenate all subsets to form the final training and validation sets
+        X_train_val = np.concatenate(X_train_val_list, axis=0)
+        y_train_val = np.concatenate(y_train_val_list, axis=0)
+        train_val_indices = np.concatenate(train_val_indices_list, axis=0)
+
+        X_test = np.concatenate(X_test_list, axis=0)
+        y_test = np.concatenate(y_test_list, axis=0)
+        test_indices = np.concatenate(test_indices_list, axis=0)
 
         # Calculate validation size relative to the train_val set
         val_size = val_split / (train_split + val_split)
@@ -429,6 +547,43 @@ class DataStructure:
                 train_indices,
                 train_val_indices,
             ) = train_test_split(X_val, y_val, val_indices, test_size=0.5)
+
+        # Stratification using KMeans on target variables
+        optimal_k = self._find_optimal_clusters(y_train_val)
+        kmeans = KMeans(n_clusters=optimal_k, random_state=seed)
+        cluster_labels = kmeans.fit_predict(y_train_val)
+
+        # Create empty lists to accumulate subsets
+        X_train_list, y_train_list, train_indices_list = [], [], []
+        X_val_list, y_val_list, val_indices_list = [], [], []
+
+        # Stratify and split data based on cluster labels
+        for cluster_id in range(optimal_k):
+            cluster_indices = np.where(cluster_labels == cluster_id)[0]
+            np.random.shuffle(cluster_indices)  # Shuffle within each cluster
+
+            # Calculate indices for training and validation within the cluster
+            split_index = int(len(cluster_indices) * train_split)
+            train_indices_cluster = cluster_indices[:split_index]
+            val_indices_cluster = cluster_indices[split_index:]
+
+            # Append subsets for training
+            X_train_list.append(self.X[train_indices_cluster])
+            y_train_list.append(self.y[train_indices_cluster])
+            train_indices_list.append(train_indices_cluster)
+
+            # Append subsets for validation
+            X_val_list.append(self.X[val_indices_cluster])
+            y_val_list.append(self.y[val_indices_cluster])
+            val_indices_list.append(val_indices_cluster)
+
+        # Concatenate all subsets to form the final training and validation sets
+        X_train = np.concatenate(X_train_list, axis=0)
+        y_train = np.concatenate(y_train_list, axis=0)
+        train_indices = np.concatenate(train_indices_list, axis=0)
+        X_val = np.concatenate(X_val_list, axis=0)
+        y_val = np.concatenate(y_val_list, axis=0)
+        val_indices = np.concatenate(val_indices_list, axis=0)
 
         data = {
             "X_train": X_train,
@@ -462,6 +617,16 @@ class DataStructure:
 
         if self.verbose >= 1:
             self.logger.info("Created train, validation, and test datasets.")
+
+        gdf_train = self.plotting.processor.to_geopandas(y_train)
+        gdf_val = self.plotting.processor.to_geopandas(y_val)
+        gdf_test = self.plotting.processor.to_geopandas(y_test)
+        y_train = self.plotting.processor.to_numpy(gdf_train)
+        y_val = self.plotting.processor.to_numpy(gdf_val)
+        y_test = self.plotting.processor.to_numpy(gdf_test)
+
+        self.plotting.plot_scatter_samples_map(y_train, y_val, "val")
+        self.plotting.plot_scatter_samples_map(y_train, y_test, "test")
 
     def map_outliers_through_filters(self, original_indices, filter_stages, outliers):
         """
@@ -539,10 +704,12 @@ class DataStructure:
             args.prefix,
             args.basemap_fips,
             args.highlight_basemap_counties,
+            args.shapefile,
             show_plots=args.show_plots,
             fontsize=args.fontsize,
             filetype=args.filetype,
             dpi=args.plot_dpi,
+            remove_splines=args.remove_splines,
         )
 
         if self.verbose >= 1:
@@ -568,8 +735,14 @@ class DataStructure:
         X = self.impute_missing(self.genotypes_enc)
 
         # Do embedding (e.g., PCA, LLE)
-        alg = "pca" if not self.debug else "none"
-        X = self.embed(args, X=X, alg=alg, full_dataset_only=True, transform_only=False)
+        # NOTE: Why was I embedding this here?
+        # X = self.embed(
+        #     args,
+        #     X=X,
+        #     alg=args.embedding_type,
+        #     full_dataset_only=True,
+        #     transform_only=False,
+        # )
 
         # Define true_indices and pred_indices
         self.pred_mask = ~np.isnan(self.locs).any(axis=1)
@@ -592,23 +765,40 @@ class DataStructure:
             self.logger.error(msg)
             raise ValueError(msg)
 
+        all_outliers = None
         if args.detect_outliers:
             all_outliers = self.run_outlier_detection(
                 args, X, indices, y, index, filter_stage_indices
             )
 
         # Here X has not been imputed.
-        self.X, self.y, self.X_pred, self.true_idx = self.extract_datasets()
+        (
+            self.X,
+            self.y,
+            self.X_pred,
+            self.true_idx,
+            self.all_samples,  # All samples.
+            self.samples,  # Non-outliers + non-unknowns.
+            self.pred_samples,  # Non-outliers + unknowns.
+            self.outlier_samples,  # Only outliers.
+            self.non_outlier_samples,  # Only non-outliers.
+        ) = self.extract_datasets(all_outliers, args)
 
         if args.detect_outliers:
+            # Write outlier samples to file.
+            outlier_fn = str(args.prefix) + "_detected_outliers.csv"
+            outlier_dir = os.path.join(args.output_dir, "data")
+            with open(os.path.join(outlier_dir, outlier_fn), "w") as fout:
+                self.outlier_samples.sort()
+                outdata = ",".join(self.outlier_samples)
+                fout.write(outdata + "\n")
+
             if self.verbose >= 1:
                 self.logger.info(
-                    f"{self.X.shape[0]} samples remaining after removing {len(all_outliers)} outliers."
+                    f"{self.X.shape[0]} samples remaining after removing {len(all_outliers)} outliers and {len(self.X_pred)} samples with unknown localities."
                 )
 
-            self.plotting.plot_outliers(
-                self.mask, self.locs, args.shapefile, buffer=args.bbox_buffer
-            )
+            self.plotting.plot_outliers(self.mask, self.locs)
 
         # placeholder=True makes it not do transform.
         self.split_train_test(args.train_split, args.val_split, args.seed, args)
@@ -622,7 +812,7 @@ class DataStructure:
             if k.startswith("X"):
                 tonly = False if k == "X_train" else True
 
-                # Impute missing values, eliminate data leakage.
+                # Impute missing values.
                 imputed = self.impute_missing(v, transform_only=tonly)
 
                 self.data[k] = self.embed(
@@ -644,7 +834,7 @@ class DataStructure:
 
         if args.verbose >= 1:
             self.logger.info("Data split into train, val, and test sets.")
-            self.logger.info("Creating DataLoader objects.")
+            self.logger.info("Creating DataLoader objects...")
 
         # Creating DataLoaders
         self.train_loader = self.call_create_dataloaders(
@@ -663,19 +853,32 @@ class DataStructure:
             )
 
         if args.verbose >= 1:
-            self.logger.info("DataLoaders created succesfully.")
-            self.logger.info("Data loading and preprocessing completed.")
+            self.logger.info("DataLoaders created succesfully!")
+            self.logger.info("Data loading and preprocessing completed!")
 
-    def extract_datasets(self):
+    def extract_datasets(self, outliers, args):
         self.mask[np.isin(self.all_indices, self.pred_indices)] = False
         pred_mask = np.zeros(len(self.all_indices), dtype=bool)
         pred_mask[np.isin(self.all_indices, self.pred_indices)] = True
+        self.original_mask = self.mask.copy()
+
+        if args.detect_outliers:
+            outlier_mask = np.zeros_like(self.mask)
+            outlier_mask[np.isin(self.all_indices, outliers)] = True
+            self.mask[outlier_mask] = False  # remove outliers.
+        else:
+            outlier_mask = self.mask.copy()
 
         return (
             self.genotypes_enc[self.mask, :],
             self.locs[self.mask, :],
             self.genotypes_enc[pred_mask, :],
             self.all_indices[self.mask],
+            self.samples,  # All samples.
+            self.samples[self.mask],  # no outliers + non-unknowns.
+            self.samples[~self.mask],  # no outilers + unknowns only.
+            self.samples[outlier_mask],  # only outliers
+            self.samples[~outlier_mask],  # only non-outliers
         )
 
     def validate_feature_target_len(self):
@@ -690,7 +893,7 @@ class DataStructure:
         y = self.locs[self.pred_mask, :]
 
         self.samples = self.samples[~self.all_missing_mask]
-        index = self.samples[self.pred_mask]
+        index = self.samples[self.pred_mask]  # Non-unknowns.
 
         # Store indices after filtering for nan
         return X, indices, y, index
@@ -753,17 +956,17 @@ class DataStructure:
         """Embed SNP data using one of several dimensionality reduction techniques.
 
         Args:
-            args (argparse.Namespace): User-supplied arguments.
-            X (numpy.ndarray): Data to embed. If is None, then self.genotypes_enc gets used instead.
-            alg (str): Algorithm to use. Valid arguments include: 'polynomial', 'pca', 'tsne', 'polynomial', 'mds', and 'none' (no embedding). Defaults to 'polynomial'.
-            return_values (bool): If True, returns the embddings. If False, sets embedding as class attributes, self.data and self.indices. Defaults to False.
-            full_dataset_only (bool): If True, only embed and return full dataset.
+            args (argparse.Namespace): User-supplied command-line arguments.
+            X (numpy.ndarray): Data to embed. If is None, then self.genotypes_enc gets used instead. Defaults to None.
+            alg (str): Algorithm to use. Valid arguments include: 'polynomial', 'pca', 'tsne', 'mds', and 'none' (no embedding). Defaults to 'pca'.
+            full_dataset_only (bool): If True, only embed and return full dataset. Defaults to False.
+            transform_only (bool): If True, then only transforms and does not fit input features. This is used for validation and test datasets. Defaults to False.
 
         Warnings:
             Setting 'polynomial_degree' > 2 can lead to extremely large computational overhead. Do so at your own risk!!!
 
         Returns:
-            tuple(numpy.ndarray): train, test, validation, prediction, and full (unsplit) datasets. Only returns of return_values is True.
+            numpy.ndarray: Embedded data.
 
         ToDo:
             Make T-SNE plot.
@@ -774,6 +977,10 @@ class DataStructure:
 
         do_embed = True
         if alg.lower() == "polynomial":
+            if args.polynomial_degree > 2:
+                self.logger.warn(
+                    "Setting 'polynomial_degree' > 2 can lead to extremely large computational overhead. Do so at your own risk!!!"
+                )
             emb = PolynomialFeatures(args.polynomial_degree)
         elif alg.lower() == "pca":
             n_components = args.n_components
@@ -782,11 +989,13 @@ class DataStructure:
                 emb = PCA(n_components=n_components, random_state=args.seed)
 
                 if n_components is None:
-                    self.logger.error(
-                        "n_componenets must be defined for PCA, but got NoneType."
-                    )
-                    raise TypeError(
-                        "n_componenets must be defined for PCA, but got NoneType."
+                    msg = "n_componenets could not be estimated for PCA embedding."
+                    self.logger.error(msg)
+                    raise TypeError(msg)
+
+                if args.verbose >= 1:
+                    self.logger.info(
+                        f"Optimal number of pca components: {n_components}"
                     )
         elif alg.lower() == "kernelpca":
             n_components = self.gen_num_pca_comp(X)
@@ -798,11 +1007,13 @@ class DataStructure:
             )
 
             if n_components is None:
-                self.logger.error(
-                    "n_components must be defined for KernelPCA, but got NoneType."
-                )
-                raise TypeError(
-                    "n_components must be defined for KernelPCA, but got NoneType."
+                msg = "n_components could not be estimated for kernelpca embedding."
+                self.logger.error(msg)
+                raise TypeError(msg)
+
+            if args.verbose >= 1:
+                self.logger.info(
+                    f"Optimal number of kernelpca components: {n_components}"
                 )
 
         elif alg.lower() == "nmf":
@@ -810,22 +1021,31 @@ class DataStructure:
                 X, 2, min(X.shape[1] // 4, 50)
             )
 
-            if args.verbose >= 1:
-                self.logger.info(f"Optimal number of NMF components: {n_components}")
-
             self.plotting.plot_nmf_error(recon_error, n_components)
 
             emb = NMF(n_components=n_components, random_state=args.seed)
 
             if n_components is None:
-                msg = "n_components must be defined for NMF, but got NoneType."
+                msg = "n_components could not be estimated for nmf embedding."
                 self.logger.error(msg)
                 raise TypeError(msg)
+
+            if args.verbose >= 1:
+                self.logger.info(f"Optimal number of NMF components: {n_components}")
 
         elif alg.lower() == "mca":
             n_components = self.perform_mca_and_select_components(
                 X, range(2, min(100, X.shape[1])), args.embedding_sensitivity
             )
+
+            if n_components is None:
+                msg = "n_components could not be estimated for nmf embedding."
+                self.logger.error(msg)
+                raise TypeError(msg)
+
+            if args.verbose >= 1:
+                self.logger.info(f"Optimal number of NMF components: {n_components}")
+
             emb = MCA(
                 n_components=n_components,
                 n_iter=25,
@@ -883,9 +1103,6 @@ class DataStructure:
             raise ValueError(f"Invalid 'alg' value pasesed to 'embed()': {alg}")
 
         if not transform_only and do_embed:
-            if alg.lower() != "mca":
-                self.ssc = StandardScaler()
-                X = self.ssc.fit_transform(X)
             if alg.lower() == "lle":
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
@@ -893,10 +1110,10 @@ class DataStructure:
                 self.emb = grid.best_estimator_
                 if args.verbose >= 1:
                     self.logger.info(
-                        f"Best parameters for LocallyLinearEmbedding: {grid.best_params_}"
+                        f"Best parameters for lle embedding: {grid.best_params_}"
                     )
                     self.logger.info(
-                        f"Best score for LocallyLinearEmbedding: {grid.best_score_}"
+                        f"Best score for lle embedding: {grid.best_score_}"
                     )
             else:
                 self.emb = emb
@@ -904,7 +1121,6 @@ class DataStructure:
         if do_embed:
             if full_dataset_only:
                 if alg != "mca":
-                    X = self.ssc.fit_transform(X)
                     X = self.emb.fit_transform(X)
                 else:
                     self.emb.fit(X)
@@ -914,9 +1130,8 @@ class DataStructure:
                     X = X.to_numpy()
                 return X
 
-            if not transform_only:
+            elif not transform_only:
                 if alg != "mca":
-                    X = self.ssc.fit_transform(X)
                     X = self.emb.fit_transform(X)
                 else:
                     self.emb.fit(X)
@@ -925,14 +1140,11 @@ class DataStructure:
                     X = X.to_numpy()
                 return X
 
-            if alg != "mca":
-                X = self.ssc.transform(X)
+            elif transform_only:
                 X = self.emb.transform(X)
-            else:
-                X = self.emb.transform(X)
-            if isinstance(X, pd.DataFrame):
-                X = X.to_numpy()
-            return X
+                if isinstance(X, pd.DataFrame):
+                    X = X.to_numpy()
+                return X
         else:
             if isinstance(X, pd.DataFrame):
                 X = X.to_numpy()
@@ -1067,7 +1279,7 @@ class DataStructure:
 
         # Create DataLoader
         kwargs = {"batch_size": batch_size}
-        if args.use_weighted in ["sampler", "both"] and not is_val:
+        if args.use_weighted in {"sampler", "both"} and not is_val:
             kwargs["sampler"] = weighted_sampler
         else:
             kwargs["shuffle"] = False if is_val else True
@@ -1086,11 +1298,11 @@ class DataStructure:
         self.weighted_sampler = None
         self.densities = None
         self.samples_weight = torch.ones((y.shape[0],), dtype=self.dtype)
-        if args.use_weighted in ["sampler", "loss", "both"]:
+        if args.use_weighted in {"sampler", "loss", "both"}:
             if args.verbose >= 1:
                 self.logger.info("Estimating sampling density weights...")
                 self.logger.info(
-                    "Searching for optimal kernel density bandwidth for geographic density sampler..."
+                    "Searching for optimal weighted sampler kde bandwidth..."
                 )
 
             # Weight by sampling density.

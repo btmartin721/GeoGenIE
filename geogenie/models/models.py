@@ -43,7 +43,7 @@ class MLPRegressor(nn.Module):
         )
 
     def _define_model(self, input_size, width, nlayers, dropout_prop, output_width):
-        # Start with a Linear layer followed by BatchNorm1d
+        # Start with a Linear layer and BatchNorm1d
         layers = [
             nn.BatchNorm1d(input_size, dtype=self.dtype),
             nn.Linear(input_size, width, dtype=self.dtype),
@@ -65,7 +65,6 @@ class MLPRegressor(nn.Module):
 
         # Add output layers
         layers.append(nn.Linear(width, output_width, dtype=self.dtype))
-        # layers.append(nn.Linear(output_width, output_width, dtype=self.dtype))
 
         return nn.Sequential(*layers)
 
@@ -79,8 +78,11 @@ class MLPRegressor(nn.Module):
         Returns:
             torch.Tensor: The output tensor after passing through the network.
         """
-        # Pass the input 'x' through the sequential model
-        return self.seqmodel(x)
+        if x.size(0) == 1:  # Check if batch size is 1
+            return self.seqmodel[1:](x)  # Skip the first layer (BatchNorm)
+        else:
+            # Pass the input 'x' through the sequential model
+            return self.seqmodel(x)
 
 
 class MLPRegressorCircular(nn.Module):

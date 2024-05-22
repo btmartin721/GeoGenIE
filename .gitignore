@@ -100,5 +100,25 @@ aggregated_bootstrap_*_metrics.csv
 params_comparison/
 .vscode/
 analyses/
-
+summarize_results/
+summarize_results/*
+summarize_results
+get_installed_packages.py
+simulations/
+wtd_fy23_*
+*.vcf
+*.vcf.gz
+*.vcf.gz.tbi
+data/real_outliers.csv
+wtd_popmap_sorted.txt
+data/wtd_popmap_sorted.txt
+WTD_*
+tests/
+installed_packages.txt
+requirements.csv
+calculate_and_plot_runtimes.py
+__pycache__/
+.gg2/
+.gg2/*
+HEADER.yaml
 

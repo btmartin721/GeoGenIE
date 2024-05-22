@@ -1,11 +1,72 @@
 import os
-
-import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+from pathlib import Path
+
+fontsize = 20
+dpi = 300
+
+# Adjust matplotlib settings globally.
+sizes = {
+    "axes.labelsize": fontsize,
+    "axes.titlesize": fontsize,
+    "figure.titlesize": fontsize,
+    "figure.labelsize": fontsize,
+    "xtick.labelsize": fontsize,
+    "ytick.labelsize": fontsize,
+    "font.size": fontsize,
+    "legend.fontsize": fontsize,
+    "legend.title_fontsize": fontsize,
+    "figure.dpi": dpi,
+    "savefig.dpi": dpi,
+}
+
+sns.set_context("paper", rc=sizes)
+plt.rcParams.update(sizes)
+mpl.rcParams.update(sizes)
 
 
-def read_and_combine_data(directories):
+def map_config_to_label(config):
+    """
+    Map the given config string to a more descriptive label.
+    """
+    parts = config.split("_")
+
+    if len(parts) < 6:
+        config_type = parts[0]
+        out_value = ""
+        meth_value = ""
+    else:
+        try:
+            config_type = parts[13]
+            out_value = parts[25]
+            meth_value = parts[3]
+        except IndexError:
+            raise ValueError(f"Unexpected format in config: {config}")
+
+    translocations_label = "Outliers Removed" if out_value == "true" else ""
+    meth_label = "Oversampling" if meth_value == "kmeans" else ""
+
+    if config_type == "loss":
+        weight_label = "Sample Weighting"
+    elif config_type == "none":
+        weight_label = "No Sample Weights"
+    elif config_type == "original" or config_type == "locator":
+        weight_label = "Original Locator"
+    else:
+        raise ValueError(f"Unexpected configuration type: {config_type}")
+
+    label = (
+        f"{weight_label} + {translocations_label}"
+        if translocations_label != ""
+        else f"{weight_label}"
+    )
+    return f"{label} + {meth_label}" if meth_label != "" else f"{label}"
+
+
+def read_and_combine_csv_data(directories):
     """
     Read CSV files from given directories and combine them into a single DataFrame.
 
@@ -13,120 +74,79 @@ def read_and_combine_data(directories):
         directories (list of str): List of directory names to read the CSV files from.
 
     Returns:
-        pandas.DataFrame: Combined DataFrame with all the runtime data.
+        pd.DataFrame: Combined DataFrame with all the runtime data.
     """
     all_data = pd.DataFrame()
-
     for directory in directories:
-        csv_path = os.path.join(
-            directory, "benchmarking", f"{directory}_execution_times.csv"
-        )
-        if os.path.exists(csv_path):
+        for csv_path in Path(directory).glob("*_execution_times.csv"):
             temp_df = pd.read_csv(csv_path)
-            temp_df["Directory"] = directory
+            temp_df["Configuration"] = csv_path.stem  # File stem as configuration
             all_data = pd.concat([all_data, temp_df], ignore_index=True)
-        else:
-            print(f"File not found: {csv_path}")
-
     return all_data
 
 
-# List of directories
+# List of directories to search for CSV files
 directories = [
-    "gb_none_none2",
-    "gb_loss_none2",
-    "gb_loss_smote2",
-    "gb_none_smote2",
-    "nn_none_none",
-    "nn_loss_none",
-    "nn_sampler_none",
-    "nn_both_none",
-    "nn_none_smote",
-    "nn_loss_smote",
-    "nn_sampler_smote",
-    "nn_both_smote",
-    "locator",
+    "/Users/btm002/Documents/wtd/GeoGenIE/analyses/all_model_outputs_final_really_really5/benchmarking",
+    "/Users/btm002/Documents/wtd/GeoGenIE/analyses/original_locator/locator/benchmarking",
 ]
 
-# Combine data from all directories
-combined_data = read_and_combine_data(directories)
+# Load and combine data from CSV files
+combined_data = read_and_combine_csv_data(directories)
 
-# # Create boxplot
-# sns.boxplot(x="Directory", y="Execution Time", data=combined_data)
-# plt.xticks(rotation=45)
-# plt.title("Runtime Comparison Across Model Configurations")
-# plt.xlabel("Configuration")
-# plt.ylabel("Runtime (seconds)")
-# plt.tight_layout()
-# plt.savefig("runtimes.png", facecolor="white")
-# plt.show()
+# Apply configuration mapping
+combined_data["config"] = combined_data["Configuration"].apply(map_config_to_label)
 
-combined_data["Model"] = combined_data["Function Name"]
-combined_data.loc[
-    combined_data["Function Name"] == "train_rf",
-    "Model",
-] = "Gradient Boosting"
-combined_data.loc[
-    combined_data["Function Name"] == "train_model",
-    "Model",
-] = "Deep Learning"
-combined_data.loc[
-    combined_data["Function Name"] == "locator", "Model"
-] = "Original Locator"
+# Add 'Model' column based on configurations for plotting
+combined_data["Model"] = combined_data["config"]
 
-combined_data["Model_cat"] = pd.Categorical(
-    combined_data["Model"],
-    categories=["Original Locator", "Gradient Boosting", "Deep Learning"],
-    ordered=True,
+combined_data["Program"] = "Original Locator"
+combined_data.loc[combined_data["Model"] != "Original Locator", "Program"] = "GeoGenIE"
+
+
+hue_order = [
+    "Original Locator",
+    "No Sample Weights",
+    "Sample Weighting",
+    "No Sample Weights + Outliers Removed",
+    "Sample Weighting + Outliers Removed",
+    "No Sample Weights + Oversampling",
+    "Sample Weighting + Oversampling",
+    "No Sample Weights + Outliers Removed + Oversampling",
+    "Sample Weighting + Outliers Removed + Oversampling",
+]
+
+combined_data["Program"] = pd.Categorical(
+    combined_data["Program"], categories=["Original Locator", "GeoGenIE"], ordered=True
 )
 
-combined_data.loc[
-    combined_data["Directory"].str.contains("none_none"), "Configuration"
-] = "Base Model"
-combined_data.loc[
-    combined_data["Directory"].str.contains("loss_none"), "Configuration"
-] = "Sample Weighting (Loss)"
-combined_data.loc[
-    combined_data["Directory"].str.contains("sampler_none"), "Configuration"
-] = "Sample Weighting (Sampler)"
-combined_data.loc[
-    combined_data["Directory"].str.contains("none_smote"), "Configuration"
-] = "Over-sampling"
-combined_data.loc[
-    combined_data["Directory"].str.contains("loss_smote"), "Configuration"
-] = "Weighting (Loss) + Over-sampling"
-combined_data.loc[
-    combined_data["Directory"].str.contains("sampler_smote"), "Configuration"
-] = "Weighting (Sampler) + Over-sampling"
+combined_data["Model"] = pd.Categorical(
+    combined_data["Model"], categories=hue_order, ordered=True
+)
 
-combined_data.loc[
-    combined_data["Model_cat"] == "Original Locator", "Configuration"
-] = "Base Model"
+fig, ax = plt.subplots(1, 1, figsize=(16, 12))
 
-
-pal = sns.color_palette("tab10", n_colors=6)
+# Hide the right and top spines
+ax.spines[["right", "top"]].set_visible(False)
 
 # Create boxplot
-sns.boxplot(
-    x="Model_cat",
+ax = sns.boxplot(
+    x="Program",
     y="Execution Time",
     data=combined_data,
-    hue="Configuration",
-    hue_order=[
-        "Base Model",
-        "Sample Weighting (Loss)",
-        "Sample Weighting (Sampler)",
-        "Over-sampling",
-        "Weighting (Loss) + Over-sampling",
-        "Weighting (Sampler) + Over-sampling",
-    ],
-    palette=pal,
+    hue="Model",
+    hue_order=hue_order,
+    palette="Set1",
 )
-# plt.xticks(rotation=90)
-plt.title("Runtime Comparison Across Models")
-plt.xlabel("Model Configuration")
+
+ax.legend(title="Model Configuration", loc="upper left")
+sns.move_legend(ax, loc="upper center", bbox_to_anchor=(0.5, 1.4), ncol=2)
+plt.xlabel("Software Package")
 plt.ylabel("Runtime (seconds)")
-plt.legend(loc="best", fancybox=True, shadow=True)
-plt.tight_layout()
-plt.savefig("runtimes_models.pdf", facecolor="white")
-plt.show()
+
+
+fig.savefig(
+    "/Users/btm002/Documents/wtd/GeoGenIE/summarize_results/plots/runtimes_models.pdf",
+    facecolor="white",
+    bbox_inches="tight",
+)

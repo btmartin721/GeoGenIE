@@ -9,12 +9,15 @@ import scipy.stats as stats
 from sklearn.manifold import LocallyLinearEmbedding
 from sklearn.metrics import mean_squared_error
 
+from geogenie.utils.spatial_data_processors import SpatialDataProcessor
+
 logger = logging.getLogger(__name__)
+processor = SpatialDataProcessor(output_dir=None, logger=logger)
 
 
 def kstest(y_true, y_pred, sample_weight=None):
     # Calculate Haversine error for each pair of points
-    haversine_errors = haversine_distances_agg(y_true, y_pred, np.array)
+    haversine_errors = processor.haversine_distance(y_true, y_pred)
     errors = haversine_errors.copy()
 
     # Statistical Distribution Analysis
@@ -146,7 +149,7 @@ def calculate_r2_knn(predicted_data, actual_data):
 
 
 def calculate_rmse(preds, targets):
-    haversine_errors = haversine_distances_agg(targets, preds, np.array)
+    haversine_errors = processor.haversine_distance(targets, preds)
     return mean_squared_error(
         np.zeros_like(haversine_errors), haversine_errors, squared=False
     )

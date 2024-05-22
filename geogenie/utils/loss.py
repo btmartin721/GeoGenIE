@@ -387,47 +387,36 @@ def weighted_rmse_loss(y_true, y_pred, sample_weight=None):
     return rmse
 
 
-import torch
-import torch.nn as nn
-
-
 class WeightedHuberLoss(nn.Module):
-    """
-    A subclass of PyTorch's nn.Module to implement a weighted and smoothed Huber loss.
-
-    Attributes:
-        delta (float): The threshold at which to change between L1 and L2 loss.
-        smoothing_factor (float): The factor for label distribution smoothing.
-
-    Methods:
-        forward(input, target, sample_weight): Computes the smoothed weighted Huber loss.
-    """
-
     def __init__(self, delta=1.0, smoothing_factor=0.1):
-        """
-        Initializes the SmoothedWeightedHuberLoss module.
-
-        Args:
-            delta (float, optional): The delta value used in the Huber loss.
-            smoothing_factor (float, optional): The factor for label distribution smoothing.
-        """
         super(WeightedHuberLoss, self).__init__()
         self.delta = delta
         self.smoothing_factor = smoothing_factor
 
     def forward(self, input, target, sample_weight=None):
-        """
-        Forward pass of the smoothed weighted Huber loss.
+        assert (
+            input.shape == target.shape
+        ), f"Shape mismatch: {input.shape} vs {target.shape}"
+        if torch.any(torch.isnan(input)) or torch.any(torch.isnan(target)):
+            if torch.any(torch.isnan(input)) and torch.any(torch.isnan(target)):
+                raise ValueError("Both the input and target contain NaN values")
 
-        Args:
-            input (torch.Tensor): The predicted values. Shape: (n_rows, 2)
-            target (torch.Tensor): The true values. Shape: (n_rows, 2)
-            sample_weight (torch.Tensor): Sample weights. Shape: (n_rows,). Defaults to None.
+            if torch.any(torch.isnan(input)):
+                raise ValueError("Inputs contain NaN values")
 
-        Returns:
-            torch.Tensor: The computed smoothed weighted Huber loss.
-        """
-        # Applying label distribution smoothing
+            if torch.any(torch.isnan(target)):
+                raise ValueError("Targets contain NaN values")
+
+        if torch.any(torch.isinf(input)) or torch.any(torch.isinf(target)):
+            if torch.any(torch.isinf(input)) and torch.any(torch.isinf(target)):
+                raise ValueError("Both the input and target contain INF values")
+
+            if torch.any(torch.isinf(input)):
+                raise ValueError("Inputs contain INF values")
+
+            if torch.any(torch.isinf(target)):
+                raise ValueError("Targets contain INF values")
+
         target_smoothed = (
             1 - self.smoothing_factor
         ) * target + self.smoothing_factor * torch.mean(target, dim=0)
@@ -441,6 +430,10 @@ class WeightedHuberLoss(nn.Module):
         loss = torch.where(is_small_error, small_error_loss, large_error_loss)
 
         if sample_weight is not None:
+            if torch.any(torch.isnan(sample_weight)) or torch.any(
+                torch.isinf(sample_weight)
+            ):
+                raise ValueError("Sample weight contains NaN or Inf values")
             sample_weight = sample_weight.view(-1, 1)
             weighted_loss = loss * sample_weight
             return weighted_loss.mean()

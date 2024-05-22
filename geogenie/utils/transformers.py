@@ -361,8 +361,79 @@ class LongLatToCartesianTransformer(BaseEstimator, TransformerMixin):
         return np.column_stack((lon, lat))
 
 
-from sklearn.base import BaseEstimator, TransformerMixin
-import numpy as np
+class MinMaxScalerGeo(BaseEstimator, TransformerMixin):
+    def __init__(
+        self, lat_range=(-90, 90), lon_range=(-180, 180), scale_min=0, scale_max=1
+    ):
+        """Initialize the MinMaxScalerGeo with specified ranges.
+
+        Args:
+            lat_range (tuple): Minimum and maximum values for latitude.
+            lon_range (tuple): Minimum and maximum values for longitude.
+            scale_min (float): Minimum value of the scaled range.
+            scale_max (float): Maximum value of the scaled range.
+        """
+        self.lat_range = lat_range
+        self.lon_range = lon_range
+        self.scale_min = scale_min
+        self.scale_max = scale_max
+
+    def fit(self, X, y=None):
+        """Fit does nothing as parameters are not data-dependent.
+
+        Args:
+            X (array-like): The data to fit.
+            y (None, optional): Ignored. This parameter exists only for compatibility with the sklearn API.
+
+        Returns:
+            self: Returns the instance itself.
+        """
+        return self
+
+    def transform(self, X):
+        """Scale the geographic coordinates based on the provided ranges.
+
+        Args:
+            X (array-like): The input coordinates to transform. Expected shape (n_samples, 2) where
+                            X[:, 0] should be latitude and X[:, 1] should be longitude.
+
+        Returns:
+            np.array: Transformed coordinates, where each feature is scaled to [scale_min, scale_max].
+        """
+        # Unpack the ranges
+        lat_min, lat_max = self.lat_range
+        lon_min, lon_max = self.lon_range
+
+        # Transform latitudes
+        X_scaled = np.empty_like(X, dtype=float)
+        X_scaled[:, 0] = (X[:, 0] - lat_min) / (lat_max - lat_min) * (
+            self.scale_max - self.scale_min
+        ) + self.scale_min
+
+        # Transform longitudes
+        X_scaled[:, 1] = (X[:, 1] - lon_min) / (lon_max - lon_min) * (
+            self.scale_max - self.scale_min
+        ) + self.scale_min
+
+        return X_scaled
+
+    def inverse_transform(self, X_scaled):
+        """Scale back the coordinates to their original range.
+
+        Args:
+            X_scaled (array-like): The scaled coordinates to revert.
+
+        Returns:
+            np.array: Original geographic coordinates.
+        """
+        X_original = np.empty_like(X_scaled, dtype=float)
+        X_original[:, 0] = (X_scaled[:, 0] - self.scale_min) / (
+            self.scale_max - self.scale_min
+        ) * (self.lat_range[1] - self.lat_range[0]) + self.lat_range[0]
+        X_original[:, 1] = (X_scaled[:, 1] - self.scale_min) / (
+            self.scale_max - self.scale_min
+        ) * (self.lon_range[1] - self.lon_range[0]) + self.lon_range[0]
+        return X_original
 
 
 class SinCosCoordinateTransformer(BaseEstimator, TransformerMixin):

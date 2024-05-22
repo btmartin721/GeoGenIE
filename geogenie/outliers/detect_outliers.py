@@ -69,14 +69,16 @@ class GeoGeneticOutlierDetector:
         self.logger = logging.getLogger(__name__)
         self.plotting = PlotGenIE(
             "cpu",
-            output_dir,
-            prefix,
+            self.args.output_dir,
+            self.args.prefix,
             self.args.basemap_fips,
             self.args.highlight_basemap_counties,
+            self.args.shapefile,
             show_plots=False,
-            fontsize=fontsize,
-            filetype=filetype,
-            dpi=dpi,
+            fontsize=self.args.fontsize,
+            filetype=self.args.filetype,
+            dpi=self.args.plot_dpi,
+            remove_splines=self.args.remove_splines,
         )
         self.verbose = verbose
 

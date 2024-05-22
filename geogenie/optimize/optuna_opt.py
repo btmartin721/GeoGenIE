@@ -22,8 +22,7 @@ from geogenie.plotting.plotting import PlotGenIE
 from geogenie.samplers.interpolate import run_genotype_interpolator
 from geogenie.utils.callbacks import callback_init
 from geogenie.utils.data import CustomDataset
-from geogenie.utils.loss import weighted_rmse_loss, WeightedDRMSLoss, WeightedHuberLoss
-from geogenie.utils.scorers import haversine_distances_agg
+from geogenie.utils.loss import WeightedDRMSLoss, WeightedHuberLoss, weighted_rmse_loss
 
 
 class Optimize:
@@ -109,10 +108,12 @@ class Optimize:
             args.prefix,
             args.basemap_fips,
             args.highlight_basemap_counties,
+            args.shapefile,
             show_plots=args.show_plots,
             fontsize=args.fontsize,
             filetype=args.filetype,
             dpi=args.plot_dpi,
+            remove_splines=self.args.remove_splines,
         )
 
         self.cv_results = pd.DataFrame(
@@ -179,7 +180,7 @@ class Optimize:
 
         if self.args.criterion == "drms":
             criterion = WeightedDRMSLoss()
-        elif self.args.crtierion == "rmse":
+        elif self.args.criterion == "rmse":
             criterion = weighted_rmse_loss
         elif self.args.criterion == "huber":
             criterion = WeightedHuberLoss(delta=0.5, smoothing_factor=0.1)
@@ -188,11 +189,8 @@ class Optimize:
             self.logger.error(msg)
             raise ValueError(msg)
 
-        haversine_error = self.evaluate_model(
-            self.test_loader, trained_model, criterion
-        )
-
-        return haversine_error
+        loss = self.evaluate_model(self.test_loader, trained_model, criterion)
+        return loss
 
     def extract_features_labels(self, train_subset):
         subset_features = []
@@ -344,36 +342,41 @@ class Optimize:
                 for batch in test_loader:
                     if len(batch) == 3:
                         inputs, labels, sample_weights = batch
-                        inputs, labels, sample_weights = (
-                            inputs.to(self.device),
-                            labels.to(self.device),
-                            sample_weights.to(self.device),
-                        )
-
                     else:
                         inputs, labels = batch
-                        inputs, labels = inputs.to(self.device), labels.to(self.device)
                         sample_weights = None
-                    outputs = model(inputs)
-                    loss = criterion(
-                        outputs,
-                        labels,
-                        torch.ones(len(sample_weights), dtype=self.dtype),
-                    )
 
-                    haverror = haversine_distances_agg(
-                        labels.numpy(), outputs.numpy(), np.median
+                    inputs, labels = inputs.to(self.device), labels.to(self.device)
+                    if sample_weights is not None:
+                        sample_weights = sample_weights.to(self.device)
+                    else:
+                        sample_weights = torch.ones(
+                            len(labels), dtype=self.dtype, device=self.device
+                        )
+
+                    outputs = model(inputs)
+                    loss = criterion(outputs, labels, sample_weights)
+
+                    y_true = self.ds.norm.inverse_transform(labels.cpu().numpy())
+                    y_pred = self.ds.norm.inverse_transform(outputs.cpu().numpy())
+
+                    haverror = np.mean(
+                        self.plotting.processor.haversine_distance(y_true, y_pred)
                     )
 
                     total_loss += loss.item()
                     total_haversine += haverror
+
             return total_haversine / len(test_loader)
+
         else:
             X_true = test_loader.dataset.features.numpy()
             y_true = test_loader.dataset.labels.numpy()
             y_pred = model.predict(X_true)
 
-            total_haversine = haversine_distances_agg(y_true, y_pred, np.mean)
+            total_haversine = np.mean(
+                self.plotting.processor.haversine_distance(y_true, y_pred)
+            )
             return total_haversine
 
     def perform_optuna_optimization(self, ModelClass, train_func):
@@ -396,7 +399,7 @@ class Optimize:
 
         if self.args.oversample_method != "none":
             self.train_loader, _, __, ___, ____ = run_genotype_interpolator(
-                self.train_loader, self.args, self.ds, self.dtype
+                self.train_loader, self.args, self.ds, self.dtype, self.plotting
             )
 
         self.dataset = self.train_loader.dataset

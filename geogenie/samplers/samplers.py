@@ -1,5 +1,6 @@
 import logging
 import os
+from math import pi
 
 import jenkspy
 import numpy as np
@@ -18,12 +19,67 @@ from sklearn.neighbors import KernelDensity, NearestNeighbors
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from torch.utils.data import Sampler
 
-from geogenie.utils.scorers import haversine_distances_agg
+from geogenie.utils.spatial_data_processors import SpatialDataProcessor
 from geogenie.utils.utils import assign_to_bins, geo_coords_is_valid, validate_is_numpy
 
 logger = logging.getLogger(__name__)
 
+processor = SpatialDataProcessor(output_dir=None, logger=logger)
+
 os.environ["TQDM_DISABLE"] = "true"
+
+
+class SampleDensityEstimator:
+    def __init__(self, data, use_kde=True, verbose=1):
+        self.data = data
+        self.use_kde = use_kde
+        self.verbose = verbose
+        self.logger = None  # Assuming a logger is defined elsewhere
+        self.density = None
+
+    def calculate_adaptive_bandwidth(self, k_neighbors):
+        nbrs = NearestNeighbors(n_neighbors=k_neighbors + 1, n_jobs=-1).fit(self.data)
+        distances, _ = nbrs.kneighbors(self.data)
+
+        # Exclude the first distance (self-distance)
+        average_distance = np.mean(distances[:, 1:], axis=1)
+        adaptive_bandwidth = np.mean(average_distance)  # Mean over all points
+
+        # Convert bandwidth from degrees to kilometers (approximation)
+        # Example for latitude (you need to adjust it based on your specific location)
+        bandwidth_km = adaptive_bandwidth * 111.32  # 1 degree latitude ~ 111.32 km
+        return bandwidth_km
+
+    def estimate_density(self):
+        if self.use_kde:
+            if self.verbose >= 1:
+                print("Estimating sample weights with Kernel Density...")
+            adaptive_bandwidth = self.calculate_adaptive_bandwidth(
+                10
+            )  # Example k_neighbors
+            kde = KernelDensity(
+                bandwidth=adaptive_bandwidth,
+                kernel="gaussian",
+                metric="haversine",
+            )
+            kde.fit(self.data)
+            log_density = kde.score_samples(self.data)
+            self.density = np.exp(log_density)
+            unit_area = pi * (adaptive_bandwidth**2)  # Area of the circle in km^2
+            return unit_area
+
+    def calculate_samples_needed(self, density, area):
+        """
+        Calculate the number of samples needed based on the density and the total area.
+
+        Args:
+            density (float): The number of samples per unit area.
+            area (int): The total area in square kilometers.
+
+        Returns:
+            int: Total number of samples needed.
+        """
+        return int(density * area)
 
 
 class GeographicDensitySampler(Sampler):
@@ -158,9 +214,7 @@ class GeographicDensitySampler(Sampler):
             local_targets = targets[local_region]
 
             # Calculate Haversine error for each pair of points
-            local_error = haversine_distances_agg(
-                local_targets, local_predictions, np.array
-            )
+            local_error = processor.haversine_distance(local_targets, local_predictions)
 
             # Adjust the local error using sample weights
             if sample_weights is not None:

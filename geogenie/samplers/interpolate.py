@@ -1,7 +1,6 @@
 import logging
 import os
 from copy import deepcopy
-from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -14,6 +13,7 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.neighbors import KernelDensity, NearestNeighbors
 from torch.utils.data import DataLoader
 
+from geogenie.plotting.plotting import PlotGenIE
 from geogenie.utils.data import CustomDataset
 
 
@@ -108,6 +108,20 @@ class GenotypeInterpolator:
 
         self.original_cluster_labels = self.cluster_labels.copy()
         self.neighbor_indices = self._find_nearest_neighbors()
+
+        self.plotting = PlotGenIE(
+            "cpu",
+            args.output_dir,
+            args.prefix,
+            args.basemap_fips,
+            args.highlight_basemap_counties,
+            args.shapefile,
+            show_plots=args.show_plots,
+            fontsize=args.fontsize,
+            filetype=args.filetype,
+            dpi=args.plot_dpi,
+            remove_splines=args.remove_splines,
+        )
 
     def _determine_optimal_neighbors(self, n_neighbors):
         """
@@ -572,61 +586,6 @@ class GenotypeInterpolator:
 
         return refined_labels
 
-    def visualize_clusters(self, arr, fn, sample_weights):
-        """
-        Visualize the genotypes and their clusters in a 2D scatter plot.
-
-        Args:
-            arr (np.ndarray): Array to use for clustering.
-            fn (str): Filename to save the plot to.
-        """
-        plt.figure(figsize=(10, 8))
-
-        cluster_sizes = np.ones_like(self.cluster_labels)
-        mask = self.sample_origin_list == "synthetic"
-        cluster_sizes[mask] *= 100
-        cluster_sizes[~mask] *= 50
-
-        sns.scatterplot(
-            x=arr[:, 0],
-            y=arr[:, 1],
-            hue=self.cluster_labels,
-            style=self.sample_origin_list,
-            style_order=["original", "synthetic"],
-            palette="Set2",
-            s=150,
-            linewidth=1,
-            edgecolor="k",
-        )
-
-        plt.xlabel("Dimension 1", fontsize=self.fontsize)
-        plt.ylabel("Dimension 2", fontsize=self.fontsize)
-        plt.title("Cluster Visualization", fontsize=self.fontsize)
-        plt.legend(
-            loc="upper left",
-            fontsize=self.fontsize,
-            fancybox=True,
-            shadow=True,
-            bbox_to_anchor=(1.04, 1.0),
-            edgecolor="k",
-        )
-
-        fn = os.path.join(self.args.output_dir, "plots", fn)
-
-        p = Path(fn)
-        if not self.plot_type.endswith("png"):
-            suffix = (
-                f"{self.plot_type}"
-                if self.plot_type.startswith(".")
-                else f".{self.plot_type}"
-            )
-            fn = p.with_suffix(suffix)
-
-        if self.args.show_plots:
-            plt.show()
-
-        plt.savefig(fn, facecolor="white", bbox_inches="tight", dpi=self.dpi)
-
     def evaluate_clustering(self):
         """
         Calculate and return clustering evaluation metrics.
@@ -790,7 +749,7 @@ class GenotypeInterpolator:
 logger = logging.getLogger(__name__)
 
 
-def run_genotype_interpolator(train_loader, args, ds, dtype):
+def run_genotype_interpolator(train_loader, args, ds, dtype, plotting):
     (centroids, gi, features, labels, sample_weights, indices) = resample_interp(
         train_loader, args, ds
     )
@@ -800,10 +759,8 @@ def run_genotype_interpolator(train_loader, args, ds, dtype):
         logger.error(msg)
         raise ValueError(msg)
 
-    gi.visualize_clusters(
-        ds.norm.inverse_transform(labels),
-        fn=f"{args.prefix}_coords_train_clusters_oversampled.png",
-        sample_weights=sample_weights,
+    plotting.visualize_oversample_clusters(
+        ds.norm.inverse_transform(labels), gi.cluster_labels, gi.sample_origin_list
     )
 
     train_loader, features, labels, sample_weights = process_interp(
@@ -868,7 +825,9 @@ def resample_interp(train_loader, args, ds):
     indices = np.arange(features.shape[0])
     centroids = gi.centroids
     labels = ds.norm.transform(labels)
-    centroids = ds.norm.transform(centroids)
+
+    if centroids is not None:
+        centroids = ds.norm.transform(centroids)
     return centroids, gi, features, labels, sample_weights, indices
 
 

@@ -27,7 +27,7 @@ from geogenie.samplers.samplers import synthetic_resampling
 from geogenie.utils.callbacks import callback_init
 from geogenie.utils.data_structure import DataStructure
 from geogenie.utils.loss import WeightedDRMSLoss, WeightedHuberLoss, weighted_rmse_loss
-from geogenie.utils.scorers import calculate_rmse, haversine_distances_agg, kstest
+from geogenie.utils.scorers import calculate_rmse, kstest
 from geogenie.utils.utils import (
     geo_coords_is_valid,
     validate_is_numpy,
@@ -133,7 +133,7 @@ class GeoGenIE:
             "models",
             "optimize",
             "data",
-            "shapefile",
+            "plots/shapefile",
             "benchmarking",
             "bootstrap_predictions",
             "bootstrap_metrics",
@@ -162,10 +162,12 @@ class GeoGenIE:
             prefix,
             self.args.basemap_fips,
             self.args.highlight_basemap_counties,
+            self.args.shapefile,
             show_plots=self.args.show_plots,
             fontsize=self.args.fontsize,
             filetype=self.args.filetype,
             dpi=self.args.plot_dpi,
+            remove_splines=self.args.remove_splines,
         )
 
         self.boot = None
@@ -368,15 +370,7 @@ class GeoGenIE:
         df["x"] = ytmp[:, 0]
         df["y"] = ytmp[:, 1]
 
-        self.plotting.plot_smote_bins(
-            df_smote,
-            bins_resampled,
-            df,
-            self.args.n_bins,
-            self.args.shapefile,
-            buffer=self.args.bbox_buffer,
-            marker_scale_factor=self.args.sample_point_scale,
-        )
+        self.plotting.plot_smote_bins(df_smote, bins_resampled, df, self.args.n_bins)
 
     @timer
     def train_model(
@@ -409,7 +403,7 @@ class GeoGenIE:
             Model and training statistics, or just the model if in objective mode.
         """
         if early_stopping is None and (objective_mode or do_bootstrap):
-            msg = "Must provide 'early_stopping' argument if 'objective_mode=True', but got NoneType."
+            msg = "Must provide 'early_stopping' argument if 'objective_mode is True', but got NoneType."
             self.logger.error(msg)
             raise TypeError(msg)
 
@@ -436,7 +430,9 @@ class GeoGenIE:
                 features,
                 labels,
                 sample_weights,
-            ) = run_genotype_interpolator(train_loader, self.args, self.ds, self.dtype)
+            ) = run_genotype_interpolator(
+                train_loader, self.args, self.ds, self.dtype, self.plotting
+            )
 
             self.train_loader_interp = train_loader
 
@@ -452,6 +448,13 @@ class GeoGenIE:
 
                 if objective_mode and trial is not None:
                     raise optuna.exceptions.TrialPruned()
+
+                if do_bootstrap and not objective_mode:
+                    msg = (
+                        f"Model training failed at epoch {epoch} during bootstrapping."
+                    )
+                    self.logger.error(msg)
+                    return None
                 return None, None
             train_losses.append(avg_train_loss)
 
@@ -511,6 +514,8 @@ class GeoGenIE:
         model.train()
         total_loss = []
 
+        total_loss = 0
+
         for batch in train_loader:
             data, targets, sample_weight = self._batch_init(model, batch)
             optimizer.zero_grad()
@@ -530,9 +535,8 @@ class GeoGenIE:
                     return None
                 else:
                     raise e
-            total_loss.append(loss.item())
-        avg_train_loss = np.mean(total_loss)
-        return avg_train_loss
+            total_loss = total_loss + loss.item()
+        return total_loss / len(train_loader)
 
     def _batch_init(self, model, batch):
         data, targets, sample_weight = batch
@@ -730,8 +734,9 @@ class GeoGenIE:
             self.print_stats_to_logger(metrics_dict)
 
         # Calculate Haversine error for each pair of points
-        haversine_errors = haversine_distances_agg(ground_truth, predictions, np.array)
-
+        haversine_errors = self.plotting.processor.haversine_distance(
+            ground_truth, predictions
+        )
         if self.boot is not None and not bootstrap:
             z_scores = (haversine_errors - np.mean(haversine_errors)) / np.std(
                 haversine_errors
@@ -769,7 +774,7 @@ class GeoGenIE:
                 metrics_dict["median_dist"],
                 metrics_dict["mean_dist"],
             )
-            self.plotting.plot_zscores(z_scores, haversine_errors, outfile_zscores)
+            self.plotting.plot_zscores(z_scores, outfile_zscores)
 
         return predictions, ground_truth, metrics_dict
 
@@ -878,12 +883,19 @@ class GeoGenIE:
         self, predictions, ground_truth, mad, coefficient_of_variation, within_threshold
     ):
         rmse = calculate_rmse(predictions, ground_truth)
-        mean_dist = haversine_distances_agg(ground_truth, predictions, np.mean)
-        median_dist = haversine_distances_agg(ground_truth, predictions, np.median)
-        std_dist = haversine_distances_agg(ground_truth, predictions, np.std)
+        mean_dist = np.mean(
+            self.plotting.processor.haversine_distance(ground_truth, predictions)
+        )
+        median_dist = np.median(
+            self.plotting.processor.haversine_distance(ground_truth, predictions)
+        )
+        std_dist = np.std(
+            self.plotting.processor.haversine_distance(ground_truth, predictions)
+        )
 
-        haversine_errors = haversine_distances_agg(ground_truth, predictions, np.array)
-
+        haversine_errors = self.plotting.processor.haversine_distance(
+            ground_truth, predictions
+        )
         (
             spearman_corr_x,
             spearman_corr_y,
@@ -1026,12 +1038,14 @@ class GeoGenIE:
         model.eval()
         predictions = []
         ground_truth = []
+
         with torch.no_grad():
             for data, target, _ in data_loader:
                 data = torch.tensor(data, dtype=self.dtype).to(self.device)
                 output = model(data)
                 predictions.append(output.cpu().numpy())
                 ground_truth.append(target.numpy())
+
         predictions = np.concatenate(predictions, axis=0)
         ground_truth = np.concatenate(ground_truth, axis=0)
         return predictions, ground_truth
@@ -1144,7 +1158,7 @@ class GeoGenIE:
             self.logger.info("Writing predicted coordinates to dataframe.")
 
         pred_locations_df = pd.DataFrame(pred_locations, columns=["x", "y"])
-        pred_locations_df["sampleID"] = self.ds.samples[pred_indices]
+        pred_locations_df["sampleID"] = self.ds.all_samples[pred_indices]
         pred_locations_df = pred_locations_df[["sampleID", "x", "y"]]
         pred_locations_df.to_csv(filename, header=True, index=False)
         return pred_locations_df
@@ -1247,7 +1261,7 @@ class GeoGenIE:
         )
 
         if self.args.verbose >= 1:
-            self.logger.info("Bootstrap training completed.")
+            self.logger.info("Bootstrap training completed!")
 
     def evaluate_and_save_results(
         self,
@@ -1392,13 +1406,17 @@ class GeoGenIE:
         if self.args.verbose >= 1:
             self.logger.info("Training and validation losses saved.")
 
+        if isinstance(y_true, torch.Tensor):
+            y_true = y_true.cpu().numpy()
+        if isinstance(val_preds, torch.Tensor):
+            val_preds = val_preds.cpu().numpy()
+
         # Plot training history
         if not use_rf:
             self.plotting.plot_history(train_losses, val_losses)
         self.plotting.plot_geographic_error_distribution(
             y_true,
             val_preds,
-            self.args.shapefile,
             dataset,
             buffer=self.args.bbox_buffer,
             marker_scale_factor=self.args.sample_point_scale,
@@ -1408,19 +1426,13 @@ class GeoGenIE:
             centroids=centroids,
         )
 
-        self.plotting.plot_scatter_samples_map(
-            y_train,
-            y_true,
-            dataset,
-            self.args.shapefile,
-            buffer=self.args.bbox_buffer,
-        )
+        # self.plotting.plot_scatter_samples_map(y_train, y_true, dataset)
 
         self.plotting.polynomial_regression_plot(
             y_true, val_preds, dataset, dtype=self.dtype
         )
         self.plotting.polynomial_regression_plot(
-            self.train_loader_interp.dataset.labels,
+            self.train_loader_interp.dataset.labels.cpu().numpy(),
             train_preds,
             "train",
             dtype=self.dtype,
@@ -1564,7 +1576,6 @@ class GeoGenIE:
             # Model Training
             if self.args.do_bootstrap:
                 self.perform_bootstrap_training(modelclass, best_params)
-
             (
                 best_model,
                 train_losses,
@@ -1599,11 +1610,7 @@ class GeoGenIE:
 
             real_preds = self.make_unseen_predictions(best_model, device, use_rf)
 
-            model_out = os.path.join(
-                outdir,
-                "models",
-                f"{prefix}_trained_model.pt",
-            )
+            model_out = Path(outdir) / "models" / f"{prefix}_trained_model.pt"
 
             if self.args.verbose >= 1:
                 self.logger.info("Process completed successfully!.")
@@ -1612,12 +1619,12 @@ class GeoGenIE:
             if not use_rf:
                 self.save_model(best_model, model_out)
 
-            save_execution_times(
-                f"{self.args.output_dir}/benchmarking/{self.args.prefix}_execution_times.csv"
-            )
+            exe_pth = Path(self.args.output_dir, "benchmarking")
+            exe_pth = exe_pth / f"{self.args.prefix}_execution_times.csv"
+            save_execution_times(exe_pth)
             execution_times.clear()
 
         except Exception as e:
             self.logger.error(f"Unexpected error occurred: {e}")
             traceback.print_exc()
-            raise
+            raise e
