@@ -1,0 +1,41 @@
+title: "GeoGenIE: Geographic-Genetic Inference Engine"
+subtitle: "Geolocation Predictions from SNP Data using Deep Learning"
+author: '\protect\parbox{\textwidth}{\protect\centering Drs. Bradley T. Martin\\ Tyler K. Chafin\\ Zach D. Zbinden\\ Marlis R. Douglas\\ Michael E. Douglas}'
+date: "2024-06-05"
+keywords: ["geolocation", "SNP", "bioinformatics", "genomics", "deep learning", "AI", "neural network"]
+geometry: "margin=1in"
+titlepage: false
+titlepage-color: "FFFFFF"
+titlepage-text-color: "000000"
+titlepage-rule-color: "CCCCCC"
+titlepage-rule-height: 4
+logo: "img/geogenie_logo.png"
+logo-width: 60% 
+page-background: "FFFFFF"
+page-background-opacity:
+links-as-notes: false
+lot: false
+lof: true
+listings-disable-line-numbers: true
+listings-no-page-break: false
+disable-header-and-footer: false
+header-left: "Dr. Bradley T. Martin, et al."
+header-center:
+header-right: "GeoGenIE User Manual"
+footer-left: "License: GNU Public License v3 (GPL3)"
+footer-center: 
+footer-right: 
+subparagraph: true
+lang: en-US 
+fontsize: 12pt
+classoption: 12pt
+documenttype: article
+standalone: true
+output:
+  pdf:
+    pdf-engine: pdflatex
+    output: GeoGenIE_UserManual.pdf
+    from: markdown
+colorlinks: true
+toc-own-page: true
+bibliography: docs/references.bib
