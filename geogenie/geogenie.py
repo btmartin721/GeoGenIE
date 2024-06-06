@@ -2,7 +2,6 @@ import csv
 import json
 import logging
 import os
-import sys
 import time
 import traceback
 from functools import wraps
@@ -25,14 +24,11 @@ from geogenie.plotting.plotting import PlotGenIE
 from geogenie.samplers.interpolate import run_genotype_interpolator
 from geogenie.samplers.samplers import synthetic_resampling
 from geogenie.utils.callbacks import callback_init
+from geogenie.utils.data import UnlabeledDataset
 from geogenie.utils.data_structure import DataStructure
 from geogenie.utils.loss import WeightedDRMSLoss, WeightedHuberLoss, weighted_rmse_loss
 from geogenie.utils.scorers import calculate_rmse, kstest
-from geogenie.utils.utils import (
-    geo_coords_is_valid,
-    validate_is_numpy,
-    load_directory_of_locs,
-)
+from geogenie.utils.utils import geo_coords_is_valid, validate_is_numpy
 
 os.environ["TQDM_DISABLE"] = "1"
 
@@ -617,6 +613,7 @@ class GeoGenIE:
         bootstrap=False,
         is_train=False,
         dataset=None,
+        is_val=True,
     ):
         """Predict locations using the trained model and evaluate predictions.
 
@@ -631,6 +628,7 @@ class GeoGenIE:
             bootstrap (bool): Whether doing bootstrapping. If True, then will not make plots or print stats to log (but will still record stats in JSON files). Defaults to False.
             is_train (bool): Whether using train dataset. If True, does not make some of the plots for train dataset. Defaults to False.
             dataset (str): "test" or "val". Defaults to None.
+            is_val (bool): Whether using validation/ test dataset. Otherwise using pred dataset. Defaults to True.
 
         Returns:
             pandas.DataFrame: DataFrame with predicted locations and corresponding sample IDs.
@@ -639,22 +637,31 @@ class GeoGenIE:
             predictions = model.predict(data_loader.dataset.features.numpy())
             ground_truth = data_loader.dataset.labels.numpy()
         else:
-            predictions, ground_truth = self.model_predict(model, data_loader)
+            if is_val:
+                predictions, ground_truth = self.model_predict(
+                    model, data_loader, is_val=is_val
+                )
+            else:
+                predictions = self.model_predict(model, data_loader, is_val=is_val)
 
-        # Rescale predictions and ground truth to original scale
-        predictions, ground_truth, metrics = self.calculate_prediction_metrics(
-            outfile,
-            predictions,
-            ground_truth,
-            log_metrics,
-            bootstrap,
-            is_train,
-            dataset,
-        )
+        if is_val:
+            # Rescale predictions and ground truth to original scale
+            predictions, ground_truth, metrics = self.calculate_prediction_metrics(
+                outfile,
+                predictions,
+                ground_truth,
+                log_metrics,
+                bootstrap,
+                is_train,
+                dataset,
+            )
 
-        if return_truths:
+        if return_truths and is_val:
             return predictions, metrics, ground_truth
-        return predictions, metrics
+        elif not return_truths and is_val:
+            return predictions, metrics
+        else:
+            return predictions
 
     def calculate_prediction_metrics(
         self,
@@ -681,62 +688,28 @@ class GeoGenIE:
         ground_truth = rescale_predictions(ground_truth)
         geo_coords_is_valid(ground_truth)
 
-        if self.boot is None or bootstrap:
-            predictions = rescale_predictions(predictions)
-            geo_coords_is_valid(predictions)
+        predictions = rescale_predictions(predictions)
+        geo_coords_is_valid(predictions)
 
-            # Evaluate predictions
-            z_scores, metrics = self.get_all_stats(
-                predictions,
-                ground_truth,
-                mad,
-                coefficient_of_variation,
-                within_threshold,
-            )
+        # Evaluate predictions
+        metrics = self.get_all_stats(
+            predictions,
+            ground_truth,
+            mad,
+            coefficient_of_variation,
+            within_threshold,
+        )
 
-            # return the evaluation metrics along with the predictions
-            metrics_dict = self._create_metrics_dictionary(metrics)
+        z_scores = metrics[0]
+        values = metrics[1]
+        haversine_errors = metrics[2]
 
-        if self.boot is not None and not bootstrap and not is_train:
-            if dataset is None:
-                msg = "dataset argument cannot by NoneType."
-                self.logger.error(msg)
-                raise TypeError(msg)
-
-            pth = Path(self.args.output_dir)
-            locdir = pth.joinpath("bootstrap_predictions", dataset)
-
-            gdf = load_directory_of_locs(locdir)
-
-            data = []
-            for sample_id in gdf["sampleID"].unique():
-                sample_gdf = gdf[gdf["sampleID"] == sample_id]
-                centroid = sample_gdf.geometry.unary_union.centroid
-                data.append({"sampleID": sample_id, "x": centroid.x, "y": centroid.y})
-            dfpred = pd.DataFrame(data)
-            predictions = dfpred[["x", "y"]].to_numpy()
-            geo_coords_is_valid(predictions)
-            metrics_dict = self._aggregate_test_metrics(dataset)
-
-        if is_train:
-            metrics = self.get_all_stats(
-                predictions,
-                ground_truth,
-                mad,
-                coefficient_of_variation,
-                within_threshold,
-            )
-
-            # return the evaluation metrics along with the predictions
-            metrics_dict = self._create_metrics_dictionary(metrics)
+        # return the evaluation metrics along with the predictions
+        metrics_dict = self._create_metrics_dictionary(values)
 
         if log_stats and not bootstrap:
             self.print_stats_to_logger(metrics_dict)
 
-        # Calculate Haversine error for each pair of points
-        haversine_errors = self.plotting.processor.haversine_distance(
-            ground_truth, predictions
-        )
         if self.boot is not None and not bootstrap:
             z_scores = (haversine_errors - np.mean(haversine_errors)) / np.std(
                 haversine_errors
@@ -883,19 +856,13 @@ class GeoGenIE:
         self, predictions, ground_truth, mad, coefficient_of_variation, within_threshold
     ):
         rmse = calculate_rmse(predictions, ground_truth)
-        mean_dist = np.mean(
-            self.plotting.processor.haversine_distance(ground_truth, predictions)
-        )
-        median_dist = np.median(
-            self.plotting.processor.haversine_distance(ground_truth, predictions)
-        )
-        std_dist = np.std(
-            self.plotting.processor.haversine_distance(ground_truth, predictions)
-        )
-
         haversine_errors = self.plotting.processor.haversine_distance(
             ground_truth, predictions
         )
+        mean_dist = np.mean(haversine_errors)
+        median_dist = np.median(haversine_errors)
+        std_dist = np.std(haversine_errors)
+
         (
             spearman_corr_x,
             spearman_corr_y,
@@ -935,6 +902,7 @@ class GeoGenIE:
         # 0 is best, negative means overestimations, positive means
         # underestimations
         ks, pval, skew = kstest(ground_truth, predictions)
+
         return (
             z_scores,
             [
@@ -966,6 +934,7 @@ class GeoGenIE:
                 percentage_within_75km,
                 mean_absolute_z_score,
             ],
+            haversine_errors,
         )
 
     def print_stats_to_logger(self, metrics):
@@ -1034,21 +1003,35 @@ class GeoGenIE:
         corr_y, p_value_y = corr_func(predictions[:, 1], ground_truth[:, 1])
         return corr_x, corr_y, p_value_x, p_value_y
 
-    def model_predict(self, model, data_loader):
+    def model_predict(self, model, data_loader, is_val=True):
         model.eval()
         predictions = []
         ground_truth = []
 
         with torch.no_grad():
-            for data, target, _ in data_loader:
-                data = torch.tensor(data, dtype=self.dtype).to(self.device)
-                output = model(data)
-                predictions.append(output.cpu().numpy())
-                ground_truth.append(target.numpy())
+            if is_val:
+                for data, target, _ in data_loader:
+                    data = torch.tensor(data, dtype=self.dtype).to(self.device)
+                    target = torch.tensor(target, dtype=self.dtype).to(self.device)
+                    output = model(data)
+                    predictions.append(output.cpu().numpy())
+                    ground_truth.append(target.cpu().numpy())
+            else:
+                for data in data_loader:
+                    data = torch.tensor(data, dtype=self.dtype).to(self.device)
+                    output = model(data)
+                    predictions.append(output.cpu().numpy())
 
         predictions = np.concatenate(predictions, axis=0)
-        ground_truth = np.concatenate(ground_truth, axis=0)
-        return predictions, ground_truth
+
+        if not is_val:
+            predictions = self.ds.norm.inverse_transform(predictions)
+            geo_coords_is_valid(predictions)
+
+        if is_val:
+            ground_truth = np.concatenate(ground_truth, axis=0)
+            return predictions, ground_truth
+        return predictions
 
     def plot_bootstrap_aggregates(self, df, train_times):
         self.plotting.plot_bootstrap_aggregates(df)
@@ -1146,13 +1129,7 @@ class GeoGenIE:
         optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=l2)
         return optimizer
 
-    def write_pred_locations(
-        self,
-        pred_locations,
-        pred_indices,
-        sample_data,
-        filename,
-    ):
+    def write_pred_locations(self, pred_locations, pred_indices, filename):
         """write predicted locations to file."""
         if self.args.verbose >= 1:
             self.logger.info("Writing predicted coordinates to dataframe.")
@@ -1302,8 +1279,12 @@ class GeoGenIE:
         if dataset.startswith("val") or dataset == "validation":
             middir = "validation"
             loader = self.ds.val_loader
-        else:
+        elif dataset == "test":
             loader = self.ds.test_loader
+        else:
+            msg = f"Invalid dataset provided. Expected 'val' or 'test', but got: {dataset}."
+            self.logger.error(msg)
+            raise ValueError(msg)
 
         y_train = self.ds.train_loader.dataset.labels.numpy()
         X_train = self.ds.train_loader.dataset.features.numpy()
@@ -1360,10 +1341,7 @@ class GeoGenIE:
         )
 
         val_preds_df = self.write_pred_locations(
-            val_preds,
-            self.ds.indices[f"{dataset}_indices"],
-            self.ds.sample_data,
-            val_preds_outfile,
+            val_preds, self.ds.indices[f"{dataset}_indices"], val_preds_outfile
         )
 
         with open(val_metric_outfile, "w") as fout:
@@ -1441,44 +1419,49 @@ class GeoGenIE:
     def make_unseen_predictions(
         self, model, device, use_rf=False, col_indices=None, boot_rep=None
     ):
-        if self.args.verbose >= 1:
-            # Predictions on unseen data
+        """Predictions on data without known targets."""
+
+        if self.args.verbose >= 1 and boot_rep is None:
             self.logger.info("Making predictions on unseen data...")
 
         outdir = self.args.output_dir
         prefix = self.args.prefix
 
-        is_summary = True if boot_rep is None and self.boot is not None else False
+        X_pred = self.ds.data["X_pred"].copy()
+        if col_indices is not None:
+            if boot_rep is None:
+                msg = "'boot_rep' must be provided if 'col_indices' is defined."
+                self.logger.error(msg)
+                raise TypeError(msg)
+            X_pred = X_pred[:, col_indices]
 
-        if is_summary:
-            pred_locations_df = self.boot.boot_real_df_.copy()
-            pred_locations = pred_locations_df[["x_mean", "y_mean"]].to_numpy()
+        if not use_rf:
+            dtype = self.dtype
+
+            # Convert X_pred to a PyTorch tensor and move it to the correct
+            # device (GPU or CPU)
+            pred_tensor = torch.tensor(X_pred, dtype=dtype).to(device)
+            dataset = UnlabeledDataset(pred_tensor)
+            data_loader = torch.utils.data.DataLoader(
+                dataset, batch_size=self.args.batch_size, shuffle=False
+            )
+
+            # Ensures BatchNorm and Dropout layers behave correctly.
+            model.eval()
+
+            predictions = []
+            with torch.no_grad():
+                for data in data_loader:
+                    data = data.to(device, dtype=dtype)
+                    output = model(data)
+                    predictions.append(output.cpu().numpy())
+
+            predictions = np.concatenate(predictions, axis=0)
+            pred_locations = self.ds.norm.inverse_transform(predictions)
+
         else:
-            X_pred = self.ds.data["X_pred"].copy()
-            if col_indices is not None:
-                if boot_rep is None:
-                    msg = "'boot_rep' must be provided if 'col_indices' is not None."
-                    self.logger.error(msg)
-                    raise TypeError(msg)
-                X_pred = X_pred[:, col_indices]
-
-            if not use_rf:
-                dtype = self.dtype
-
-                # Convert X_pred to a PyTorch tensor and move it to the correct
-                # device (GPU or CPU)
-                pred_tensor = torch.tensor(X_pred, dtype=dtype).to(device)
-
-                with torch.no_grad():
-                    # Make predictions
-                    pred_locations_scaled = model(pred_tensor)
-
-                pred_locations = self.ds.norm.inverse_transform(
-                    pred_locations_scaled.cpu().numpy()
-                )
-            else:
-                pred_locations_scaled = model.predict(X_pred)
-                pred_locations = self.ds.norm.inverse_transform(pred_locations_scaled)
+            pred_locations_scaled = model.predict(X_pred)
+            pred_locations = self.ds.norm.inverse_transform(pred_locations_scaled)
 
         pth = Path(outdir)
         if col_indices is None:
@@ -1486,19 +1469,18 @@ class GeoGenIE:
         else:
             basedir = "bootstrap_predictions"
             prefix += f"_bootrep{boot_rep}"
-        of = f"{prefix}_unknown_predictions.csv"
-        pth = pth.joinpath(basedir, "unknown")
+
+        pth = pth / basedir / "unknown"
         pth.mkdir(exist_ok=True, parents=True)
-        pred_outfile = pth.joinpath(of)
+        pred_outfile = pth / f"{prefix}_unknown_predictions.csv"
 
-        real_preds = self.write_pred_locations(
-            pred_locations,
-            self.ds.pred_indices,
-            self.ds.sample_data,
-            pred_outfile,
-        )
-
-        return real_preds
+        if boot_rep is not None:
+            return pred_locations, pred_outfile
+        else:
+            real_preds = self.write_pred_locations(
+                pred_locations, self.ds.pred_indices, pred_outfile
+            )
+            return real_preds
 
     def train_test_predict(self):
         # Set seed and GPU
@@ -1628,3 +1610,5 @@ class GeoGenIE:
             self.logger.error(f"Unexpected error occurred: {e}")
             traceback.print_exc()
             raise e
+
+        self.logger.info("GeoGenIE execution succesfully completed!")

@@ -116,7 +116,7 @@ class DataStructure:
 
         sort_samples: Sorts sample data to match the order in the VCF file.
 
-        normalize_target: Normalizes target variables (locations), converting geographic coordinates to a different scale or format if 'placeholder=False'. Otherwise, does nothing if 'placeholder=True'.
+        normalize_target: Normalizes target variables (locations), converting geographic coordinates to a normalized scale.
 
         _check_sample_ordering: Validates the ordering of samples between the sample data and the VCF file.
 
@@ -316,7 +316,7 @@ class DataStructure:
         self.genotypes_iupac = self.genotypes_iupac[:, self.filter_mask]
         self.genotypes_iupac = self.genotypes_iupac[:, self.sort_indices]
 
-    def normalize_target(self, y, placeholder=False, transform_only=False):
+    def normalize_target(self, y, transform_only=False):
         """Normalize locations, ignoring NaN."""
         if self.verbose >= 1:
             self.logger.info("Normalizing coordinates...")
@@ -779,7 +779,7 @@ class DataStructure:
             self.true_idx,
             self.all_samples,  # All samples.
             self.samples,  # Non-outliers + non-unknowns.
-            self.pred_samples,  # Non-outliers + unknowns.
+            self.pred_samples,  # Outliers + non-outliers + unknowns.
             self.outlier_samples,  # Only outliers.
             self.non_outlier_samples,  # Only non-outliers.
         ) = self.extract_datasets(all_outliers, args)
@@ -825,9 +825,7 @@ class DataStructure:
                 tonly = False if k == "y_train" else True
 
                 if tonly:
-                    self.data[k] = self.normalize_target(
-                        v, placeholder=False, transform_only=tonly
-                    )
+                    self.data[k] = self.normalize_target(v, transform_only=tonly)
 
         if args.verbose >= 1 and args.embedding_type != "none":
             self.logger.info("Finished embedding features!")
@@ -860,7 +858,6 @@ class DataStructure:
         self.mask[np.isin(self.all_indices, self.pred_indices)] = False
         pred_mask = np.zeros(len(self.all_indices), dtype=bool)
         pred_mask[np.isin(self.all_indices, self.pred_indices)] = True
-        self.original_mask = self.mask.copy()
 
         if args.detect_outliers:
             outlier_mask = np.zeros_like(self.mask)
@@ -876,7 +873,7 @@ class DataStructure:
             self.all_indices[self.mask],
             self.samples,  # All samples.
             self.samples[self.mask],  # no outliers + non-unknowns.
-            self.samples[~self.mask],  # no outilers + unknowns only.
+            self.samples[pred_mask],  # outliers + unknowns only.
             self.samples[outlier_mask],  # only outliers
             self.samples[~outlier_mask],  # only non-outliers
         )

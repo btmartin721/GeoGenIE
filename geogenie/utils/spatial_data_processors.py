@@ -189,43 +189,15 @@ class SpatialDataProcessor:
         """
         return self.haversine_distance(point1.y, point1.x, point2.y, point2.x)
 
-    def calculate_statistics(
-        self, gdf, max_boots=None, seed=None, known_coords=None, q_low=0.05, q_high=0.95
-    ):
+    def calculate_statistics(self, gdf, max_boots=None, seed=None, known_coords=None):
         """Calculate statistics on properly projected data."""
 
         gdf = self._ensure_is_gdf(gdf)
 
         for sample_id, group in gdf.groupby("sampleID"):
-
-            # Quantile-based filtering
-            lat_threshold = np.quantile(group["geometry"].y, [q_low, q_high])
-            lon_threshold = np.quantile(group["geometry"].x, [q_low, q_high])
-
-            filtered_group = group[
-                (lat_threshold[0] <= group["geometry"].y)
-                & (group["geometry"].y <= lat_threshold[1])
-                & (lon_threshold[0] <= group["geometry"].x)
-                & (group["geometry"].x <= lon_threshold[1])
-            ]
-
-            # If no data remains after filtering raise a warning
-            if filtered_group.empty:
-                self.logger.warning(
-                    f"All bootstrap replicates for sample {sample_id} were filtered out as outliers."
-                )
-                continue  # Skip to the next sample if there's no data left
-
-            # Calculations using the filtered data
-            mean_lat, mean_lon = (
-                filtered_group.dissolve().centroid.y,
-                filtered_group.dissolve().centroid.x,
-            )
-
-            # mean_lat, mean_lon = (
-            #     group.dissolve().centroid.y,
-            #     group.dissolve().centroid.x,
-            # )
+            # Centroid calculations.
+            mean_lon = group.dissolve().centroid.x
+            mean_lat = group.dissolve().centroid.y
 
             if isinstance(mean_lat, pd.Series):
                 mean_lat = mean_lat.iloc[0]
@@ -268,15 +240,11 @@ class SpatialDataProcessor:
                     self.logger.warning(
                         f"Duplicate sampleIDs found in known coordinates file."
                     )
-                    known_lat, known_lon = (
-                        gdfk.dissolve().centroid.y,
-                        gdfk.dissolve().centroid.x,
-                    )
+                    known_lat = gdfk.dissolve().centroid.y
+                    known_lon = gdfk.dissolve().centroid.x
                 elif not gdfk.empty:
-                    known_lat, known_lon = (
-                        gdfk.geometry.y.iloc[0],
-                        gdfk.geometry.x.iloc[0],
-                    )
+                    known_lat = gdfk.geometry.y.iloc[0]
+                    known_lon = gdfk.geometry.x.iloc[0]
                 else:
                     self.logger.warning(
                         f"Known coordinates missing for sample {sample_id}, though they were expected."
@@ -286,17 +254,19 @@ class SpatialDataProcessor:
                 if gdfk is not None:
                     dfk = self.to_pandas(gdfk)
 
-                haversine_err = self.haversine_distance(
-                    np.array([[mean_lat, mean_lon]]), np.array([[known_lat, known_lon]])
-                )
-                geodesic_err = self.geodesic_distance(
-                    np.array([[mean_lat, mean_lon]]), np.array([[known_lat, known_lon]])
-                )
+                    haversine_err = self.haversine_distance(
+                        np.array([[mean_lat, mean_lon]]),
+                        np.array([[known_lat, known_lon]]),
+                    )
+                    geodesic_err = self.geodesic_distance(
+                        np.array([[mean_lat, mean_lon]]),
+                        np.array([[known_lat, known_lon]]),
+                    )
 
-                haversine_err = self._validate_dists(haversine_err)
-                geodesic_err = self._validate_dists(geodesic_err)
-                resd["haversine_error"] = haversine_err
-                resd["geodesic_error"] = geodesic_err
+                    haversine_err = self._validate_dists(haversine_err)
+                    geodesic_err = self._validate_dists(geodesic_err)
+                    resd["haversine_error"] = haversine_err
+                    resd["geodesic_error"] = geodesic_err
 
             yield group, sample_id, dfk, resd
 

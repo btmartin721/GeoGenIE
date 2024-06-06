@@ -15,7 +15,7 @@ from torch.utils.data import DataLoader
 from geogenie.plotting.plotting import PlotGenIE
 from geogenie.samplers.interpolate import run_genotype_interpolator
 from geogenie.utils.callbacks import callback_init
-from geogenie.utils.data import CustomDataset
+from geogenie.utils.data import CustomDataset, UnlabeledDataset
 
 
 class Bootstrap:
@@ -24,8 +24,10 @@ class Bootstrap:
         train_loader,
         val_loader,
         test_loader,
+        pred_loader,
         val_indices,
         test_indices,
+        pred_indices,
         sample_data,
         samples,
         args,
@@ -53,8 +55,10 @@ class Bootstrap:
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.test_loader = test_loader
+        self.pred_loader = pred_loader
         self.val_indices = val_indices
         self.test_indices = test_indices
+        self.pred_indices = pred_indices
         self.sample_data = sample_data
         self.samples = samples
         self.args = args
@@ -274,57 +278,63 @@ class Bootstrap:
         return resampled_weights, kwargs
 
     def save_bootstrap_results(
-        self, boot, test_metrics, test_preds, test_indices, write_func, dataset
+        self, boot, test_preds, test_indices, write_func, dataset, test_metrics=None
     ):
         """
         Save the results of each bootstrap iteration.
 
         Args:
             boot (int): The current bootstrap iteration.
-            test_metrics (dict): Test set metrics for the current iteration.
             test_preds (np.array): Predictions made by the model in the current iteration.
             test_indices (np.ndarray): Indices for current validation or test set.
             write_func (callable): Function to write the predictions to file.
             dataset (str): Which dataset to use. Valid options: {"test", "val"}.
+            test_metrics (dict, optional): Test set metrics for the current iteration. Should be None if dataset == 'pred', otherwise should be defined. Defaults to None.
 
         Returns:
             pd.DataFrame: Output predictions.
         """
-        if dataset not in {"test", "val"}:
-            msg = f"'dataset' must be either 'test' or 'val', but got: {dataset}"
+        if dataset not in {"test", "val", "pred"}:
+            msg = f"dataset must be 'test', 'val', or 'pred', but got {dataset}"
             self.logger.error(msg)
             raise ValueError(msg)
 
-        pth = Path(self.args.output_dir)
-        pth = pth.joinpath("bootstrap_metrics", dataset)
+        outdir = Path(self.args.output_dir)
+
+        if dataset != "pred":
+            if test_metrics is None:
+                msg = "'test_metrics' must not be NoneType if dataset != 'pred'"
+                self.logger.error(msg)
+                raise TypeError(msg)
+            pth = outdir / "bootstrap_metrics" / dataset
+            pth.mkdir(exist_ok=True, parents=True)
+            of = f"{self.args.prefix}_bootrep{boot}_{dataset}_metrics.json"
+            boot_file_path = pth / of
+
+            with open(boot_file_path, "w") as fout:
+                json.dump(test_metrics, fout)
+
+            # If this is the first bootstrap iteration, delete existing file
+            if boot_file_path.exists():
+                if self.verbose >= 2:
+                    self.logger.warn("Found existing metrics file. Removing it.")
+                boot_file_path.unlink()  # Remove the file.
+
+        if test_metrics is not None and dataset == "pred":
+            msg = "'test_metrics' was defined for unknown predictions."
+            self.logger.error(msg)
+            raise TypeError(msg)
+
+        ds = "unknown" if dataset == "pred" else dataset
+        pth = outdir / "bootstrap_predictions" / ds
         pth.mkdir(exist_ok=True, parents=True)
-        of = f"{self.args.prefix}_bootrep{boot}_{dataset}_metrics.json"
-        boot_file_path = pth.joinpath(of)
-
-        with open(boot_file_path, "w") as fout:
-            json.dump(test_metrics, fout)
-
-        # If this is the first bootstrap iteration, delete existing file
-        if boot == 0 and os.path.exists(boot_file_path):
-            if self.verbose >= 2:
-                self.logger.warn("Found existing metrics file. Removing it.")
-            os.remove(boot_file_path)
-
-        pth = Path(self.args.output_dir)
-        pth = pth.joinpath("bootstrap_predictions", dataset)
-        pth.mkdir(exist_ok=True, parents=True)
-        of = f"{self.args.prefix}_bootrep{boot}_{dataset}_predictions.csv"
-        outfile = pth.joinpath(of)
+        of = f"{self.args.prefix}_bootrep{boot}_{ds}_predictions.csv"
+        outfile = pth / of
 
         if isinstance(test_preds, dict):
             test_preds = np.array(list(test_preds.values()))
 
-        return write_func(
-            test_preds,
-            test_indices,
-            self.sample_data,
-            outfile,
-        )
+        return write_func(test_preds, test_indices, outfile)
 
     def perform_bootstrap_training(
         self, train_func, pred_func, write_func, unseen_pred_func, ModelClass
@@ -361,16 +371,6 @@ class Bootstrap:
         bootstrap_preds, bootstrap_test_preds, bootstrap_val_preds = [], [], []
         bootstrap_test_metrics, bootstrap_val_metrics = [], []
 
-        train_features = self.train_loader.dataset.features.numpy()
-        train_labels = self.train_loader.dataset.labels.numpy()
-
-        # (
-        #     self.importance_sorted_indices,
-        #     self.sample_size,
-        #     self.top_features,
-        #     self.top_indices,
-        # ) = self.get_important_features(train_features, train_labels)
-
         # Generator function. Processes one bootstrap at a time.
         for boot, (
             model,
@@ -379,13 +379,10 @@ class Bootstrap:
             test_loader,
         ) in enumerate(self.bootstrap_training_generator(ModelClass, train_func)):
             if self.verbose >= 1:
-                self.logger.info(
-                    f"Processing bootstrap {boot + 1}/{self.nboots}",
-                )
+                self.logger.info(f"Processing bootstrap {boot + 1}/{self.nboots}")
 
-            bootrep_file = os.path.join(
-                outdir, "models", f"{self.args.prefix}_model_bootrep{boot}.pt"
-            )
+            outpth = Path(outdir) / "models"
+            bootrep_file = outpth / f"{self.args.prefix}_model_bootrep{boot}.pt"
 
             if isinstance(model, tuple):
                 model = model[0]
@@ -395,16 +392,13 @@ class Bootstrap:
                 self.logger.error(msg)
                 raise TypeError(msg)
 
-            # Save or evaluate the trained model
-            torch.save(model.state_dict(), bootrep_file)
-
             # Process predictions for each bootstrap replicate.
             val_preds, val_metrics = pred_func(
                 model,
                 val_loader,
                 None,
                 return_truths=False,
-                use_rf=False,
+                use_rf=self.args.use_gradient_boosting,
                 bootstrap=True,
             )
 
@@ -414,50 +408,98 @@ class Bootstrap:
                 test_loader,
                 None,
                 return_truths=False,
-                use_rf=False,
+                use_rf=self.args.use_gradient_boosting,
                 bootstrap=True,
             )
 
+            X_pred = self.ds.data["X_pred"].copy()
+            X_pred = X_pred[:, resampled_indices]
+
+            if not self.args.use_gradient_boosting:
+                pred_tensor = torch.tensor(X_pred, dtype=self.dtype, device=self.device)
+
+                pred_dataset = UnlabeledDataset(pred_tensor)
+                pred_loader = DataLoader(pred_dataset)
+            else:
+                pred_loader = self.ds.data["X_pred"][:, resampled_indices].copy()
+
+            real_preds = pred_func(
+                model,
+                pred_loader,
+                None,
+                return_truths=False,
+                use_rf=self.args.use_gradient_boosting,
+                bootstrap=True,
+                is_val=False,
+            )
+
             test_preds_df, test_sample_data = self._extract_sample_ids(
-                test_preds, self.test_indices
+                test_preds, self.samples[self.test_indices]
             )
 
             val_preds_df, val_sample_data = self._extract_sample_ids(
-                val_preds, self.val_indices
+                val_preds, self.samples[self.val_indices]
+            )
+
+            # # Writes predictions to separate files for each bootrep.
+            # real_preds, pred_outfile = unseen_pred_func(
+            #     model,
+            #     self.device,
+            #     use_rf=self.args.use_gradient_boosting,
+            #     col_indices=resampled_indices,
+            #     boot_rep=boot,
+            # )
+
+            real_preds_df, pred_sample_data = self._extract_sample_ids(
+                real_preds, self.ds.pred_samples
             )
 
             test_preds = dict(zip(test_sample_data, test_preds))
             val_preds = dict(zip(val_sample_data, val_preds))
-
-            # Writes predictions to separate files for each bootrep.
-            real_preds_df = unseen_pred_func(
-                model,
-                self.device,
-                use_rf=False,
-                col_indices=resampled_indices,
-                boot_rep=boot,
-            )
+            real_preds = dict(zip(pred_sample_data, real_preds))
 
             # Get bootstraps of real predictions.
             bootstrap_preds.append(real_preds_df)
-
-            # Get metrics for test dataset.
-            bootstrap_test_metrics.append(test_metrics)
 
             # Save test set predictions to list of dataframes.
             bootstrap_test_preds.append(test_preds_df)
 
             # Get validation set predictions and metrics into list of dfs.
             bootstrap_val_preds.append(val_preds_df)
+
+            # Get metrics for test dataset.
+            bootstrap_test_metrics.append(test_metrics)
+
             bootstrap_val_metrics.append(val_metrics)
 
             # Save metrics and predictions
             self.save_bootstrap_results(
-                boot, test_metrics, test_preds, self.test_indices, write_func, "test"
+                boot,
+                test_preds,
+                self.test_indices,
+                write_func,
+                "test",
+                test_metrics=test_metrics,
             )
             self.save_bootstrap_results(
-                boot, val_metrics, val_preds, self.val_indices, write_func, "val"
+                boot,
+                val_preds,
+                self.val_indices,
+                write_func,
+                "val",
+                test_metrics=val_metrics,
             )
+            self.save_bootstrap_results(
+                boot,
+                real_preds,
+                self.ds.indices["pred_indices"],
+                write_func,
+                "pred",
+                test_metrics=None,
+            )
+
+            # Save the trained model to disk.
+            torch.save(model.state_dict(), bootrep_file)
 
         boot_real_df = self._process_boot_preds(outdir, bootstrap_preds, dataset="pred")
 
@@ -489,9 +531,9 @@ class Bootstrap:
         if self.verbose >= 1:
             self.logger.info("Bootstrap training completed!")
 
-    def _extract_sample_ids(self, preds, indices):
+    def _extract_sample_ids(self, preds, samples):
         df = pd.DataFrame(preds, columns=["x", "y"])
-        df["sampleID"] = self.samples[indices]
+        df["sampleID"] = samples
         df = df[["sampleID", "x", "y"]]
         return df, df["sampleID"].to_numpy().tolist()
 
@@ -543,7 +585,7 @@ class Bootstrap:
             df_known = None
 
         if df_known is None and dataset != "pred":
-            self.logger.info("Known coordinates were not provided.")
+            self.logger.warning("Known coordinates were not provided.")
 
         results = []
 

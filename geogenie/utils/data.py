@@ -1,6 +1,18 @@
 import torch
 
 
+class UnlabeledDataset(torch.utils.data.Dataset):
+    def __init__(self, data):
+        self.data = data
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        sample = self.data[idx]
+        return sample
+
+
 class CustomDataset(torch.utils.data.Dataset):
     def __init__(self, features, labels, sample_weights=None, dtype=torch.float32):
         """
