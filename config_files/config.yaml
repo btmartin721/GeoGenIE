@@ -212,13 +212,13 @@ bbox_buffer: 0.1  # Default: 0.1.
 # ==============================================================
 
 # Output file prefix.
-prefix: "fpr_best_model12_5_rerun_standardtrain3"  # Default: 'output'.
+prefix: "fpr_best_model12_8_predfix"  # Default: 'output'.
 
 # SQLite3 database directory to use with Optuna parameter optimization. If provided, then the Optuna paramter optimization can be resumed following a completed GeoGenIE run. Otherwise, the parameter optimization is done all in-memory and is not resumeable.
 sqldb: null  # Default: null.
 
 # Directory to store all output files. Includes predictions, plots, metrics, etc.
-output_dir: "./analyses/fpr_best_model12_5_rerun"  # Default: './output'.
+output_dir: "./analyses/fpr_best_model12_8_predfix"  # Default: './output'.
 
 # Random seed for reproducibility. Used for various purposes, including splitting the training, validation, and test datasets.
 seed: 42  # Default: null.
