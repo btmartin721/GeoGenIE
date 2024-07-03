@@ -24,7 +24,6 @@ class Bootstrap:
         train_loader,
         val_loader,
         test_loader,
-        pred_loader,
         val_indices,
         test_indices,
         pred_indices,
@@ -41,9 +40,10 @@ class Bootstrap:
         Args:
             train_loader (DataLoader): DataLoader for the training dataset.
             val_loader (DataLoader): DataLoader for the validation dataset.
-            val_indices (np.ndarray): Indices for validation data.
             test_loader (torch.utils.data.DataLoader): DataLoader for the test dataset.
+            val_indices (np.ndarray): Indices for validation data.
             test_indices (np.ndarray): Indices for the test data.
+            pred_indices (np.ndarray): Indices for the unknown samples.
             sample_data (pd.DataFrame): Sample IDs and coordinate data.
             samples (np.ndarray): All sample IDs.
             args (argparse.Namespace): User-supplied arguments.
@@ -55,7 +55,6 @@ class Bootstrap:
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.test_loader = test_loader
-        self.pred_loader = pred_loader
         self.val_indices = val_indices
         self.test_indices = test_indices
         self.pred_indices = pred_indices
@@ -70,7 +69,6 @@ class Bootstrap:
         self.device = device
         self.dtype = torch.float32 if args.dtype == "float32" else torch.float64
 
-        self.subdir = "bootstrap"
         self.logger = logging.getLogger(__name__)
 
         self.plotting = PlotGenIE(
@@ -87,14 +85,15 @@ class Bootstrap:
             remove_splines=self.args.remove_splines,
         )
 
-    def _resample_loaders(self, train_loader, val_loader, test_loader):
+    def _resample_loaders(self, train_loader, val_loader, test_loader, pred_loader):
         """
         Resample only the validation and test data loaders using bootstrapping.
 
         Args:
-            train_loader: DataLoader for the training dataset (not resampled).
+            train_loader: DataLoader for the training dataset (to be resampled).
             val_loader: DataLoader for the validation dataset (to be resampled).
             test_loader: DataLoader for the test dataset (to be resampled).
+            pred_loader: DataLoader for the pred dataset (to be resampled).
 
         Returns:
             Tuple containing the original train loader and resampled validation and test loaders.
@@ -106,10 +105,15 @@ class Bootstrap:
         test_loader, __ = self._resample_boot(
             test_loader, resampled_indices, is_val=True
         )
+        pred_loader, ___ = self._resample_boot(
+            pred_loader, resampled_indices, is_val=False, is_pred=True
+        )
 
-        return (train_loader, val_loader, test_loader, resampled_indices)
+        return (train_loader, val_loader, test_loader, pred_loader, resampled_indices)
 
-    def _resample_boot(self, loader, sampled_feature_indices=None, is_val=False):
+    def _resample_boot(
+        self, loader, sampled_feature_indices=None, is_val=False, is_pred=False
+    ):
         """
         Apply resampling to a given DataLoader.
 
@@ -117,22 +121,24 @@ class Bootstrap:
             loader (torch.utils.data.DataLoader): The DataLoader to resample.
             sampled_feature_indices (np.ndarray): Numpy array of feature indices to use if is_val is True. Defaults to None.
             is_val (bool): If True, then it's a validation or test dataset. Otherwise, it's a training dataset.
+            is_pred (bool): If True, then it's the unknown pred dataset.
 
         Returns:
             DataLoader: The resampled DataLoader.
         """
         dataset = loader.dataset
         features = dataset.features.numpy().copy()
-        labels = dataset.labels.numpy()
-        sample_weights = dataset.sample_weights.numpy()
+
+        if not is_pred:
+            labels = dataset.labels.numpy()
+            sample_weights = dataset.sample_weights.numpy()
 
         if sampled_feature_indices is None or not is_val:
-            sample_size = int(self.args.feature_prop * features.shape[1])
-            sampled_feature_indices = np.random.choice(
-                np.arange(features.shape[1]), size=sample_size, replace=True
-            )
-
-        features = features[:, sampled_feature_indices]
+            if not is_pred:
+                sample_size = int(self.args.feature_prop * features.shape[1])
+                sampled_feature_indices = np.random.choice(
+                    np.arange(features.shape[1]), size=sample_size, replace=True
+                )
 
         if sampled_feature_indices is None:
             raise TypeError(
@@ -142,48 +148,41 @@ class Bootstrap:
         features = features[:, sampled_feature_indices]
 
         use_sampler = {"sampler", "both"}
-        shuffle = not is_val and not self.args.use_weighted in use_sampler
+        shuffle = (
+            not is_val and not self.args.use_weighted in use_sampler and not is_pred
+        )
         kwargs = {"batch_size": loader.batch_size, "shuffle": shuffle}
 
-        dataset = CustomDataset(
-            features, labels, sample_weights=sample_weights, dtype=self.dtype
-        )
+        if is_pred:
+            dataset = UnlabeledDataset(features)
+        else:
+            dataset = CustomDataset(
+                features, labels, sample_weights=sample_weights, dtype=self.dtype
+            )
 
         return DataLoader(dataset, **kwargs), sampled_feature_indices
 
-    def get_important_features(self, features, labels):
-        n_est = self.args.n_importance_estimators
-        seed = self.args.seed
-
-        # Feature importance using a Random Forest Regressor
-        model = RandomForestRegressor(n_estimators=n_est, n_jobs=-1, random_state=seed)
-
-        model.fit(features, labels)
-        feature_importances = model.feature_importances_
-
-        # Sort features by importance
-        importance_sorted_indices = np.argsort(feature_importances)[::-1]
-
-        # Get feature_prop features.
-        sample_size = int(self.args.feature_prop * features.shape[1])
-
-        # Fixed proportion from top features
-        # e.g., 20% from top features (adjustable)
-        top_features = int(self.args.important_feature_prop * sample_size)
-        top_indices = importance_sorted_indices[:top_features]
-        return importance_sorted_indices, sample_size, top_features, top_indices
-
     def train_one_bootstrap(self, boot, ModelClass, train_func):
+        self.logger.info(f"Entered train_one_bootstrap with boot: {boot}")
         try:
-            self.logger.info(f"Starting bootstrap iteration {boot + 1}/{self.nboots}")
+            if self.args.verbose >= 1:
+                self.logger.info(
+                    f"Starting bootstrap iteration {boot + 1}/{self.nboots}"
+                )
+
+            X_pred = self.ds.data["X_pred"].copy()
+            pred_tensor = torch.tensor(X_pred, dtype=self.dtype, device=self.device)
+            pred_dataset = UnlabeledDataset(pred_tensor)
+            pred_loader = DataLoader(pred_dataset)
 
             (
                 train_loader,
                 val_loader,
                 test_loader,
+                pred_loader_resamp,
                 resampled_indices,
             ) = self._resample_loaders(
-                self.train_loader, self.val_loader, self.test_loader
+                self.train_loader, self.val_loader, self.test_loader, pred_loader
             )
 
             model = ModelClass(
@@ -197,7 +196,13 @@ class Bootstrap:
             ).to(self.device)
 
             optimizer = self.extract_best_params(self.best_params, model)
-            early_stop, lr_scheduler = callback_init(optimizer, self.args)
+
+            if self.args.verbose >= 2:
+                self.logger.info(f"Creating EarlyStopping with boot: {boot}")
+
+            early_stop, lr_scheduler = callback_init(
+                optimizer, self.args, trial=None, boot=boot
+            )
 
             trained_model = train_func(
                 train_loader,
@@ -211,19 +216,30 @@ class Bootstrap:
                 lr_scheduler=lr_scheduler,
             )
 
-            return (trained_model, resampled_indices, val_loader, test_loader)
+            if self.args.verbose >= 2:
+                self.logger.info(f"Completed bootstrap training with replicate: {boot}")
+
+            return (
+                trained_model,
+                resampled_indices,
+                val_loader,
+                test_loader,
+                pred_loader_resamp,
+            )
 
         except Exception as e:
             self.logger.error(
-                f"Error during model training in bootstrap iteration {boot + 1}: {str(e)}"
+                f"Error during model training in bootstrap iteration {boot}: {str(e)}"
             )
             raise e
 
     def bootstrap_training_generator(self, ModelClass, train_func):
         n_jobs = os.cpu_count() if self.args.n_jobs == -1 else self.args.n_jobs
-        self.logger.info(
-            f"Multiprocessing: Using {n_jobs} threads for bootstrapping..."
-        )
+
+        if self.args.verbose >= 1:
+            self.logger.info(
+                f"Multiprocessing: Using {n_jobs} threads for bootstrapping..."
+            )
 
         with ThreadPoolExecutor(max_workers=n_jobs) as executor:
             futures = {
@@ -234,18 +250,22 @@ class Bootstrap:
             }
 
             for future in futures:
+                boot = futures[future]
+
+                if self.args.verbose >= 2:
+                    self.logger.info(f"Awaiting result for boot {boot}")
                 try:
                     result = future.result()
-                    if result == (None, None, None):
-                        self.logger.error(
-                            f"Bootstrap iteration {futures[future] + 1} had an error."
-                        )
+
+                    if self.args.verbose >= 2:
+                        self.logger.info(f"Completed job for boot {boot}")
+                    if all(r is None for r in result):
+                        self.logger.error(f"Bootstrap iteration {boot} had an error.")
                         continue
                     yield result
                 except Exception as exc:
-                    boot = futures[future]
                     self.logger.error(
-                        f"Bootstrap iteration {boot + 1} generated an exception: {exc}"
+                        f"Bootstrap iteration {boot} generated an exception: {exc}"
                     )
                     raise exc
 
@@ -303,7 +323,7 @@ class Bootstrap:
 
         if dataset != "pred":
             if test_metrics is None:
-                msg = "'test_metrics' must not be NoneType if dataset != 'pred'"
+                msg = "'test_metrics' cannot be NoneType if dataset != 'pred'"
                 self.logger.error(msg)
                 raise TypeError(msg)
             pth = outdir / "bootstrap_metrics" / dataset
@@ -336,22 +356,7 @@ class Bootstrap:
 
         return write_func(test_preds, test_indices, outfile)
 
-    def perform_bootstrap_training(
-        self, train_func, pred_func, write_func, unseen_pred_func, ModelClass
-    ):
-        """
-        Perform training using bootstrap resampling to obtain confidence interval estimates.
-
-        Args:
-            train_func (callable): Callable PyTorch training loop.
-            pred_func (callable): Callable predict function.
-            write_func (callable): Callable function to write predictions to file.
-            unseen_pred_func (callable): Callable to make unseen predictions and write to file.
-            ModelClass (callable): Callable for subclassed PyTorch model.
-
-        Returns:
-            None
-        """
+    def perform_bootstrap_training(self, train_func, pred_func, write_func, ModelClass):
         if self.verbose >= 1:
             self.logger.info("Starting bootstrap training.")
 
@@ -359,7 +364,6 @@ class Bootstrap:
 
         if self.args.oversample_method != "none":
             try:
-                # Do this only once, before bootstrapping.
                 (self.train_loader, _, __, ___, _____) = run_genotype_interpolator(
                     self.train_loader, self.args, self.ds, self.dtype, self.plotting
                 )
@@ -371,12 +375,12 @@ class Bootstrap:
         bootstrap_preds, bootstrap_test_preds, bootstrap_val_preds = [], [], []
         bootstrap_test_metrics, bootstrap_val_metrics = [], []
 
-        # Generator function. Processes one bootstrap at a time.
         for boot, (
             model,
             resampled_indices,
             val_loader,
             test_loader,
+            pred_loader,
         ) in enumerate(self.bootstrap_training_generator(ModelClass, train_func)):
             if self.verbose >= 1:
                 self.logger.info(f"Processing bootstrap {boot + 1}/{self.nboots}")
@@ -392,7 +396,6 @@ class Bootstrap:
                 self.logger.error(msg)
                 raise TypeError(msg)
 
-            # Process predictions for each bootstrap replicate.
             val_preds, val_metrics = pred_func(
                 model,
                 val_loader,
@@ -402,7 +405,6 @@ class Bootstrap:
                 bootstrap=True,
             )
 
-            # Process predictions for each bootstrap replicate.
             test_preds, test_metrics = pred_func(
                 model,
                 test_loader,
@@ -412,20 +414,19 @@ class Bootstrap:
                 bootstrap=True,
             )
 
-            X_pred = self.ds.data["X_pred"].copy()
-            X_pred = X_pred[:, resampled_indices]
-
-            if not self.args.use_gradient_boosting:
-                pred_tensor = torch.tensor(X_pred, dtype=self.dtype, device=self.device)
-
-                pred_dataset = UnlabeledDataset(pred_tensor)
-                pred_loader = DataLoader(pred_dataset)
-            else:
-                pred_loader = self.ds.data["X_pred"][:, resampled_indices].copy()
+            pred_loader_resampled = DataLoader(
+                CustomDataset(
+                    self.ds.data["X_pred"][:, resampled_indices].copy(),
+                    sample_weights=None,
+                    dtype=self.dtype,
+                ),
+                batch_size=pred_loader.batch_size,
+                shuffle=False,
+            )
 
             real_preds = pred_func(
                 model,
-                pred_loader,
+                pred_loader_resampled,
                 None,
                 return_truths=False,
                 use_rf=self.args.use_gradient_boosting,
@@ -441,38 +442,20 @@ class Bootstrap:
                 val_preds, self.samples[self.val_indices]
             )
 
-            # # Writes predictions to separate files for each bootrep.
-            # real_preds, pred_outfile = unseen_pred_func(
-            #     model,
-            #     self.device,
-            #     use_rf=self.args.use_gradient_boosting,
-            #     col_indices=resampled_indices,
-            #     boot_rep=boot,
-            # )
-
             real_preds_df, pred_sample_data = self._extract_sample_ids(
-                real_preds, self.ds.pred_samples
+                real_preds, self.ds.all_samples[self.pred_indices]
             )
 
             test_preds = dict(zip(test_sample_data, test_preds))
             val_preds = dict(zip(val_sample_data, val_preds))
             real_preds = dict(zip(pred_sample_data, real_preds))
 
-            # Get bootstraps of real predictions.
             bootstrap_preds.append(real_preds_df)
-
-            # Save test set predictions to list of dataframes.
             bootstrap_test_preds.append(test_preds_df)
-
-            # Get validation set predictions and metrics into list of dfs.
             bootstrap_val_preds.append(val_preds_df)
-
-            # Get metrics for test dataset.
             bootstrap_test_metrics.append(test_metrics)
-
             bootstrap_val_metrics.append(val_metrics)
 
-            # Save metrics and predictions
             self.save_bootstrap_results(
                 boot,
                 test_preds,
@@ -492,17 +475,15 @@ class Bootstrap:
             self.save_bootstrap_results(
                 boot,
                 real_preds,
-                self.ds.indices["pred_indices"],
+                self.pred_indices,
                 write_func,
                 "pred",
                 test_metrics=None,
             )
 
-            # Save the trained model to disk.
             torch.save(model.state_dict(), bootrep_file)
 
         boot_real_df = self._process_boot_preds(outdir, bootstrap_preds, dataset="pred")
-
         boot_test_df = self._process_boot_preds(
             outdir, bootstrap_test_preds, dataset="test"
         )
@@ -522,8 +503,6 @@ class Bootstrap:
         self.boot_test_metrics_df_ = dfs["test"]
         self.boot_val_metrics_df_ = dfs["val"]
 
-        # Additional processing like plotting aggregate results, computing
-        # statistics, etc.
         self.plotting.plot_bootstrap_aggregates(
             pd.DataFrame.from_dict(bootstrap_test_metrics)
         )
@@ -562,18 +541,25 @@ class Bootstrap:
         predout.to_csv(summary_outfile, header=True, index=False)
         return predout
 
+    def _process_boot_preds(self, outdir, bootstrap_preds, dataset):
+        if dataset not in {"val", "test", "pred"}:
+            msg = f"dataset must be either 'val', 'test', or 'pred': {dataset}"
+            self.logger.error(msg)
+            raise ValueError(msg)
+
+        bootstrap_df = pd.concat(bootstrap_preds)
+        predout = self._grouped_ci_boot(bootstrap_df, dataset)
+
+        pth = Path(outdir)
+        pth = pth.joinpath("bootstrap_summaries")
+        pth.mkdir(exist_ok=True, parents=True)
+        of = f"{self.args.prefix}_bootstrap_summary_{dataset}_predictions.csv"
+        summary_outfile = pth.joinpath(of)
+
+        predout.to_csv(summary_outfile, header=True, index=False)
+        return predout
+
     def _grouped_ci_boot(self, df, dataset):
-        """
-        Process locality data for each sample to calculate mean, standard deviation, confidence intervals, and DRMS (Distance Root Mean Square).
-
-        Args:
-            df (pd.DataFrame): DataFrame containing 'x', 'y' coordinates and 'sampleID'.
-            dataset (str): Which dataset is being used. Should be one of {"test", "val", "pred"}.
-
-        Returns:
-            pd.DataFrame: DataFrame with calculated statistics for each sample.
-        """
-
         if self.args.known_sample_data is not None and dataset != "pred":
             df_known = pd.read_csv(
                 self.args.known_sample_data,
@@ -593,7 +579,6 @@ class Bootstrap:
 
         if self.args.samples_to_plot is None:
             plot_indices = np.arange(n_uniq_samples)
-
         elif (
             self.args.samples_to_plot is not None
             and self.args.samples_to_plot.isdigit()
@@ -619,7 +604,6 @@ class Bootstrap:
         for i, (group, sample_id, dfk, resd) in enumerate(
             self.plotting.processor.calculate_statistics(gdf, known_coords=df_known)
         ):
-
             if i in plot_indices:
                 self.plotting.plot_sample_with_density(
                     group,

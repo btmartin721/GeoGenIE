@@ -2458,6 +2458,99 @@ class PlotGenIE:
         fig.savefig(outfile, facecolor="white", bbox_inches="tight")
         plt.close()
 
+    def plot_data_distributions(self, train, val, test, is_target=False):
+
+        if is_target:
+            fig, axs = plt.subplots(1, 2, figsize=(15, 5))
+            fig.suptitle("Split Target Distributions")
+
+            ax = axs[0]
+            ax2 = axs[1]
+
+            train = pd.DataFrame(train, columns=["Lon", "Lat"])
+            train["Name"] = "train"
+            val = pd.DataFrame(val, columns=["Lon", "Lat"])
+            val["Name"] = "val"
+            test = pd.DataFrame(test, columns=["Lon", "Lat"])
+            test["Name"] = "test"
+            df = pd.concat([train, val, test])
+            df_melt = df.melt(id_vars=["Name"])
+            df_melt["value"] = df_melt["value"].round(decimals=4)
+            df_lon = df_melt[df_melt["variable"] == "Lon"]
+            df_lat = df_melt[df_melt["variable"] == "Lat"]
+
+            ax = sns.histplot(
+                data=df_lon,
+                x="value",
+                bins=50,
+                alpha=0.7,
+                hue="Name",
+                palette="Set2",
+                multiple="dodge",
+                kde=True,
+                ax=ax,
+            )
+
+            ax.set_xlabel("Longitude")
+            ax.set_ylabel("Count")
+
+            ax2 = sns.histplot(
+                data=df_lat,
+                x="value",
+                bins=50,
+                alpha=0.7,
+                hue="Name",
+                palette="Set2",
+                multiple="dodge",
+                kde=True,
+                ax=ax2,
+            )
+
+            ax2.set_xlabel("Latitude")
+            ax2.set_ylabel("Count")
+
+        else:
+            fig, ax = plt.subplots(1, 1, figsize=(15, 5))
+            train = pd.Series(train.ravel(), name="Train")
+            val = pd.Series(val.ravel(), name="Val")
+            test = pd.Series(test.ravel(), name="Test")
+
+            df = pd.DataFrame()
+            df["Train"] = train
+            df["Val"] = val
+            df["Test"] = test
+
+            df_melt = df.melt()
+            df_melt = df_melt.dropna(axis=0, how="any")
+            df_melt["value"] = df_melt["value"].astype("int8")
+            df_melt["value"] = df_melt["value"].astype(str)
+            df_melt["value"] = "GT" + df_melt["value"]
+
+            ax = sns.countplot(
+                data=df_melt,
+                x="value",
+                alpha=0.7,
+                hue="variable",
+                palette="Set2",
+                ax=ax,
+            )
+
+            ax.set_title("Split Feature Distributions")
+            ax.set_xlabel("Genotypes")
+            ax.set_ylabel("Count")
+
+        print(df_melt)
+        print(df_melt.describe())
+
+        if is_target:
+            fn = f"{self.prefix}_target_dataset_distributions.{self.filetype}"
+        else:
+            fn = f"{self.prefix}_feature_dataset_distributions.{self.filetype}"
+
+        outfile = self.outbasepath.with_name(fn)
+        fig.savefig(outfile, facecolor="white", bbox_inches="tight")
+        plt.close()
+
     @property
     def pfx(self):
         return self.prefix

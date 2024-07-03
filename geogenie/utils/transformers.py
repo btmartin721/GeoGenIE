@@ -361,6 +361,10 @@ class LongLatToCartesianTransformer(BaseEstimator, TransformerMixin):
         return np.column_stack((lon, lat))
 
 
+import numpy as np
+from sklearn.base import BaseEstimator, TransformerMixin
+
+
 class MinMaxScalerGeo(BaseEstimator, TransformerMixin):
     def __init__(
         self, lat_range=(-90, 90), lon_range=(-180, 180), scale_min=0, scale_max=1
@@ -395,23 +399,28 @@ class MinMaxScalerGeo(BaseEstimator, TransformerMixin):
 
         Args:
             X (array-like): The input coordinates to transform. Expected shape (n_samples, 2) where
-                            X[:, 0] should be latitude and X[:, 1] should be longitude.
+                            X[:, 0] should be longitude and X[:, 1] should be latitude.
 
         Returns:
             np.array: Transformed coordinates, where each feature is scaled to [scale_min, scale_max].
         """
-        # Unpack the ranges
-        lat_min, lat_max = self.lat_range
-        lon_min, lon_max = self.lon_range
+        # Ensure input is a numpy array
+        X = np.asarray(X)
 
-        # Transform latitudes
+        # Unpack the ranges
+        lon_min, lon_max = self.lon_range
+        lat_min, lat_max = self.lat_range
+
+        # Initialize the scaled array
         X_scaled = np.empty_like(X, dtype=float)
-        X_scaled[:, 0] = (X[:, 0] - lat_min) / (lat_max - lat_min) * (
+
+        # Transform longitudes
+        X_scaled[:, 0] = (X[:, 0] - lon_min) / (lon_max - lon_min) * (
             self.scale_max - self.scale_min
         ) + self.scale_min
 
-        # Transform longitudes
-        X_scaled[:, 1] = (X[:, 1] - lon_min) / (lon_max - lon_min) * (
+        # Transform latitudes
+        X_scaled[:, 1] = (X[:, 1] - lat_min) / (lat_max - lat_min) * (
             self.scale_max - self.scale_min
         ) + self.scale_min
 
@@ -426,13 +435,26 @@ class MinMaxScalerGeo(BaseEstimator, TransformerMixin):
         Returns:
             np.array: Original geographic coordinates.
         """
+        # Ensure input is a numpy array
+        X_scaled = np.asarray(X_scaled)
+
+        # Initialize the original array
         X_original = np.empty_like(X_scaled, dtype=float)
+
+        # Unpack the ranges
+        lon_min, lon_max = self.lon_range
+        lat_min, lat_max = self.lat_range
+
+        # Inverse transform longitudes
         X_original[:, 0] = (X_scaled[:, 0] - self.scale_min) / (
             self.scale_max - self.scale_min
-        ) * (self.lat_range[1] - self.lat_range[0]) + self.lat_range[0]
+        ) * (lon_max - lon_min) + lon_min
+
+        # Inverse transform latitudes
         X_original[:, 1] = (X_scaled[:, 1] - self.scale_min) / (
             self.scale_max - self.scale_min
-        ) * (self.lon_range[1] - self.lon_range[0]) + self.lon_range[0]
+        ) * (lat_max - lat_min) + lat_min
+
         return X_original
 
 

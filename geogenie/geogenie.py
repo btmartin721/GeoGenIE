@@ -381,23 +381,6 @@ class GeoGenIE:
         early_stopping=None,
         lr_scheduler=None,
     ):
-        """
-        Train the PyTorch model with given parameters.
-
-        Args:
-            train_loader (DataLoader): DataLoader for the training dataset.
-            val_loader (DataLoader): DataLoader for the validation dataset.
-            model (nn.Module): PyTorch model to be trained.
-            optimizer: Optimizer.
-            trial (optuna.Trial): Current Optuna trial. Defaults to None.
-            objective_mode (bool): Whether to return just the model for Optuna's objective function. Defaults to False.
-            do_bootstrap (bool): True if iin botstrap mode. False otherwise. Defaults to False.
-            early_stopping (EarlyStopping): Early stopping callback to use with training. Must be provided if objective_mode is True. Defaults to None.
-            lr_scheduler (torch.optim.lr_scheduler.ReduceLROnPlateau): Learning rate scheduler to use with training. Must be provided if ``objective_mode=True``\. Defaults to None.
-
-        Returns:
-            Model and training statistics, or just the model if in objective mode.
-        """
         if early_stopping is None and (objective_mode or do_bootstrap):
             msg = "Must provide 'early_stopping' argument if 'objective_mode is True', but got NoneType."
             self.logger.error(msg)
@@ -408,10 +391,16 @@ class GeoGenIE:
             self.logger.error(msg)
             raise TypeError(msg)
 
-        if not objective_mode:
-            early_stopping, lr_scheduler = callback_init(optimizer, self.args)
+        if not objective_mode and not do_bootstrap:
+            early_stopping, lr_scheduler = callback_init(
+                optimizer, self.args, trial=trial
+            )
 
-        train_losses, val_losses = [], []
+        # Calculate and log initial loss values
+        initial_train_loss = self.test_step(train_loader, model)
+        initial_val_loss = self.test_step(val_loader, model)
+
+        train_losses, val_losses = [initial_train_loss], [initial_val_loss]
 
         self.train_loader_interp = train_loader
         centroids = None
@@ -438,13 +427,9 @@ class GeoGenIE:
                 train_loader, model, optimizer, self.args.grad_clip, objective_mode
             )
             if avg_train_loss is None or np.isnan(avg_train_loss):
-                # If errored out, then start_time will be string containing
-                # exception.
                 self.logger.warning(f"Model training failed at epoch {epoch}")
-
                 if objective_mode and trial is not None:
                     raise optuna.exceptions.TrialPruned()
-
                 if do_bootstrap and not objective_mode:
                     msg = (
                         f"Model training failed at epoch {epoch} during bootstrapping."
@@ -452,6 +437,7 @@ class GeoGenIE:
                     self.logger.error(msg)
                     return None
                 return None, None
+
             train_losses.append(avg_train_loss)
 
             # Validation
@@ -463,6 +449,7 @@ class GeoGenIE:
             if early_stopping.early_stop:
                 if self.args.verbose >= 2:
                     self.logger.info(f"Early stopping triggered at epoch {epoch}")
+                model = early_stopping.load_best_model(model)
                 break
 
             lr_scheduler.step(avg_val_loss)
@@ -489,28 +476,9 @@ class GeoGenIE:
         return model, train_losses, val_losses, centroids
 
     def train_step(self, train_loader, model, optimizer, grad_clip, objective_mode):
-        """
-        Executes a single training step (epoch) for the given model using the provided data loader, loss function, and optimizer.
-
-        Args:
-            train_loader (DataLoader): DataLoader providing the batched training data.
-            model (torch.nn.Module): The neural network model to be trained.
-            optimizer (torch.optim.Optimizer): Optimizer used for model parameter updates.
-            grad_clip (bool): Flag indicating whether gradient clipping should be applied.
-            objective_mode (bool): Whether using objective mode.
-
-        Returns:
-            float: The average training loss for the epoch.
-
-        Notes:
-            - The method iterates over batches from the train_loader, performing forward and backward passes, and updates the model parameters.
-            - If grad_clip is True, it applies gradient clipping to prevent exploding gradients.
-            - The method returns the average training loss.
-        """
         model.train()
-        total_loss = []
-
         total_loss = 0
+        batch_losses = []
 
         for batch in train_loader:
             data, targets, sample_weight = self._batch_init(model, batch)
@@ -521,9 +489,7 @@ class GeoGenIE:
                 loss = self.criterion(outputs, targets, sample_weight=sample_weight)
                 loss.backward()
                 if grad_clip:
-                    # Gradient clipping.
                     nn.utils.clip_grad_norm_(model.parameters(), 5.0)
-
                 optimizer.step()
             except Exception as e:
                 if objective_mode:
@@ -531,8 +497,29 @@ class GeoGenIE:
                     return None
                 else:
                     raise e
-            total_loss = total_loss + loss.item()
-        return total_loss / len(train_loader)
+
+            batch_loss = loss.item()
+            batch_losses.append(batch_loss)
+            total_loss += batch_loss
+
+        avg_loss = total_loss / len(train_loader)
+        return avg_loss
+
+    def test_step(self, val_loader, model):
+        model.eval()
+        total_val_loss = 0
+        batch_losses = []
+        with torch.no_grad():
+            for batch in val_loader:
+                data, targets, _ = self._batch_init(model, batch)
+                outputs = model(data)
+                val_loss = self.criterion(outputs, targets)
+                batch_loss = val_loss.item()
+                batch_losses.append(batch_loss)
+                total_val_loss += batch_loss
+
+        avg_val_loss = total_val_loss / len(val_loader)
+        return avg_val_loss
 
     def _batch_init(self, model, batch):
         data, targets, sample_weight = batch
@@ -548,33 +535,6 @@ class GeoGenIE:
             targets.to(model.device),
             sample_weight.to(model.device),
         )
-
-    def test_step(self, val_loader, model):
-        """
-        Executes a validation/test step for the given model using the provided data loader and loss function.
-
-        Args:
-            val_loader (DataLoader): DataLoader providing the batched validation or test data.
-            model (torch.nn.Module): The neural network model to be evaluated.
-
-        Returns:
-            float: The average validation or test loss for the entire dataset.
-
-        Notes:
-            - The method iterates over batches from the val_loader, performing forward passes, and computes the loss.
-            - It calculates the average loss over all batches, which is returned as the evaluation metric.
-            - No gradient calculations or backpropagation are performed, as the model is set to evaluation mode.
-        """
-        model.eval()
-        total_val_loss = []
-        with torch.no_grad():
-            for batch in val_loader:
-                data, targets, _ = self._batch_init(model, batch)
-                outputs = model(data)
-                val_loss = self.criterion(outputs, targets)
-                total_val_loss.append(val_loss.item())
-        avg_val_loss = np.mean(total_val_loss)
-        return avg_val_loss
 
     def compute_rolling_statistics(self, times, window_size):
         """
@@ -1025,7 +985,7 @@ class GeoGenIE:
         predictions = np.concatenate(predictions, axis=0)
 
         if not is_val:
-            predictions = self.ds.norm.inverse_transform(predictions)
+            predictions = self.ds.norm.inverse_transform(predictions.copy())
             geo_coords_is_valid(predictions)
 
         if is_val:
@@ -1220,6 +1180,7 @@ class GeoGenIE:
             self.ds.test_loader,
             self.ds.indices["val_indices"],
             self.ds.indices["test_indices"],
+            self.ds.indices["pred_indices"],
             self.ds.sample_data,
             self.ds.samples,
             self.args,
@@ -1233,7 +1194,6 @@ class GeoGenIE:
             self.train_model,
             self.predict_locations,
             self.write_pred_locations,
-            self.make_unseen_predictions,
             ModelClass,
         )
 

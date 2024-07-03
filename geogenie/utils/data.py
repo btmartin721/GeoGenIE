@@ -4,6 +4,7 @@ import torch
 class UnlabeledDataset(torch.utils.data.Dataset):
     def __init__(self, data):
         self.data = data
+        self.features = data
 
     def __len__(self):
         return len(self.data)
@@ -14,13 +15,13 @@ class UnlabeledDataset(torch.utils.data.Dataset):
 
 
 class CustomDataset(torch.utils.data.Dataset):
-    def __init__(self, features, labels, sample_weights=None, dtype=torch.float32):
+    def __init__(self, features, labels=None, sample_weights=None, dtype=torch.float32):
         """
         Initialize custom PyTorch Dataset that incorporates sample weighting.
 
         Args:
             features (Tensor): Input features.
-            labels (Tensor): Labels corresponding to the features.
+            labels (Tensor, optional): Labels corresponding to the features. Defaults to None.
             sample_weights (Tensor): Weights for each sample. If None, then a sample_weights tensor is still created, but all weights will be equal to 1.0 (equal weighting). Defaults to None.
             dtype (torch.dtype): Data type to use with PyTorch. Must be a torch dtype. Defaults to torch.float32.
 
@@ -34,7 +35,7 @@ class CustomDataset(torch.utils.data.Dataset):
 
         if not isinstance(features, torch.Tensor):
             features = torch.tensor(features, dtype=self.dtype)
-        if not isinstance(labels, torch.Tensor):
+        if not isinstance(labels, torch.Tensor) and labels is not None:
             labels = torch.tensor(labels, dtype=self.dtype)
 
         if sample_weights is None:
@@ -66,5 +67,7 @@ class CustomDataset(torch.utils.data.Dataset):
         Returns:
             tuple: (feature, label, sample_weight) for the specified index.
         """
-
-        return self.features[idx], self.labels[idx], self.sample_weights[idx]
+        if self.labels is not None:
+            return self.features[idx], self.labels[idx], self.sample_weights[idx]
+        else:
+            return self.features[idx]

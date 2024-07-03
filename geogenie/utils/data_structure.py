@@ -447,17 +447,6 @@ class DataStructure:
         return optimal_k
 
     def split_train_test(self, train_split, val_split, seed, args):
-        """Splits data with stratification based on K-Means clustering of target variables.
-
-        Args:
-            train_split (float): Proportion of the data to be used for training.
-            val_split (float): Proportion of the training data to be used for validation.
-            seed (int): Random seed for reproducibility.
-            args (argparse.Namespace): User-supplied arguments.
-
-        Returns:
-            tuple: tuple containing indices and data for training, validation, and testing.
-        """
         if self.verbose >= 1:
             self.logger.info(
                 "Splitting data into train, validation, and test datasets."
@@ -468,7 +457,6 @@ class DataStructure:
         if train_split + val_split >= 1:
             raise ValueError("The sum of train_split and val_split must be < 1.")
 
-        # Initial split (non-NaN samples) into training + validation and test sets
         (
             X_train_val,
             X_test,
@@ -485,7 +473,11 @@ class DataStructure:
             shuffle=True,
         )
 
-        # Stratification using KMeans on target variables
+        # Ensure no overlap between train/val and test sets
+        assert not set(train_val_indices).intersection(
+            test_indices
+        ), "Data leakage detected between train/val and test sets!"
+
         optimal_k = self._find_optimal_clusters(y_train_val)
         kmeans = KMeans(n_clusters=optimal_k, random_state=seed)
         cluster_labels = kmeans.fit_predict(y_train_val)
@@ -495,10 +487,9 @@ class DataStructure:
         train_val_indices_list, train_indices_list = [], []
         val_indices_list, test_indices_list = [], []
 
-        # Combine data into sets based on cluster labels
         for cluster_id in range(optimal_k):
             cluster_indices = np.where(cluster_labels == cluster_id)[0]
-            np.random.shuffle(cluster_indices)  # Shuffle within each cluster
+            np.random.shuffle(cluster_indices)
             cluster_size = len(cluster_indices)
 
             split_index = int(cluster_size * (train_split + val_split))
@@ -506,17 +497,14 @@ class DataStructure:
             train_val_indices_cluster = cluster_indices[:split_index]
             test_indices_cluster = cluster_indices[split_index:]
 
-            # Append subsets for training
             X_train_val_list.append(self.X[train_val_indices_cluster])
             y_train_val_list.append(self.y[train_val_indices_cluster])
             train_val_indices_list.append(train_val_indices_cluster)
 
-            # Append subsets for validation
             X_test_list.append(self.X[test_indices_cluster])
             y_test_list.append(self.y[test_indices_cluster])
             test_indices_list.append(test_indices_cluster)
 
-        # Concatenate all subsets to form the final training and validation sets
         X_train_val = np.concatenate(X_train_val_list, axis=0)
         y_train_val = np.concatenate(y_train_val_list, axis=0)
         train_val_indices = np.concatenate(train_val_indices_list, axis=0)
@@ -525,11 +513,16 @@ class DataStructure:
         y_test = np.concatenate(y_test_list, axis=0)
         test_indices = np.concatenate(test_indices_list, axis=0)
 
-        # Calculate validation size relative to the train_val set
         val_size = val_split / (train_split + val_split)
 
-        # Split train_val data into actual training and validation sets
-        (X_train, X_val, y_train, y_val, train_indices, val_indices) = train_test_split(
+        (
+            X_train,
+            X_val,
+            y_train,
+            y_val,
+            train_indices,
+            val_indices,
+        ) = train_test_split(
             X_train_val,
             y_train_val,
             train_val_indices,
@@ -537,6 +530,11 @@ class DataStructure:
             random_state=seed,
             shuffle=True,
         )
+
+        # Ensure no overlap between train and val sets
+        assert not set(train_indices).intersection(
+            val_indices
+        ), "Data leakage detected between train and val sets!"
 
         if args.use_gradient_boosting:
             (
@@ -548,36 +546,30 @@ class DataStructure:
                 train_val_indices,
             ) = train_test_split(X_val, y_val, val_indices, test_size=0.5)
 
-        # Stratification using KMeans on target variables
         optimal_k = self._find_optimal_clusters(y_train_val)
         kmeans = KMeans(n_clusters=optimal_k, random_state=seed)
         cluster_labels = kmeans.fit_predict(y_train_val)
 
-        # Create empty lists to accumulate subsets
         X_train_list, y_train_list, train_indices_list = [], [], []
         X_val_list, y_val_list, val_indices_list = [], [], []
 
-        # Stratify and split data based on cluster labels
         for cluster_id in range(optimal_k):
             cluster_indices = np.where(cluster_labels == cluster_id)[0]
-            np.random.shuffle(cluster_indices)  # Shuffle within each cluster
-
-            # Calculate indices for training and validation within the cluster
-            split_index = int(len(cluster_indices) * train_split)
+            np.random.shuffle(cluster_indices)
+            split_index = int(
+                len(cluster_indices) * (train_split / (train_split + val_split))
+            )
             train_indices_cluster = cluster_indices[:split_index]
             val_indices_cluster = cluster_indices[split_index:]
 
-            # Append subsets for training
             X_train_list.append(self.X[train_indices_cluster])
             y_train_list.append(self.y[train_indices_cluster])
             train_indices_list.append(train_indices_cluster)
 
-            # Append subsets for validation
             X_val_list.append(self.X[val_indices_cluster])
             y_val_list.append(self.y[val_indices_cluster])
             val_indices_list.append(val_indices_cluster)
 
-        # Concatenate all subsets to form the final training and validation sets
         X_train = np.concatenate(X_train_list, axis=0)
         y_train = np.concatenate(y_train_list, axis=0)
         train_indices = np.concatenate(train_indices_list, axis=0)
@@ -843,6 +835,18 @@ class DataStructure:
         )
         self.test_loader = self.call_create_dataloaders(
             self.data["X_test"], self.data["y_test"], args, True
+        )
+
+        # Plot dataset distributions.
+        self.plotting.plot_data_distributions(
+            self.data["X_train"], self.data["X_val"], self.data["X_test"]
+        )
+
+        self.plotting.plot_data_distributions(
+            self.data["y_train"],
+            self.data["y_val"],
+            self.data["y_test"],
+            is_target=True,
         )
 
         if args.use_gradient_boosting:

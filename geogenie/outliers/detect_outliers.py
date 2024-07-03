@@ -649,7 +649,7 @@ class GeoGeneticOutlierDetector:
         time_durations[f"plot_gamma_distribution_{at}"] = end_time - start_time
 
         if self.verbose >= 2:
-            key = f"plotting_gamma_distribution_{at}"
+            key = f"plot_gamma_distribution_{at}"
             self.logger.info(
                 f"Plotted Gamma distributions. Time taken: {time_durations[key]} seconds"
             )
