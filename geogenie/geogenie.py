@@ -575,40 +575,46 @@ class GeoGenIE:
         dataset=None,
         is_val=True,
     ):
-        """Predict locations using the trained model and evaluate predictions.
+        """Predict locations using the trained model and evaluate predictions."""
 
-        Args:
-            args (argparse.Namespace): argparsed arguments from command-line.
-            model (torch.nn.Module): Trained PyTorch model for predictions.
-            data_loader (torch.utils.data.DataLoader): DataLoader containing the dataset for prediction.
-            outfile (str): Output filename.
-            return_truths (bool): Whether to return truths as well as predictions. Defaults to False.
-            use_rf (bool): Whether to use RandomForest or GradientBoosting models instead of deep learning model. Defaults to False.
-            log_metrics (bool): Whether to log metrics to STDOUT and STDERR.
-            bootstrap (bool): Whether doing bootstrapping. If True, then will not make plots or print stats to log (but will still record stats in JSON files). Defaults to False.
-            is_train (bool): Whether using train dataset. If True, does not make some of the plots for train dataset. Defaults to False.
-            dataset (str): "test" or "val". Defaults to None.
-            is_val (bool): Whether using validation/ test dataset. Otherwise using pred dataset. Defaults to True.
+        model.eval()
+        predictions = []
+        ground_truth = []
 
-        Returns:
-            pandas.DataFrame: DataFrame with predicted locations and corresponding sample IDs.
-        """
-        if use_rf:
-            predictions = model.predict(data_loader.dataset.features.numpy())
-            ground_truth = data_loader.dataset.labels.numpy()
-        else:
+        with torch.no_grad():
             if is_val:
-                predictions, ground_truth = self.model_predict(
-                    model, data_loader, is_val=is_val
-                )
+                for data, target, _ in data_loader:
+                    data = torch.tensor(data, dtype=self.dtype).to(self.device)
+                    target = torch.tensor(target, dtype=self.dtype).to(self.device)
+                    output = model(data)
+                    predictions.append(output.cpu().numpy())
+                    ground_truth.append(target.cpu().numpy())
             else:
-                predictions = self.model_predict(model, data_loader, is_val=is_val)
+                for data in data_loader:
+                    data = torch.tensor(data, dtype=self.dtype).to(self.device)
+                    output = model(data)
+                    predictions.append(output.cpu().numpy())
 
-        if is_val:
+        predictions = np.concatenate(predictions, axis=0)
+
+        def rescale_predictions(y):
+            return self.ds.norm.inverse_transform(y)
+
+        if not is_val:
+            predictions = rescale_predictions(predictions.copy())
+
+            if np.any(np.isnan(predictions)):
+                msg = "Missing values found in predictions. It is likely that the predictions were not made correctly. Terminating execution."
+                self.logger.error(msg)
+                raise TypeError(msg)
+            geo_coords_is_valid(predictions)
+        else:
             # Rescale predictions and ground truth to original scale
+            ground_truth = np.concatenate(ground_truth, axis=0)
+
             predictions, ground_truth, metrics = self.calculate_prediction_metrics(
                 outfile,
-                predictions,
+                predictions.copy(),
                 ground_truth,
                 log_metrics,
                 bootstrap,

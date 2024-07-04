@@ -15,7 +15,7 @@ from torch.utils.data import DataLoader
 from geogenie.plotting.plotting import PlotGenIE
 from geogenie.samplers.interpolate import run_genotype_interpolator
 from geogenie.utils.callbacks import callback_init
-from geogenie.utils.data import CustomDataset, UnlabeledDataset
+from geogenie.utils.data import CustomDataset
 
 
 class Bootstrap:
@@ -85,7 +85,7 @@ class Bootstrap:
             remove_splines=self.args.remove_splines,
         )
 
-    def _resample_loaders(self, train_loader, val_loader, test_loader, pred_loader):
+    def _resample_loaders(self, train_loader, val_loader, test_loader, X_pred):
         """
         Resample only the validation and test data loaders using bootstrapping.
 
@@ -93,10 +93,10 @@ class Bootstrap:
             train_loader: DataLoader for the training dataset (to be resampled).
             val_loader: DataLoader for the validation dataset (to be resampled).
             test_loader: DataLoader for the test dataset (to be resampled).
-            pred_loader: DataLoader for the pred dataset (to be resampled).
+            X_pred: numpy array with the pred dataset (to be resampled).
 
         Returns:
-            Tuple containing the original train loader and resampled validation and test loaders.
+            Tuple containing the original train loader and resampled validation, test, and unknown pred loaders.
         """
         train_loader, resampled_indices = self._resample_boot(
             train_loader, None, is_val=False
@@ -106,39 +106,33 @@ class Bootstrap:
             test_loader, resampled_indices, is_val=True
         )
         pred_loader, ___ = self._resample_boot(
-            pred_loader, resampled_indices, is_val=False, is_pred=True
+            X_pred, resampled_indices, is_val=False, is_pred=True
         )
 
-        return (train_loader, val_loader, test_loader, pred_loader, resampled_indices)
+        return (train_loader, val_loader, test_loader, pred_loader)
 
     def _resample_boot(
         self, loader, sampled_feature_indices=None, is_val=False, is_pred=False
     ):
-        """
-        Apply resampling to a given DataLoader.
 
-        Args:
-            loader (torch.utils.data.DataLoader): The DataLoader to resample.
-            sampled_feature_indices (np.ndarray): Numpy array of feature indices to use if is_val is True. Defaults to None.
-            is_val (bool): If True, then it's a validation or test dataset. Otherwise, it's a training dataset.
-            is_pred (bool): If True, then it's the unknown pred dataset.
+        if isinstance(loader, np.ndarray):
+            features = loader.copy()
+        elif isinstance(loader, DataLoader):
+            dataset = loader.dataset
+            features = dataset.features.numpy().copy()
+        else:
+            msg = f"Invalid type passed to _resample_loaders(): {type(loader)}"
+            self.logger.error(msg)
+            raise TypeError(msg)
 
-        Returns:
-            DataLoader: The resampled DataLoader.
-        """
-        dataset = loader.dataset
-        features = dataset.features.numpy().copy()
+        if sampled_feature_indices is None and not is_val and not is_pred:
+            sample_size = int(self.args.feature_prop * features.shape[1])
 
-        if not is_pred:
-            labels = dataset.labels.numpy()
-            sample_weights = dataset.sample_weights.numpy()
+            idx = np.arange(features.shape[1])
 
-        if sampled_feature_indices is None or not is_val:
-            if not is_pred:
-                sample_size = int(self.args.feature_prop * features.shape[1])
-                sampled_feature_indices = np.random.choice(
-                    np.arange(features.shape[1]), size=sample_size, replace=True
-                )
+            sampled_feature_indices = np.random.choice(
+                idx, size=sample_size, replace=True
+            )
 
         if sampled_feature_indices is None:
             raise TypeError(
@@ -148,60 +142,95 @@ class Bootstrap:
         features = features[:, sampled_feature_indices]
 
         use_sampler = {"sampler", "both"}
-        shuffle = (
-            not is_val and not self.args.use_weighted in use_sampler and not is_pred
-        )
-        kwargs = {"batch_size": loader.batch_size, "shuffle": shuffle}
 
+        shuffle = True
+        if is_pred or is_val or self.args.use_weighted in use_sampler:
+            shuffle = False
+
+        kwargs = {}
         if is_pred:
-            dataset = UnlabeledDataset(features)
+            kwargs["labels"] = None
+            kwargs["sample_weights"] = None
         else:
-            dataset = CustomDataset(
-                features, labels, sample_weights=sample_weights, dtype=self.dtype
-            )
+            kwargs["labels"] = dataset.labels
+            kwargs["sample_weights"] = dataset.sample_weights
+        kwargs["dtype"] = self.dtype
+
+        dataset = CustomDataset(features, **kwargs)
+        kwargs = {"batch_size": self.args.batch_size, "shuffle": shuffle}
 
         return DataLoader(dataset, **kwargs), sampled_feature_indices
 
+    def reset_weights(self, model):
+        """Reinitialize the weights of the model."""
+        for layer in model.children():
+            if hasattr(layer, "reset_parameters"):
+                layer.reset_parameters()
+
+    def reinitialize_model(self, ModelClass, model_params, boot):
+        """Reinitialize a PyTorch model and optimizer with a different seed.
+
+        Args:
+            ModelClass (nn.Module): The class of the model to be reinitialized.
+            model_params (dict): The parameters for the model initialization.
+            boot (int): Current bootstrap replicate index.
+
+        Returns:
+            model (nn.Module): The reinitialized model.
+            optimizer (torch.optim.Optimizer): The reinitialized optimizer.
+            early_stop (EarlyStopping): Early stopping callback.
+            lr_scheduler (LRScheduler): Learning rate scheduler.
+        """
+        # Clear the current model and optimizer
+        torch.cuda.empty_cache()
+
+        # Reinitialize the model
+        model = ModelClass(**model_params).to(model_params["device"])
+
+        self.reset_weights(model)
+
+        # Reinitialize the optimizer
+        optimizer = self.extract_best_params(self.best_params, model)
+
+        early_stop, lr_scheduler = callback_init(
+            optimizer, self.args, trial=None, boot=boot
+        )
+
+        return model, optimizer, early_stop, lr_scheduler
+
     def train_one_bootstrap(self, boot, ModelClass, train_func):
-        self.logger.info(f"Entered train_one_bootstrap with boot: {boot}")
         try:
             if self.args.verbose >= 1:
-                self.logger.info(
-                    f"Starting bootstrap iteration {boot + 1}/{self.nboots}"
-                )
+                msg = f"Starting bootstrap iteration {boot + 1}/{self.nboots}"
+                self.logger.info(msg)
 
-            X_pred = self.ds.data["X_pred"].copy()
-            pred_tensor = torch.tensor(X_pred, dtype=self.dtype, device=self.device)
-            pred_dataset = UnlabeledDataset(pred_tensor)
-            pred_loader = DataLoader(pred_dataset)
+            # NOTE: This led to a bug with unknown predictions in earlier
+            # vesiosn of GeoGenIE. I was using self.ds.X_pred before, but the
+            # indices didn't line up because X_pred had already been subset.
+            X_pred = self.ds.genotypes_enc_imp[self.ds.indices["pred_indices"]]
+            X_pred = X_pred.copy()
 
             (
                 train_loader,
                 val_loader,
                 test_loader,
                 pred_loader_resamp,
-                resampled_indices,
             ) = self._resample_loaders(
-                self.train_loader, self.val_loader, self.test_loader, pred_loader
+                self.train_loader, self.val_loader, self.test_loader, X_pred
             )
 
-            model = ModelClass(
-                len(resampled_indices),
-                width=self.best_params["width"],
-                nlayers=self.best_params["nlayers"],
-                dropout_prop=self.best_params["dropout_prop"],
-                device=self.device,
-                output_width=train_loader.dataset.labels.shape[1],
-                dtype=self.dtype,
-            ).to(self.device)
+            model_params = {
+                "input_size": train_loader.dataset.features.shape[1],
+                "width": self.best_params["width"],
+                "nlayers": self.best_params["nlayers"],
+                "dropout_prop": self.best_params["dropout_prop"],
+                "device": self.device,
+                "output_width": train_loader.dataset.labels.shape[1],
+                "dtype": self.dtype,
+            }
 
-            optimizer = self.extract_best_params(self.best_params, model)
-
-            if self.args.verbose >= 2:
-                self.logger.info(f"Creating EarlyStopping with boot: {boot}")
-
-            early_stop, lr_scheduler = callback_init(
-                optimizer, self.args, trial=None, boot=boot
+            model, optimizer, early_stop, lr_scheduler = self.reinitialize_model(
+                ModelClass=ModelClass, model_params=model_params, boot=boot
             )
 
             trained_model = train_func(
@@ -217,20 +246,18 @@ class Bootstrap:
             )
 
             if self.args.verbose >= 2:
-                self.logger.info(f"Completed bootstrap training with replicate: {boot}")
+                self.logger.info(f"Completed bootstrap replicate: {boot}")
 
             return (
                 trained_model,
-                resampled_indices,
                 val_loader,
                 test_loader,
                 pred_loader_resamp,
             )
 
         except Exception as e:
-            self.logger.error(
-                f"Error during model training in bootstrap iteration {boot}: {str(e)}"
-            )
+            msg = f"Training error during bootstrap iteration {boot}: {str(e)}"
+            self.logger.error(msg)
             raise e
 
     def bootstrap_training_generator(self, ModelClass, train_func):
@@ -377,13 +404,13 @@ class Bootstrap:
 
         for boot, (
             model,
-            resampled_indices,
             val_loader,
             test_loader,
             pred_loader,
         ) in enumerate(self.bootstrap_training_generator(ModelClass, train_func)):
             if self.verbose >= 1:
-                self.logger.info(f"Processing bootstrap {boot + 1}/{self.nboots}")
+                msg = f"Processing bootstrap {boot + 1}/{self.nboots}"
+                self.logger.info(msg)
 
             outpth = Path(outdir) / "models"
             bootrep_file = outpth / f"{self.args.prefix}_model_bootrep{boot}.pt"
@@ -403,6 +430,7 @@ class Bootstrap:
                 return_truths=False,
                 use_rf=self.args.use_gradient_boosting,
                 bootstrap=True,
+                is_val=True,
             )
 
             test_preds, test_metrics = pred_func(
@@ -412,21 +440,12 @@ class Bootstrap:
                 return_truths=False,
                 use_rf=self.args.use_gradient_boosting,
                 bootstrap=True,
-            )
-
-            pred_loader_resampled = DataLoader(
-                CustomDataset(
-                    self.ds.data["X_pred"][:, resampled_indices].copy(),
-                    sample_weights=None,
-                    dtype=self.dtype,
-                ),
-                batch_size=pred_loader.batch_size,
-                shuffle=False,
+                is_val=True,
             )
 
             real_preds = pred_func(
                 model,
-                pred_loader_resampled,
+                pred_loader,
                 None,
                 return_truths=False,
                 use_rf=self.args.use_gradient_boosting,

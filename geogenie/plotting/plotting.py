@@ -2539,9 +2539,6 @@ class PlotGenIE:
             ax.set_xlabel("Genotypes")
             ax.set_ylabel("Count")
 
-        print(df_melt)
-        print(df_melt.describe())
-
         if is_target:
             fn = f"{self.prefix}_target_dataset_distributions.{self.filetype}"
         else:

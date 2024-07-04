@@ -741,7 +741,7 @@ class DataStructure:
         self.mask = self.mask[~self.all_missing_mask]
 
         X, indices, y, index = self.setup_index_masks(X)
-        self.all_indices = indices
+        self.all_indices = indices.copy()
         self.true_indices = indices[self.pred_mask]  # True if is not nan.
         self.pred_indices = indices[~self.pred_mask]  # True if is nan.
 
@@ -818,6 +818,12 @@ class DataStructure:
 
                 if tonly:
                     self.data[k] = self.normalize_target(v, transform_only=tonly)
+
+        # For bootstrapping with unknown predictions.
+        self.genotypes_enc_imp = self.simputer.transform(self.genotypes_enc)
+        self.genotypes_enc_imp = self.embed(
+            args, X=self.genotypes_enc_imp, alg=args.embedding_type, transform_only=True
+        )
 
         if args.verbose >= 1 and args.embedding_type != "none":
             self.logger.info("Finished embedding features!")

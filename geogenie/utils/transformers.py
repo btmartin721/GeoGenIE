@@ -436,7 +436,8 @@ class MinMaxScalerGeo(BaseEstimator, TransformerMixin):
             np.array: Original geographic coordinates.
         """
         # Ensure input is a numpy array
-        X_scaled = np.asarray(X_scaled)
+        if not isinstance(X_scaled, np.ndarray):
+            X_scaled = np.asarray(X_scaled)
 
         # Initialize the original array
         X_original = np.empty_like(X_scaled, dtype=float)

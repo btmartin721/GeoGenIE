@@ -34,7 +34,7 @@ class SampleDensityEstimator:
         self.data = data
         self.use_kde = use_kde
         self.verbose = verbose
-        self.logger = None  # Assuming a logger is defined elsewhere
+        self.logger = logger
         self.density = None
 
     def calculate_adaptive_bandwidth(self, k_neighbors):
@@ -53,10 +53,9 @@ class SampleDensityEstimator:
     def estimate_density(self):
         if self.use_kde:
             if self.verbose >= 1:
-                print("Estimating sample weights with Kernel Density...")
-            adaptive_bandwidth = self.calculate_adaptive_bandwidth(
-                10
-            )  # Example k_neighbors
+                msg = "Estimating sample weights with Kernel Density..."
+                self.logger.info(msg)
+            adaptive_bandwidth = self.calculate_adaptive_bandwidth(10)
             kde = KernelDensity(
                 bandwidth=adaptive_bandwidth,
                 kernel="gaussian",
