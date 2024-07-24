@@ -406,7 +406,7 @@ class PlotGenIE:
         data = []
         for f in os.listdir(directory):
             if f.endswith("_metrics.json"):
-                with open(os.path.join(directory, f), "r") as f:
+                with open(Path(directory, f), "r") as f:
                     json_data = json.load(f)
                     json_data["config"] = str(f).split("/")[-1].split(".")[0]
                     data.append(json_data)
@@ -417,7 +417,7 @@ class PlotGenIE:
         Creates a facet grid of histograms for each selected metric in the DataFrame.
         """
 
-        metric_dir = os.path.join(self.output_dir, "bootstrap")
+        metric_dir = Path(self.output_dir, "bootstrap")
 
         df = self._read_json_files(metric_dir)
 
@@ -2272,12 +2272,32 @@ class PlotGenIE:
         level_90 = z_sorted[np.searchsorted(cumulative_z, 0.90 * total_z)]
         levels = np.sort([level_50, level_70, level_90])
 
+        # Debug prints
+        self.logger.debug(
+            f"Bootstrap Contour Density Levels: "
+            f"50% -> {level_50}, "
+            f"70% -> {level_70}, "
+            f"90% -> {level_90}"
+        )
+
         # Plot
         fig, ax = plt.subplots(figsize=(8, 6))
 
         # Plot density contours
         colors = ["#E69F00", "#56B4E9", "#CC79A7"]
         ax.contour(xx, yy, zz, levels=levels, colors=colors)
+
+        # Additional plot for KDE visualization
+        fig_kde, ax_kde = plt.subplots(figsize=(8, 6))
+        c = ax_kde.contourf(xx, yy, zz, levels=30, cmap="viridis")
+        fig_kde.colorbar(c, ax=ax_kde)
+        ax_kde.set_title("KDE Density Plot")
+
+        fn = f"{self.prefix}_kde_contours_{dataset}_{sample_id}.{self.filetype}"
+        outdir = self.outbasepath.parent / "kde_contour_plots"
+        outfile = outdir / fn
+        outdir.mkdir(exist_ok=True, parents=True)
+        fig_kde.savefig(outfile, facecolor="white", bbox_inches="tight")
 
         # Create custom legend for the contours
         contour_lines = [mlines.Line2D([0], [0], color=color, lw=2) for color in colors]
@@ -2300,7 +2320,7 @@ class PlotGenIE:
         )
 
         if gray_counties is not None:
-            gdf_gray = self._highlight_counties(gray_counties, self.basemap, ax)
+            self._highlight_counties(gray_counties, self.basemap, ax)
 
         labels = ["90% Density", "70% Density", "50% Density"]
 
@@ -2374,9 +2394,9 @@ class PlotGenIE:
                 gray_counties = gray_counties.split(",")
 
             if "NAME" not in gdf.columns:
-                self.logger.warning(
-                    f"Cannot highlight basemap counties. Attribute 'Name' not in provided basemap shapefile: {self.url}"
-                )
+                msg = f"Cannot highlight basemap counties. Attribute 'Name' not in provided basemap shapefile: {self.url}"
+                self.logger.warning(msg)
+
             # Filtering the counties to be colored gray
             gray_county_gdf = gdf[gdf["NAME"].isin(gray_counties)]
             gray_county_gdf.plot(ax=ax, color="darkgray", edgecolor="k", alpha=0.5)

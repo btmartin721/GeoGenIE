@@ -24,7 +24,7 @@ from geogenie.plotting.plotting import PlotGenIE
 from geogenie.samplers.interpolate import run_genotype_interpolator
 from geogenie.samplers.samplers import synthetic_resampling
 from geogenie.utils.callbacks import callback_init
-from geogenie.utils.data import UnlabeledDataset
+from geogenie.utils.data import CustomDataset
 from geogenie.utils.data_structure import DataStructure
 from geogenie.utils.loss import WeightedDRMSLoss, WeightedHuberLoss, weighted_rmse_loss
 from geogenie.utils.scorers import calculate_rmse, kstest
@@ -139,7 +139,7 @@ class GeoGenIE:
         prefix = self.args.prefix
 
         [
-            Path(os.path.join(output_dir, d)).mkdir(exist_ok=True, parents=True)
+            Path(output_dir, d).mkdir(exist_ok=True, parents=True)
             for d in output_dir_list
         ]
 
@@ -168,11 +168,47 @@ class GeoGenIE:
 
         self.boot = None
 
+    def total_execution_time_decorator(self, func):
+        """
+        Decorator to time the execution of a function and print the duration in Hours:Minutes:Seconds format.
+        Logs the execution time using the class's logger.
+
+        Args:
+            func (callable): The function to be timed.
+
+        Returns:
+            callable: The wrapped function with execution time measurement.
+        """
+
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            start_time = time.time()
+            result = func(*args, **kwargs)
+            end_time = time.time()
+
+            elapsed_time = end_time - start_time
+            hours, rem = divmod(elapsed_time, 3600)
+            minutes, seconds = divmod(rem, 60)
+            time_str = (
+                f"Execution time: {int(hours):02}:{int(minutes):02}:{int(seconds):02}"
+            )
+
+            self.logger.info(f"Total execution time: {time_str}")
+
+            return result
+
+        return wrapper
+
     def load_data(self):
         """Loads genotypes from VCF file using pysam, then preprocesses the data by imputing, embedding, and transforming the input data."""
-        if self.args.vcf is not None:
-            self.ds = DataStructure(self.args.vcf, dtype=self.dtype)
-        self.ds.load_and_preprocess_data(self.args)
+        vcf = self.args.vcf
+
+        if vcf is None:
+            raise TypeError(f"VCF file {vcf} cannot be NoneType.")
+
+        kwargs = {"dtype": self.dtype, "debug": self.args.debug}
+        self.ds = DataStructure(vcf, **kwargs)
+        self.args.prefix = self.ds.load_and_preprocess_data(self.args)
 
     def save_model(self, model, filename):
         """Saves the trained model to a file.
@@ -206,7 +242,7 @@ class GeoGenIE:
             - Depending on the configuration, either a Random Forest or a Gradient Boosting model is trained.
             - The performance of the trained model is evaluated using RMSE on the validation dataset.
         """
-        if self.args.verbose >= 2:
+        if self.args.verbose >= 2 or self.args.debug:
             self.logger.info("\n\n")
 
         X_train = self.ds.data["X_train"]
@@ -316,14 +352,9 @@ class GeoGenIE:
         rmse = mean_squared_error(y_val, y_pred, squared=False)
 
         if not objective_mode:
-            self.ds.train_loader.dataset.features = torch.tensor(
-                features, dtype=self.dtype
-            )
-            self.ds.train_loader.dataset.labels = torch.tensor(labels, dtype=self.dtype)
-
-            self.ds.train_loader.dataset.sample_weights = torch.tensor(
-                sample_weights, dtype=self.dtype
-            )
+            self.ds.train_loader.dataset.features = features
+            self.ds.train_loader.dataset.labels = labels
+            self.ds.train_loader.dataset.sample_weights = sample_weights
 
         if objective_mode:
             return clf, rmse
@@ -381,6 +412,26 @@ class GeoGenIE:
         early_stopping=None,
         lr_scheduler=None,
     ):
+        """
+        Trains a given model using specified parameters and data loaders.
+
+        This method supports early stopping and learning rate scheduling, and evaluates the model's performance on the validation dataset.
+
+        Args:
+            train_loader (torch.utils.data.DataLoader): DataLoader for training data.
+            val_loader (torch.utils.data.DataLoader): DataLoader for validation data.
+            model (torch.nn.Module): The PyTorch model to train.
+            optimizer (torch.optim.Optimizer): The optimizer for training the model.
+            trial (optuna.trial.Trial, optional): Optuna trial object for hyperparameter optimization. Defaults to None.
+            objective_mode (bool, optional): If True, the method is used for optimization objectives. Defaults to False.
+            do_bootstrap (bool, optional): If True, performs bootstrap training. Defaults to False.
+            early_stopping (EarlyStopping, optional): Early stopping callback. Defaults to None.
+            lr_scheduler (torch.optim.lr_scheduler, optional): Learning rate scheduler. Defaults to None.
+
+        Returns:
+            tuple or None: Depending on the mode, returns trained model and additional training information or None if training failed.
+        """
+
         if early_stopping is None and (objective_mode or do_bootstrap):
             msg = "Must provide 'early_stopping' argument if 'objective_mode is True', but got NoneType."
             self.logger.error(msg)
@@ -447,7 +498,7 @@ class GeoGenIE:
             # Early Stopping and LR Scheduler
             early_stopping(avg_val_loss, model)
             if early_stopping.early_stop:
-                if self.args.verbose >= 2:
+                if self.args.verbose >= 2 or self.args.debug:
                     self.logger.info(f"Early stopping triggered at epoch {epoch}")
                 model = early_stopping.load_best_model(model)
                 break
@@ -476,6 +527,19 @@ class GeoGenIE:
         return model, train_losses, val_losses, centroids
 
     def train_step(self, train_loader, model, optimizer, grad_clip, objective_mode):
+        """
+        Performs a single training step.
+
+        Args:
+            train_loader (torch.utils.data.DataLoader): DataLoader for training data.
+            model (torch.nn.Module): The PyTorch model to train.
+            optimizer (torch.optim.Optimizer): The optimizer for training the model.
+            grad_clip (float): Value for gradient clipping.
+            objective_mode (bool): If True, the method is used for optimization objectives.
+
+        Returns:
+            float or None: The average training loss or None if training failed.
+        """
         model.train()
         total_loss = 0
         batch_losses = []
@@ -506,6 +570,16 @@ class GeoGenIE:
         return avg_loss
 
     def test_step(self, val_loader, model):
+        """
+        Performs a single validation step.
+
+        Args:
+            val_loader (torch.utils.data.DataLoader): DataLoader for validation data.
+            model (torch.nn.Module): The PyTorch model to validate.
+
+        Returns:
+            float: The average validation loss.
+        """
         model.eval()
         total_val_loss = 0
         batch_losses = []
@@ -522,6 +596,16 @@ class GeoGenIE:
         return avg_val_loss
 
     def _batch_init(self, model, batch):
+        """
+        Initializes the batch for training or validation.
+
+        Args:
+            model (torch.nn.Module): The PyTorch model to train or validate.
+            batch (tuple): A tuple containing data, targets, and sample weights.
+
+        Returns:
+            tuple: A tuple containing data, targets, and sample weights as tensors moved to the appropriate device.
+        """
         data, targets, sample_weight = batch
 
         if not isinstance(data, torch.Tensor):
@@ -575,7 +659,26 @@ class GeoGenIE:
         dataset=None,
         is_val=True,
     ):
-        """Predict locations using the trained model and evaluate predictions."""
+        """
+        Predict locations using the trained model and evaluate predictions.
+
+        Args:
+            model (torch.nn.Module): The trained model to use for predictions.
+            data_loader (torch.utils.data.DataLoader): DataLoader for the prediction data.
+            outfile (str): The path to the file where the predictions will be saved.
+            return_truths (bool, optional): If True, return the ground truth values along with predictions. Defaults to False.
+            use_rf (bool, optional): If True, use RandomForest model. Defaults to False.
+            log_metrics (bool, optional): If True, log the prediction metrics. Defaults to True.
+            bootstrap (bool, optional): If True, perform bootstrap predictions. Defaults to False.
+            is_train (bool, optional): If True, indicates that the data is training data. Defaults to False.
+            dataset (str, optional): The dataset being used. Defaults to None.
+            is_val (bool, optional): If True, indicates that the data is validation data. Defaults to True.
+
+        Returns:
+            numpy.ndarray: Predictions from the model.
+            (optional) dict: Metrics related to the predictions if return_truths is True.
+            (optional) numpy.ndarray: Ground truth values if return_truths is True.
+        """
 
         model.eval()
         predictions = []
@@ -622,6 +725,11 @@ class GeoGenIE:
                 dataset,
             )
 
+        if dataset is not None and self.args.debug:
+            self.logger.debug(
+                f"Predictions for {dataset.capitalize()} Dataset: {predictions}"
+            )
+
         if return_truths and is_val:
             return predictions, metrics, ground_truth
         elif not return_truths and is_val:
@@ -639,6 +747,22 @@ class GeoGenIE:
         is_train=False,
         dataset=None,
     ):
+        """
+        Calculate metrics for the predictions and ground truth.
+
+        Args:
+            outfile (str): The path to the file where the metrics will be saved.
+            predictions (np.ndarray): Predictions from the model.
+            ground_truth (np.ndarray): Ground truth values.
+            log_stats (bool): If True, log the prediction metrics.
+            bootstrap (bool): If True, perform bootstrap predictions.
+            is_train (bool, optional): If True, indicates that the data is training data. Defaults to False.
+            dataset (str, optional): The dataset being used. Defaults to None.
+
+        Returns:
+            tuple: A tuple containing the predictions, ground truth, and metrics dictionary.
+        """
+
         def rescale_predictions(y):
             return self.ds.norm.inverse_transform(y)
 
@@ -684,7 +808,7 @@ class GeoGenIE:
         if not bootstrap and not is_train:
             self.plotting.plot_error_distribution(haversine_errors, outfile)
 
-            outfile2 = outfile.split("/")[-1]
+            outfile2 = str(outfile).split("/")[-1]
             outfile2 = outfile2.split("_")
             for part in outfile2:
                 if part.startswith("val"):
@@ -717,70 +841,15 @@ class GeoGenIE:
 
         return predictions, ground_truth, metrics_dict
 
-    def _aggregate_test_metrics(self, dataset):
-        """
-        Analyzes the given data to calculate mean, median, standard deviation, and 95% CI for each column.
-
-        Args:
-            dataset (str): Which dataset to use: {"test", "val"}.
-
-        Returns:
-            dict: Dictionary with column names as keys and their means as values.
-        """
-        pth = Path(self.args.output_dir)
-        pth = pth.joinpath("bootstrap_metrics", dataset)
-        pth.mkdir(exist_ok=True, parents=True)
-        of = f"{self.args.prefix}_bootstrap_{dataset}_metrics.csv"
-        infile = pth.joinpath(of)
-
-        # Reading data into DataFrame
-        df = pd.read_csv(infile)
-
-        # Initializing dictionary for results
-        results = {}
-
-        # Initializing an empty DataFrame for aggregated data
-        aggregated_data = pd.DataFrame()
-
-        for column in df.columns:
-            # Calculating mean, median, std
-            mean = df[column].mean()
-            median = df[column].median()
-            std = df[column].std()
-
-            # Calculating 95% confidence interval
-            ci = 1.96 * (std / np.sqrt(len(df)))
-
-            # Adding to results dictionary
-            results[column] = mean
-
-            # Adding to aggregated DataFrame
-            aggregated_data.at["mean", column] = mean
-            aggregated_data.at["median", column] = median
-            aggregated_data.at["std", column] = std
-            aggregated_data.at["95% CI lower", column] = mean - ci
-            aggregated_data.at["95% CI upper", column] = mean + ci
-
-        pth = Path(self.args.output_dir)
-        pth = pth.joinpath("bootstrap_summaries")
-        pth.mkdir(exist_ok=True, parents=True)
-        of = f"aggregated_bootstrap_{dataset}_metrics.csv"
-        outfile = pth.joinpath(of)
-
-        # Writing aggregated data to CSV
-        aggregated_data.to_csv(outfile, header=True, index=False)
-
-        return results
-
     def _create_metrics_dictionary(self, values):
         """
         Creates a dictionary for metrics from a list of values.
 
         Args:
-        values (list): List of values in the specified order, with 'percentiles' being a NumPy array at index 16.
+            values (list): List of values in the specified order, with 'percentiles' being a NumPy array at index 16.
 
         Returns:
-        dict: Dictionary with metrics.
+            dict: Dictionary with metrics.
         """
 
         # List of keys for the dictionary
@@ -821,6 +890,19 @@ class GeoGenIE:
     def get_all_stats(
         self, predictions, ground_truth, mad, coefficient_of_variation, within_threshold
     ):
+        """
+        Computes various statistics for predictions and ground truth.
+
+        Args:
+            predictions (np.ndarray): Predictions from the model.
+            ground_truth (np.ndarray): Ground truth values.
+            mad (callable): Function to compute median absolute deviation.
+            coefficient_of_variation (callable): Function to compute coefficient of variation.
+            within_threshold (callable): Function to compute percentage within a threshold.
+
+        Returns:
+            tuple: A tuple containing z-scores, a list of statistical values, and haversine errors.
+        """
         rmse = calculate_rmse(predictions, ground_truth)
         haversine_errors = self.plotting.processor.haversine_distance(
             ground_truth, predictions
@@ -904,6 +986,12 @@ class GeoGenIE:
         )
 
     def print_stats_to_logger(self, metrics):
+        """
+        Logs the computed metrics to the logger.
+
+        Args:
+            metrics (dict): Dictionary of metrics to log.
+        """
         self.logger.info(f"Validation Haversine Error (km) = {metrics['mean_dist']}")
         self.logger.info(f"Median Validation Error (km) = {metrics['median_dist']}")
         self.logger.info(
@@ -965,56 +1053,38 @@ class GeoGenIE:
         )
 
     def get_correlation_coef(self, predictions, ground_truth, corr_func):
+        """
+        Computes correlation coefficients for predictions and ground truth.
+
+        Args:
+            predictions (np.ndarray): Predictions from the model.
+            ground_truth (np.ndarray): Ground truth values.
+            corr_func (callable): Function to compute correlation coefficients.
+
+        Returns:
+            tuple: A tuple containing correlation coefficients and p-values for both longitude and latitude.
+        """
         corr_x, p_value_x = corr_func(predictions[:, 0], ground_truth[:, 0])
         corr_y, p_value_y = corr_func(predictions[:, 1], ground_truth[:, 1])
         return corr_x, corr_y, p_value_x, p_value_y
 
-    def model_predict(self, model, data_loader, is_val=True):
-        model.eval()
-        predictions = []
-        ground_truth = []
-
-        with torch.no_grad():
-            if is_val:
-                for data, target, _ in data_loader:
-                    data = torch.tensor(data, dtype=self.dtype).to(self.device)
-                    target = torch.tensor(target, dtype=self.dtype).to(self.device)
-                    output = model(data)
-                    predictions.append(output.cpu().numpy())
-                    ground_truth.append(target.cpu().numpy())
-            else:
-                for data in data_loader:
-                    data = torch.tensor(data, dtype=self.dtype).to(self.device)
-                    output = model(data)
-                    predictions.append(output.cpu().numpy())
-
-        predictions = np.concatenate(predictions, axis=0)
-
-        if not is_val:
-            predictions = self.ds.norm.inverse_transform(predictions.copy())
-            geo_coords_is_valid(predictions)
-
-        if is_val:
-            ground_truth = np.concatenate(ground_truth, axis=0)
-            return predictions, ground_truth
-        return predictions
-
     def plot_bootstrap_aggregates(self, df, train_times):
+        """
+        Plots bootstrap aggregates and training times.
+
+        Args:
+            df (pandas.DataFrame): DataFrame containing bootstrap aggregates.
+            train_times (list): List of training times.
+        """
         self.plotting.plot_bootstrap_aggregates(df)
 
         avg_time, stddev_time = self.compute_rolling_statistics(
             train_times, window_size=10
         )
 
-        self.plotting.plot_times(
-            avg_time,
-            stddev_time,
-            os.path.join(
-                self.args.output_dir,
-                "plots",
-                f"{self.args.prefix}_avg_train_time.png",
-            ),
-        )
+        outdir = Path(self.args.output_dir, "plots")
+        fn = outdir / f"{self.args.prefix}_avg_train_time.{self.args.filetype}"
+        self.plotting.plot_times(avg_time, stddev_time, fn)
 
     def perform_standard_training(
         self, train_loader, val_loader, device, best_params, ModelClass
@@ -1030,7 +1100,7 @@ class GeoGenIE:
             ModelClass (torch.nn.Module): Callable subclass for PyTorch model.
 
         Returns:
-            A tuple containing the best model, training losses, and validation losses.
+            tuple: A tuple containing the best model, training losses, validation losses, and centroids if any.
         """
         try:
             if self.args.verbose >= 1:
@@ -1039,12 +1109,12 @@ class GeoGenIE:
             if ModelClass != "GB":
                 # Initialize the model
                 model = ModelClass(
-                    input_size=train_loader.dataset.features.shape[1],
+                    input_size=train_loader.dataset.n_features,
                     width=best_params["width"],
                     nlayers=best_params["nlayers"],
                     dropout_prop=best_params["dropout_prop"],
                     device=device,
-                    output_width=train_loader.dataset.labels.shape[1],
+                    output_width=train_loader.dataset.n_labels,
                     dtype=self.dtype,
                 ).to(device)
 
@@ -1083,6 +1153,16 @@ class GeoGenIE:
             raise e
 
     def extract_best_params(self, best_params, model):
+        """
+        Extracts the best parameters for the optimizer.
+
+        Args:
+            best_params (dict): Dictionary of best parameters.
+            model (torch.nn.Module): The PyTorch model to train.
+
+        Returns:
+            torch.optim.Optimizer: Optimizer for the model.
+        """
         lr = best_params["lr"] if "lr" in best_params else best_params["learning_rate"]
 
         l2 = (
@@ -1096,7 +1176,17 @@ class GeoGenIE:
         return optimizer
 
     def write_pred_locations(self, pred_locations, pred_indices, filename):
-        """write predicted locations to file."""
+        """
+        Writes predicted locations to a file.
+
+        Args:
+            pred_locations (np.ndarray): Array of predicted locations.
+            pred_indices (np.ndarray): Array of prediction indices.
+            filename (str): The path to the file where predictions will be saved.
+
+        Returns:
+            pandas.DataFrame: DataFrame containing the predicted locations.
+        """
         if self.args.verbose >= 1:
             self.logger.info("Writing predicted coordinates to dataframe.")
 
@@ -1107,6 +1197,19 @@ class GeoGenIE:
         return pred_locations_df
 
     def load_best_params(self, filename):
+        """
+        Loads the best parameters from a file.
+
+        Args:
+            filename (str): The path to the file containing the best parameters.
+
+        Returns:
+            dict: Dictionary of best parameters.
+
+        Raises:
+            FileNotFoundError: If the file does not exist.
+            TypeError: If the best parameters are not in the expected format.
+        """
         if not Path(filename).is_file():
             msg = f"Could not find file storing best params: {filename}"
             self.logger.error(msg)
@@ -1119,6 +1222,8 @@ class GeoGenIE:
             msg = f"Invalid format detected for best parameters object. Expected dict, but got: {type(best_params)}"
             self.logger.error(msg)
             raise TypeError(msg)
+
+        self.logger.debug(f"Best Found Parameters: {best_params}")
         return best_params
 
     def optimize_parameters(self, ModelClass):
@@ -1126,7 +1231,6 @@ class GeoGenIE:
         Perform parameter optimization using Optuna.
 
         Args:
-            criterion: The loss function to be used for the model.
             ModelClass (torch.nn.Module): The PyTorch model class for which the optimization is to be done.
 
         Returns:
@@ -1169,7 +1273,6 @@ class GeoGenIE:
         Perform bootstrap training using the provided parameters.
 
         Args:
-            criterion: The loss function to be used for the model.
             ModelClass (torch.nn.Module): The PyTorch model class to use.
             best_params (dict): Dictionary of best parameters found by Optuna or specified by the user.
         """
@@ -1219,13 +1322,12 @@ class GeoGenIE:
         Evaluate the model and save the results.
 
         Args:
-            model: The trained model to evaluate.
-            train_losses: List of training losses.
-            val_losses: List of validation losses.
-            best_params (dict): Dictionary of best parameters from Optuna search and/ or user-defined parameters.
-            dataset (str): Whether 'val' or 'test' dataset.
-            centroids (np.ndarray): Centroids if using synthetic resampling with 'kerneldensity', 'none', or 'kmeans' options.; otherwise None. Defaults to None.
-            use_rf (bool): Whether to use RandomForest model. If False, uses deep learning model instead. Defaults to False (deep learning model).
+            model (torch.nn.Module): The trained model to evaluate.
+            train_losses (list): List of training losses.
+            val_losses (list): List of validation losses.
+            dataset (str): The dataset to use for evaluation ('val' or 'test').
+            centroids (np.ndarray, optional): Centroids if using synthetic resampling. Defaults to None.
+            use_rf (bool, optional): If True, use RandomForest model. Defaults to False.
         """
         if self.args.verbose >= 1:
             self.logger.info(f"Evaluating the model on the {dataset} set.")
@@ -1265,9 +1367,9 @@ class GeoGenIE:
             y_train_pred = model(torch.tensor(X_train, dtype=self.dtype))
             y_train_pred = y_train_pred.detach().numpy()
 
-        val_errordist_outfile = os.path.join(
-            outdir, "plots", f"{prefix}_{middir}_error_distributions.png"
-        )
+        outdir = Path(outdir)
+        fn = f"{prefix}_{middir}_error_distributions.{self.args.filetype}"
+        val_errordist_outfile = outdir / "plots" / fn
 
         val_preds, val_metrics, y_true = self.predict_locations(
             model,
@@ -1294,19 +1396,16 @@ class GeoGenIE:
         geo_coords_is_valid(y_train)
 
         # Save validation results to file
-        val_metric_outfile = os.path.join(
-            outdir, middir, f"{prefix}_{middir}_metrics.json"
-        )
+        fn = f"{prefix}_{middir}_metrics.json"
+        val_metric_outfile = outdir / middir / fn
 
-        val_preds_outfile = os.path.join(
-            outdir, middir, f"{prefix}_{middir}_predictions.txt"
-        )
+        fn2 = f"{prefix}_{middir}_predictions.txt"
+        val_preds_outfile = outdir / middir / fn2
 
-        train_metric_outfile = os.path.join(
-            outdir, "training", f"{prefix}_train_metrics.json"
-        )
+        fn3 = f"{prefix}_train_metrics.json"
+        train_metric_outfile = outdir / "training" / fn3
 
-        val_preds_df = self.write_pred_locations(
+        _ = self.write_pred_locations(
             val_preds, self.ds.indices[f"{dataset}_indices"], val_preds_outfile
         )
 
@@ -1331,14 +1430,12 @@ class GeoGenIE:
 
         if dataset.startswith("val"):
             # Save training and validation losses to file
-            train_outfile = os.path.join(
-                outdir, "training", f"{prefix}_train_{dataset}_results.json"
-            )
+            fn4 = f"{prefix}_train_{dataset}_results.json"
+            train_outfile = outdir / "training" / fn4
             training_results = {"train_losses": train_losses, f"val_losses": val_losses}
         else:
-            train_outfile = os.path.join(
-                outdir, "training", f"{prefix}_train_results.json"
-            )
+            fn5 = f"{prefix}_train_results.json"
+            train_outfile = outdir / "training" / fn5
             training_results = {"train_losses": train_losses}
 
         with open(train_outfile, "w") as fout:
@@ -1370,8 +1467,6 @@ class GeoGenIE:
             centroids=centroids,
         )
 
-        # self.plotting.plot_scatter_samples_map(y_train, y_true, dataset)
-
         self.plotting.polynomial_regression_plot(
             y_true, val_preds, dataset, dtype=self.dtype
         )
@@ -1385,7 +1480,20 @@ class GeoGenIE:
     def make_unseen_predictions(
         self, model, device, use_rf=False, col_indices=None, boot_rep=None
     ):
-        """Predictions on data without known targets."""
+        """
+        Makes predictions on unseen data.
+
+        Args:
+            model (torch.nn.Module): The trained model to use for predictions.
+            device (torch.device): Device for training ('cpu' or 'cuda').
+            use_rf (bool, optional): If True, use RandomForest model. Defaults to False.
+            col_indices (list, optional): List of column indices to use for predictions. Defaults to None.
+            boot_rep (int, optional): Bootstrap repetition index. Defaults to None.
+
+        Returns:
+            pandas.DataFrame: DataFrame containing the predicted locations if boot_rep is None.
+            tuple: Tuple containing predicted locations and output file path if boot_rep is not None.
+        """
 
         if self.args.verbose >= 1 and boot_rep is None:
             self.logger.info("Making predictions on unseen data...")
@@ -1407,7 +1515,7 @@ class GeoGenIE:
             # Convert X_pred to a PyTorch tensor and move it to the correct
             # device (GPU or CPU)
             pred_tensor = torch.tensor(X_pred, dtype=dtype).to(device)
-            dataset = UnlabeledDataset(pred_tensor)
+            dataset = CustomDataset(pred_tensor, labels=None, sample_weights=None)
             data_loader = torch.utils.data.DataLoader(
                 dataset, batch_size=self.args.batch_size, shuffle=False
             )
@@ -1440,6 +1548,10 @@ class GeoGenIE:
         pth.mkdir(exist_ok=True, parents=True)
         pred_outfile = pth / f"{prefix}_unknown_predictions.csv"
 
+        self.logger.debug(
+            f"Unknown Predictions: {pred_locations}, Unknown Prediction Shape: {pred_locations.shape}"
+        )
+
         if boot_rep is not None:
             return pred_locations, pred_outfile
         else:
@@ -1449,6 +1561,11 @@ class GeoGenIE:
             return real_preds
 
     def train_test_predict(self):
+        """
+        Perform the complete training, testing, and prediction pipeline.
+
+        This method sets the seed, initializes the device, loads the data, performs parameter optimization, trains the model, evaluates and saves results, and makes predictions on unseen data.
+        """
         # Set seed and GPU
         if self.args.seed is not None:
             np.random.seed(self.args.seed)
@@ -1465,7 +1582,7 @@ class GeoGenIE:
         if self.args.verbose >= 1:
             self.logger.info(f"Using device: {device}")
 
-        if self.args.verbose >= 2:
+        if self.args.verbose >= 2 or self.args.debug:
             self.logger.info("Creating output directory structure.")
 
         outdir = self.args.output_dir

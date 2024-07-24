@@ -210,12 +210,12 @@ class Optimize:
 
     def run_training(self, trial, ModelClass, train_func, param_dict):
         model = ModelClass(
-            input_size=self.dataset.features.shape[1],
+            input_size=self.dataset.n_features,
             width=param_dict["width"],
             nlayers=param_dict["nlayers"],
             dropout_prop=param_dict["dropout_prop"],
             device=self.device,
-            output_width=self.dataset.labels.shape[1],
+            output_width=self.dataset.n_labels,
             dtype=self.dtype,
         ).to(self.device)
 
@@ -450,10 +450,8 @@ class Optimize:
         end_time = time.time()
         total_time = end_time - start_time
 
-        cv_outfile = os.path.join(
-            self.output_dir, "optimize", f"{self.prefix}_cv_results.csv"
-        )
-
+        outdir = Path(self.output_dir)
+        cv_outfile = outdir / "optimize" / f"{self.prefix}_cv_results.csv"
         self.cv_results.to_csv(cv_outfile, header=True, index=False)
 
         if self.verbose >= 1:
@@ -478,15 +476,9 @@ class Optimize:
         if self.verbose >= 1:
             self.logger.info(f"Best trial parameters: {best_params}")
 
-        fn = os.path.join(
-            self.output_dir,
-            "optimize",
-            f"{self.prefix}_best_params.txt",
-        )
-
-        jfn = os.path.join(
-            self.output_dir, "optimize", f"{self.prefix}_best_params.json"
-        )
+        outdir = Path(self.output_dir)
+        fn = outdir / "optimize" / f"{self.prefix}_best_params.txt"
+        jfn = outdir / "optimize" / f"{self.prefix}_best_params.json"
 
         # Save the best parameters to a file
         with open(fn, "w") as f:
@@ -505,33 +497,28 @@ class Optimize:
     def write_optuna_study_details(self, study):
         """Write Optuna study to file."""
 
-        if self.verbose >= 2:
+        if self.verbose >= 2 or self.args.debug:
             self.logger.info("Writing parameter optimizations to file...")
 
-        outdir = os.path.join(self.output_dir, "optimize")
+        outdir = Path(self.output_dir, "optimize")
 
         df = study.trials_dataframe()
-        df.to_csv(
-            os.path.join(outdir, f"{self.prefix}_trials_df.csv"),
-            header=True,
-        )
+        df.to_csv(outdir / f"{self.prefix}_trials_df.csv", header=True)
 
-        with open(os.path.join(outdir, f"{self.prefix}_sampler.pkl"), "wb") as fout:
+        with open(outdir / f"{self.prefix}_sampler.pkl", "wb") as fout:
             pickle.dump(study.sampler, fout)
 
-        with open(os.path.join(outdir, f"{self.prefix}_best_score.txt"), "w") as fout:
+        with open(outdir / f"{self.prefix}_best_score.txt", "w") as fout:
             fout.write(str(study.best_value))
 
-        with open(os.path.join(outdir, f"{self.prefix}_best_params.pkl"), "wb") as fout:
+        with open(outdir / f"{self.prefix}_best_params.pkl", "wb") as fout:
             pickle.dump(study.best_params, fout)
 
-        with open(os.path.join(outdir, f"{self.prefix}_best_trials.pkl"), "wb") as fout:
+        with open(outdir / f"{self.prefix}_best_trials.pkl", "wb") as fout:
             pickle.dump(study.best_trials, fout)
 
-        with open(
-            os.path.join(outdir, f"{self.prefix}_best_overall_trial.pkl"), "wb"
-        ) as fout:
+        with open(outdir / f"{self.prefix}_best_overall_trial.pkl", "wb") as fout:
             pickle.dump(study.best_trial, fout)
 
-        with open(os.path.join(outdir, f"{self.prefix}_all_trials.pkl"), "wb") as fout:
+        with open(outdir / f"{self.prefix}_all_trials.pkl", "wb") as fout:
             pickle.dump(study.trials, fout)

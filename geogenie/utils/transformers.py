@@ -8,8 +8,6 @@ from sklearn.preprocessing import OneHotEncoder
 from sklearn.utils.extmath import randomized_svd
 from sklearn.utils.validation import check_array, check_is_fitted
 
-logger = logging.getLogger(__name__)
-
 
 class MCA(BaseEstimator, TransformerMixin):
     """Class to perform Multiple Correspondence Analayis (MCA).
@@ -41,6 +39,8 @@ class MCA(BaseEstimator, TransformerMixin):
         self.one_hot = one_hot
         self.categories = categories
         self.epsilon = epsilon
+
+        self.logger = logging.getLogger(__name__)
 
     def fit(self, X, y=None):
         """Fit the input data."""
@@ -102,6 +102,11 @@ class MCA(BaseEstimator, TransformerMixin):
         row_inv = sp.diags(row_sums_inv_sqrt)
 
         transformed_X = row_inv @ X_normalized @ self.VT_.T
+
+        self.logger.debug(
+            f"MCA Transformed X: {transformed_X}, Shape: {transformed_X.shape}"
+        )
+
         return transformed_X
 
     def _normalize_data(self, X):
@@ -132,239 +137,6 @@ class MCA(BaseEstimator, TransformerMixin):
         self.cumulative_inertia_ = np.cumsum(self.explained_inertia_)
 
 
-class MortonCurveTransformer(BaseEstimator, TransformerMixin):
-    """A transformer for encoding and decoding geographical coordinates (longitude, latitude) into a single integer using a Morton curve  (Z-order curve).
-
-    Args:
-        bits (int): The number of bits to use for encoding each of the longitude and latitude. Defaults to 16.
-
-    Methods:
-        fit(X, y=None): Fit the transformer on the data.
-        transform(X): Transform the data using the Morton curve encoding.
-        inverse_transform(X): Inverse transform the Morton curve encoded data.
-        _interleave_bits(x, y): Interleave the bits of x and y.
-        _deinterleave_bits(z): De-interleave the bits of z into x and y.
-        _apply_interleave(longitude, latitude): Apply interleaving to longitude and latitude.
-        _decode_long_lat(encoded_value): Decode an encoded value back to longitude and latitude.
-    """
-
-    def __init__(self, bits=16):
-        """Initialize the MortonCurveTransformer with the specified number of bits for encoding.
-
-        Args:
-            bits (int): The number of bits to use for encoding each coordinate.
-        """
-        self.bits = bits
-        self.max_long = None
-        self.max_lat = None
-
-    def fit(self, X, y=None):
-        """Fit the transformer on the data. This method calculates and stores the maximum absolute values of longitude and latitude, which are used for normalization.
-
-        Args:
-            X (pd.DataFrame or np.ndarray): The data containing longitude and latitude columns, respectively.
-            y (ignored): Not used, present here for compatibility with scikit-learn's fit method.
-
-        Returns:
-            MortonCurveTransformer: The fitted transformer.
-        """
-        # Extract longitude and latitude, then store scaling parameters
-        if isinstance(X, pd.DataFrame):
-            longitudes = X.iloc[:, 0]
-            latitudes = X.iloc[:, 1]
-        elif isinstance(X, np.ndarray):
-            longitudes = X[:, 0]
-            latitudes = X[:, 1]
-        else:
-            msg = f"Input must be a pandas DataFrame or a numpy array: {type(X)}"
-            logger.error(msg)
-            raise TypeError(msg)
-
-        self.max_long = np.max(np.abs(longitudes))
-        self.max_lat = np.max(np.abs(latitudes))
-        return self
-
-    def transform(self, X):
-        """
-        Transform the data using Morton curve encoding. This method encodes each pair of
-        longitude and latitude coordinates into a single integer.
-
-        Args:
-            X (pd.DataFrame or np.ndarray): The data containing longitude and latitude columns.
-
-        Returns:
-            pd.Series or np.ndarray: The encoded data, where each pair of coordinates is represented by a single integer.
-        """
-        # Check if X is a DataFrame or NumPy array
-        if isinstance(X, pd.DataFrame):
-            X_encoded = X.apply(
-                lambda row: self._apply_interleave(row.iloc[0], row.iloc[1]), axis=1
-            )
-        elif isinstance(X, np.ndarray):
-            X_encoded = np.apply_along_axis(
-                lambda row: self._apply_interleave(row[0], row[1]), 1, X
-            )
-        else:
-            msg = msg = f"Input must be a pandas DataFrame or a numpy array: {type(X)}"
-            logger.error(msg)
-            raise TypeError(msg)
-        return X_encoded
-
-    def inverse_transform(self, X_encoded):
-        """
-        Inverse transform the Morton curve encoded data. This method decodes each integer back into a pair of longitude and latitude coordinates.
-
-        Args:
-            X_encoded (pd.Series or np.ndarray): The encoded data with Morton curve integers.
-
-        Returns:
-            np.ndarray: The decoded data, with each row containing a pair of longitude and latitude.
-        """
-        if isinstance(X_encoded, pd.Series) or isinstance(X_encoded, np.ndarray):
-            func = np.vectorize(self._decode_long_lat)
-            return np.array(func(X_encoded)).T
-        else:
-            raise TypeError("Input must be a pandas Series or a NumPy array")
-
-    def _interleave_bits(self, x, y):
-        """
-        Interleave the bits of two integers. Used in the Morton curve encoding process.
-
-        Args:
-            x (int): The first integer (representing encoded longitude).
-            y (int): The second integer (representing encoded latitude).
-
-        Returns:
-            int: The interleaved integer representing the Morton curve encoded value.
-        """
-        z = 0
-        for i in range(self.bits):
-            z |= (x & (1 << i)) << i | (y & (1 << i)) << (i + 1)
-        return z
-
-    def _deinterleave_bits(self, z):
-        """
-        De-interleave the bits of an integer into two integers. Used in the Morton curve decoding process.
-
-        Args:
-            z (int): The interleaved integer representing the Morton curve encoded value.
-
-        Returns:
-            int, int: The two de-interleaved integers representing longitude and latitude.
-        """
-        x = y = 0
-        for i in range(self.bits):
-            x |= (z & (1 << (2 * i))) >> i
-            y |= (z & (1 << (2 * i + 1))) >> (i + 1)
-        return x, y
-
-    def _apply_interleave(self, longitude, latitude):
-        """
-        Apply interleaving to longitude and latitude to encode them into a single integer.
-
-        Args:
-            longitude (float): The longitude value.
-            latitude (float): The latitude value.
-
-        Returns:
-            int: The Morton curve encoded value of the longitude and latitude.
-        """
-        # Normalize using stored max values
-        norm_long = (longitude + self.max_long) / (2 * self.max_long)
-        norm_lat = (latitude + self.max_lat) / (2 * self.max_lat)
-        int_long = int(norm_long * (2**self.bits))
-        int_lat = int(norm_lat * (2**self.bits))
-        return self._interleave_bits(int_long, int_lat)
-
-    def _decode_long_lat(self, encoded_value):
-        """
-        Decode an encoded value back to longitude and latitude.
-
-        Args:
-            encoded_value (int or float): The Morton curve encoded value.
-
-        Returns:
-            float, float: The decoded longitude and latitude values.
-        """
-        # Ensure encoded_value is an integer
-        encoded_value = int(encoded_value)
-        int_long, int_lat = self._deinterleave_bits(encoded_value)
-        norm_long = int_long / (2**self.bits)
-        norm_lat = int_lat / (2**self.bits)
-        longitude = norm_long * (2 * self.max_long) - self.max_long
-        latitude = norm_lat * (2 * self.max_lat) - self.max_lat
-        return longitude, latitude
-
-
-class LongLatToCartesianTransformer(BaseEstimator, TransformerMixin):
-    """
-    A transformer for converting longitude and latitude to/ from Cartesian coordinates.
-
-    Attributes:
-        radius (float): The radius of the Earth in kilometers.
-        placeholder (bool): If True, does not actually do transformation. Makes it to where target normalization can easily be toggled for development purposed.
-    """
-
-    def __init__(self, radius=6371, placeholder=False):
-        """
-        Initialize the transformer with the Earth's radius.
-
-        Args:
-            radius (float, optional): The radius of the Earth in kilometers. Defaults to 6371.
-        """
-        self.radius = radius
-        self.placeholder = placeholder
-
-    def fit(self, X, y=None):
-        """Fit method for compatibility with scikit-learn. Does nothing."""
-        return self
-
-    def transform(self, X):
-        """
-        Convert latitude and longitude to Cartesian coordinates.
-
-        Args:
-            X (array-like): The longitude and latitude values. Shape (n_samples, 2).
-
-        Returns:
-            np.ndarray: Cartesian coordinates. Shape (n_samples, 3).
-        """
-
-        if self.placeholder:
-            return X.copy()
-        lon_rad = np.radians(X[:, 0])
-        lat_rad = np.radians(X[:, 1])
-
-        x = self.radius * np.cos(lat_rad) * np.cos(lon_rad)
-        y = self.radius * np.cos(lat_rad) * np.sin(lon_rad)
-        z = self.radius * np.sin(lat_rad)
-
-        return np.column_stack((x, y, z))
-
-    def inverse_transform(self, X):
-        """
-        Convert Cartesian coordinates back to latitude and longitude.
-
-        Args:
-            X (array-like): Cartesian coordinates. Shape (n_samples, 3).
-
-        Returns:
-            np.ndarray: Longitude and latitude values. Shape (n_samples, 2).
-        """
-        if self.placeholder:
-            return X.copy()
-
-        x, y, z = X[:, 0], X[:, 1], X[:, 2]
-        lat = np.degrees(np.arcsin(z / self.radius))
-        lon = np.degrees(np.arctan2(y, x))
-
-        return np.column_stack((lon, lat))
-
-
-import numpy as np
-from sklearn.base import BaseEstimator, TransformerMixin
-
-
 class MinMaxScalerGeo(BaseEstimator, TransformerMixin):
     def __init__(
         self, lat_range=(-90, 90), lon_range=(-180, 180), scale_min=0, scale_max=1
@@ -382,11 +154,13 @@ class MinMaxScalerGeo(BaseEstimator, TransformerMixin):
         self.scale_min = scale_min
         self.scale_max = scale_max
 
+        self.logger = logging.getLogger(__name__)
+
     def fit(self, X, y=None):
         """Fit does nothing as parameters are not data-dependent.
 
         Args:
-            X (array-like): The data to fit.
+            X (array-like): The data to fit. Ignored. This parameter exists only for compatibility with the sklearn API.
             y (None, optional): Ignored. This parameter exists only for compatibility with the sklearn API.
 
         Returns:
@@ -424,6 +198,10 @@ class MinMaxScalerGeo(BaseEstimator, TransformerMixin):
             self.scale_max - self.scale_min
         ) + self.scale_min
 
+        self.logger.debug(
+            f"Transformed Coordinates: {X_scaled}, Shape: {X_scaled.shape}"
+        )
+
         return X_scaled
 
     def inverse_transform(self, X_scaled):
@@ -456,65 +234,8 @@ class MinMaxScalerGeo(BaseEstimator, TransformerMixin):
             self.scale_max - self.scale_min
         ) * (lat_max - lat_min) + lat_min
 
+        self.logger.debug(
+            f"Inverse Transformed Coordinates: {X_original}, Shape: {X_original.shape}"
+        )
+
         return X_original
-
-
-class SinCosCoordinateTransformer(BaseEstimator, TransformerMixin):
-    """
-    A scikit-learn compatible transformer for converting geographic coordinates
-    to and from sine and cosine values.
-    """
-
-    def fit(self, X, y=None):
-        """
-        Fit method for compatibility with scikit-learn's transformer interface.
-        No fitting is necessary for this transformer.
-
-        Args:
-            X (array-like): The data to fit.
-            y (None, optional): Ignored. This parameter exists for compatibility with scikit-learn's interface.
-
-        Returns:
-            SinCosCoordinateTransformer: The fitted transformer.
-        """
-        # No fitting needed, so just return self
-        return self
-
-    def transform(self, X):
-        """
-        Transform method to convert geographic coordinates to sine and cosine values.
-
-        Args:
-            X (array-like): The data to transform. Assumes the first column is longitude and the second is latitude.
-
-        Returns:
-            np.ndarray: Transformed data with sine and cosine values.
-        """
-        sin_cos_transformed = np.zeros((X.shape[0], 4))
-
-        # Assuming X[:, 0] is longitude and X[:, 1] is latitude
-        sin_cos_transformed[:, 0] = np.sin(np.radians(X[:, 0]))  # sin(longitude)
-        sin_cos_transformed[:, 1] = np.cos(np.radians(X[:, 0]))  # cos(longitude)
-        sin_cos_transformed[:, 2] = np.sin(np.radians(X[:, 1]))  # sin(latitude)
-        sin_cos_transformed[:, 3] = np.cos(np.radians(X[:, 1]))  # cos(latitude)
-
-        return sin_cos_transformed
-
-    def inverse_transform(self, X):
-        """
-        Inverse transform method to convert sine and cosine values back to geographic coordinates.
-
-        Args:
-            X (array-like): The data to inverse transform. Assumes the order [sin(longitude), cos(longitude), sin(latitude), cos(latitude)].
-
-        Returns:
-            np.ndarray: Inverse transformed data with longitude and latitude values.
-        """
-        longitudes = np.degrees(np.arctan2(X[:, 0], X[:, 1]))
-        latitudes = np.degrees(np.arctan2(X[:, 2], X[:, 3]))
-
-        # Adjusting the ranges
-        longitudes = np.mod(longitudes + 180, 360) - 180
-        latitudes = np.clip(latitudes, -90, 90)
-
-        return np.stack([longitudes, latitudes], axis=1)

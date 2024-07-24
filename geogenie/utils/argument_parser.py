@@ -168,18 +168,14 @@ def setup_parser(test_mode=False):
     )
 
     # Data Input and Preprocessing Arguments
-    aln_group = parser.add_mutually_exclusive_group()
+    aln_group = parser.add_argument_group(
+        "Alignment Input (VCF File)", description="Input VCF file alignment to use."
+    )
     aln_group.add_argument(
         "--vcf",
         default=None,
         type=str,
         help="Path to the VCF file with SNPs. Format: filename.vcf. Can be compressed with bgzip or uncompressed.",
-    )
-    aln_group.add_argument(
-        "--gtseq",
-        default=None,
-        type=str,
-        help="Path to the GTSeq CSV file with SNPs. Format: filename.csv",
     )
 
     # Data Input and Preprocessing
@@ -189,8 +185,8 @@ def setup_parser(test_mode=False):
     )
     data_group.add_argument(
         "--sample_data",
-        type=str,
         default=None,
+        type=str,
         help="Tab-delimited file with 'sampleID', 'x', 'y'. Align SampleIDs with VCF",
     )
     data_group.add_argument(
@@ -210,6 +206,12 @@ def setup_parser(test_mode=False):
         type=int,
         default=None,
         help="Max number of SNPs to randomly subset. Default: None (Use all SNPs).",
+    )
+    data_group.add_argument(
+        "--prop_unknowns",
+        type=validate_positive_float,
+        default=0.1,
+        help="Proportion of samples to randomly select for the 'unknown prediction' dataset if unknowns are not present in the '--sample_data' file. This setting only gets used if the '--sample_data' file contains no 'nan' values in place of coordinates. Default: 0.1",
     )
 
     # Embedding settings.
@@ -559,6 +561,12 @@ def setup_parser(test_mode=False):
         default=1,
         help="Enable detailed logging. Verbosity level: 0 (non-verbose) to 3 (most verbose). Default: 1.",
     )
+    output_group.add_argument(
+        "--debug",
+        action="store_true",
+        default=False,
+        help="Toggles on debug mode, which adds many debug statements to the logs. Default: False (no debug mode)",
+    )
 
     plotting_group = parser.add_argument_group(
         "Plot Settings",
@@ -768,6 +776,9 @@ def setup_parser(test_mode=False):
     args.samples_to_plot = validate_str2list(args.samples_to_plot)
     args.highlight_basemap_counties = validate_str2list(args.highlight_basemap_counties)
 
+    if args.debug:
+        args.verbose = 2
+
     return args
 
 
@@ -937,10 +948,6 @@ def validate_inputs(parser, args, test_mode=False):
         logger.error("--sample_data argument is required.")
         parser.error("--sample_data argument is required.")
 
-    if args.vcf is None and args.gtseq is None and not test_mode:
-        logger.error("Either --vcf or --gtseq must be defined.")
-        parser.error("Either --vcf or --gtseq must be defined.")
-
-    if args.vcf is not None and args.gtseq is not None:
-        logger.error("Only one of --vcf and --gtseq can be provided.")
-        parser.error("Only one of --vcf and --gtseq can be provided.")
+    if args.vcf is None:
+        logger.error("--vcf argument is required.")
+        parser.error("--vcf argument is required.")

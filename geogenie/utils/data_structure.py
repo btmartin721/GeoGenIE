@@ -1,6 +1,7 @@
 import logging
 import os
 import warnings
+from pathlib import Path
 
 os.environ["PYTHONWARNINGS"] = "ignore::RuntimeWarning"
 warnings.filterwarnings(action="ignore", category=RuntimeWarning)
@@ -24,13 +25,17 @@ from torch.utils.data import DataLoader
 from geogenie.outliers.detect_outliers import GeoGeneticOutlierDetector
 from geogenie.plotting.plotting import PlotGenIE
 from geogenie.samplers.samplers import GeographicDensitySampler
-
-# from geogenie.utils.transformers import MCA
 from geogenie.utils.data import CustomDataset
-from geogenie.utils.gtseq2vcf import GTseqToVCF
+from geogenie.utils.exceptions import (
+    EmbeddingError,
+    InvalidInputShapeError,
+    InvalidSampleDataError,
+    OutlierDetectionError,
+    SampleOrderingError,
+)
 from geogenie.utils.scorers import LocallyLinearEmbeddingWrapper
 from geogenie.utils.transformers import MCA, MinMaxScalerGeo
-from geogenie.utils.utils import get_iupac_dict
+from geogenie.utils.utils import get_iupac_dict, read_csv_with_dynamic_sep
 
 
 class DataStructure:
@@ -156,7 +161,7 @@ class DataStructure:
 
         read_gtseq: Reads and processes GTSeq data, converting it to VCF format.
 
-        params property getter and setter: Getters and setters for managing class parameters.
+        params: Getter and setter for managing class parameters.
     """
 
     def __init__(self, vcf_file, verbose=False, dtype=torch.float32, debug=False):
@@ -164,7 +169,9 @@ class DataStructure:
 
         Args:
             vcf_file (str): VCF filename to load.
-            verbose (bool): Whether to enable verbosity.
+            verbose (bool): Whether to enable verbosity. Default is False.
+            dtype (torch.dtype): Data type for tensors. Default is torch.float32.
+            debug (bool): Whether to enable debug mode. Default is False.
         """
         self.vcf = VariantFile(vcf_file)  # loads with pysam
         self.samples = list(self.vcf.header.samples)
@@ -181,12 +188,21 @@ class DataStructure:
         self.norm = MinMaxScalerGeo()
 
     def define_params(self, args):
+        """Sets up or updates parameters for the class from an argparse.Namespace object.
+
+        Args:
+            args (argparse.Namespace): Argument namespace containing the parameters.
+        """
         self._params = vars(args)
 
     def _parse_genotypes(self):
         """Parse genotypes from the VCF file and store them in a NumPy array.
 
-        Also, create a boolean array indicating missing data."""
+        Also, create a boolean array indicating missing data.
+
+        Returns:
+            tuple: A tuple containing genotypes array, missing data array, and IUPAC encoded genotypes array.
+        """
         genotypes_list = []
         iupac_alleles = []
         is_missing_list = []
@@ -214,8 +230,7 @@ class DataStructure:
         return genotypes_array, is_missing_array, genotypes_iupac_array
 
     def map_alleles_to_iupac(self, alleles, iupac_dict):
-        """
-        Maps a list of allele tuples to their corresponding IUPAC nucleotide codes.
+        """Maps a list of allele tuples to their corresponding IUPAC nucleotide codes.
 
         Args:
             alleles (list of tuple of str): List of tuples representing alleles.
@@ -239,14 +254,21 @@ class DataStructure:
         return mapped_codes
 
     def is_biallelic(self, record):
-        """Check if number of alleles is biallelic."""
+        """Check if number of alleles is biallelic.
+
+        Args:
+            record (pysam.VariantRecord): A VCF record.
+
+        Returns:
+            bool: True if the record is biallelic, False otherwise.
+        """
         return len(record.alleles) == 2
 
     def count_alleles(self):
         """Count alleles for each SNP across all samples.
 
         Returns:
-            numpy.ndarray: 3D array of genotypes (0s and 1s) of shaep (n_loci, n_samples, 2).
+            numpy.ndarray: 2D array of allele counts with shape (n_loci, 2).
         """
         if self.verbose >= 1:
             self.logger.info("Calculating allele counts.")
@@ -274,11 +296,16 @@ class DataStructure:
 
         Args:
             X (numpy.ndarray): Data to impute.
-            transform_only (bool): Whether to transform, but not fit.
-            strat (str): Strategy to use with SimpleImputer.
-            use_strings (bool): If True, uses 'N' as missing_values argument. Otherwise uses np.nan.
+            transform_only (bool): Whether to transform, but not fit. Default is False.
+
+        Returns:
+            numpy.ndarray: Imputed data.
         """
         if transform_only:
+            if X.size == 0:
+                raise InvalidInputShapeError(
+                    "One of the input datasets was empty. Did you remember to set some values as unknown in the 'sample_data' coordinates file?"
+                )
             imputed = self.simputer.transform(X)
         else:
             self.simputer = clone(self.simputer)
@@ -286,13 +313,20 @@ class DataStructure:
         return imputed
 
     def sort_samples(self, sample_data_filename):
-        """Load sample_data and popmap and sort to match VCF file."""
-        self.sample_data = pd.read_csv(sample_data_filename, sep="\t")
+        """Load sample_data and popmap and sort to match VCF file.
+
+        Args:
+            sample_data_filename (str): Filename of the sample data file.
+
+        Raises:
+            InvalidSampleDataError: If the sample data file format is incorrect.
+        """
+        self.sample_data = read_csv_with_dynamic_sep(sample_data_filename)
 
         if self.sample_data.shape[1] != 3:
             msg = f"'sample_data' must be a tab-delimited file with three columns: sampleID, x, and y. 'x' and 'y' should be longitude and latitude. However, we detected {self.sample_data.shape[1]} columns."
             self.logger.error(msg)
-            raise ValueError(msg)
+            raise InvalidSampleDataError(msg)
 
         self.sample_data.columns = ["sampleID", "x", "y"]
         self.sample_data["sampleID2"] = self.sample_data["sampleID"]
@@ -317,7 +351,15 @@ class DataStructure:
         self.genotypes_iupac = self.genotypes_iupac[:, self.sort_indices]
 
     def normalize_target(self, y, transform_only=False):
-        """Normalize locations, ignoring NaN."""
+        """Normalize locations, ignoring NaN.
+
+        Args:
+            y (numpy.ndarray): Array of locations to normalize.
+            transform_only (bool): Whether to transform without fitting. Default is False.
+
+        Returns:
+            numpy.ndarray: Normalized locations.
+        """
         if self.verbose >= 1:
             self.logger.info("Normalizing coordinates...")
 
@@ -333,7 +375,9 @@ class DataStructure:
 
     def _check_sample_ordering(self):
         """Validate sample ordering between 'sample_data' and VCF files.
-        Store a boolean mask and sorting indices for subsetting and reordering arrays later.
+
+        Raises:
+            SampleOrderingError: If the sample ordering is invalid after filtering and sorting.
         """
         # Create a set from sample_data for intersection check
         sample_data_set = set(self.sample_data["sampleID2"])
@@ -368,9 +412,9 @@ class DataStructure:
             self.sample_data["sampleID2"].iloc[i] == x
             for i, x in enumerate(filtered_samples_sorted)
         ):
-            msg = "Invalid sample ordering after filtering and sorting. Check the sorting logic."
+            msg = "Invalid sample ordering after filtering and sorting."
             self.logger.error(msg)
-            raise ValueError(msg)
+            raise SampleOrderingError(msg)
 
         # Compute sort_indices from self.samples based on
         # sorted filtered_samples
@@ -387,7 +431,16 @@ class DataStructure:
         )
 
     def snps_to_012(self, min_mac=2, max_snps=None, return_values=True):
-        """Convert IUPAC SNPs to 012 encodings."""
+        """Convert IUPAC SNPs to 012 encodings.
+
+        Args:
+            min_mac (int): Minimum minor allele count. Default is 2.
+            max_snps (int, optional): Maximum number of SNPs to retain.
+            return_values (bool): Whether to return encoded values. Default is True.
+
+        Returns:
+            numpy.ndarray: Encoded genotypes if return_values is True, otherwise updates internal state.
+        """
         if self.verbose >= 1:
             self.logger.info("Converting SNPs to 012-encodings.")
 
@@ -415,13 +468,27 @@ class DataStructure:
         if self.verbose >= 1:
             self.logger.info("Input SNP data converted to 012-encodings.")
 
+        self.logger.debug(
+            f"Encoded Genotypes: {self.genotypes_enc.T}, Shape: {self.genotypes_enc.T.shape}"
+        )
+
         if return_values:
             return self.genotypes_enc.T
         else:
             self.genotypes_enc = self.genotypes_enc.T
 
     def filter_gt(self, gt, min_mac, max_snps, allele_counts):
-        """Filter genotypes based on minor allele count and random subsets (max_snps)."""
+        """Filter genotypes based on minor allele count and random subsets (max_snps).
+
+        Args:
+            gt (numpy.ndarray): Genotypes to filter.
+            min_mac (int): Minimum minor allele count.
+            max_snps (int, optional): Maximum number of SNPs to retain.
+            allele_counts (numpy.ndarray): Allele counts.
+
+        Returns:
+            numpy.ndarray: Filtered genotypes.
+        """
         if min_mac > 1:
             mac = 2 * allele_counts[:, 2] + allele_counts[:, 1]
             gt = gt[mac >= min_mac, :]
@@ -435,6 +502,14 @@ class DataStructure:
         return gt
 
     def _find_optimal_clusters(self, features):
+        """Find optimnal number of clusters from input features.
+
+        Args:
+            features (numpy.ndarray): Input features.
+
+        Returns:
+            optimal_k (int): Optimal number of clusters.
+        """
         max_k = min(10, features.shape[1])  # Restrict max clusters
         silhouette_scores = []
 
@@ -447,6 +522,14 @@ class DataStructure:
         return optimal_k
 
     def split_train_test(self, train_split, val_split, seed, args):
+        """Splits the data into training, validation, and test datasets.
+
+        Args:
+            train_split (float): Proportion of the data to use for training.
+            val_split (float): Proportion of the data to use for validation.
+            seed (int): Random seed for reproducibility.
+            args (argparse.Namespace): Argument namespace containing additional parameters.
+        """
         if self.verbose >= 1:
             self.logger.info(
                 "Splitting data into train, validation, and test datasets."
@@ -620,9 +703,11 @@ class DataStructure:
         self.plotting.plot_scatter_samples_map(y_train, y_val, "val")
         self.plotting.plot_scatter_samples_map(y_train, y_test, "test")
 
+        self.logger.debug(f"Data Dictionary Object: {self.data}")
+        self.logger.debug(f"All indices objects: {self.indices}")
+
     def map_outliers_through_filters(self, original_indices, filter_stages, outliers):
-        """
-        Maps outlier indices through multiple filtering stages back to the original dataset.
+        """Maps outlier indices through multiple filtering stages back to the original dataset.
 
         Args:
             original_indices (np.array): Array of original indices before any filtering.
@@ -726,19 +811,22 @@ class DataStructure:
         # Impute missing data and embed.
         X = self.impute_missing(self.genotypes_enc)
 
-        # Do embedding (e.g., PCA, LLE)
-        # NOTE: Why was I embedding this here?
-        # X = self.embed(
-        #     args,
-        #     X=X,
-        #     alg=args.embedding_type,
-        #     full_dataset_only=True,
-        #     transform_only=False,
-        # )
-
         # Define true_indices and pred_indices
-        self.pred_mask = ~np.isnan(self.locs).any(axis=1)
+        # If users did not supply any unknowns, randomly choose here.
+        if np.any(np.isnan(self.locs)):  # User supplied unknowns.
+            self.pred_mask = ~np.isnan(self.locs).any(axis=1)
+        else:  # User did not supply unknown values. Randomly Choose.
+            self.generate_unknowns(
+                p=args.prop_unknowns, seed=args.seed, verbose=args.verbose >= 1
+            )
+
+        self.logger.debug(
+            f"Pred Mask: {self.pred_mask}, Pred Mask Shape: {self.pred_mask.shape}"
+        )
+
         self.mask = self.mask[~self.all_missing_mask]
+
+        self.logger.debug(f"Mask: {self.mask}, Mask Shape: {self.mask.shape}")
 
         X, indices, y, index = self.setup_index_masks(X)
         self.all_indices = indices.copy()
@@ -778,11 +866,11 @@ class DataStructure:
 
         if args.detect_outliers:
             # Write outlier samples to file.
-            outlier_fn = str(args.prefix) + "_detected_outliers.csv"
-            outlier_dir = os.path.join(args.output_dir, "data")
-            with open(os.path.join(outlier_dir, outlier_fn), "w") as fout:
+            outlier_fn = str(args.prefix) + "_detected_outliers.txt"
+            outlier_dir = Path(args.output_dir, "data")
+            with open(outlier_dir / outlier_fn, "w") as fout:
                 self.outlier_samples.sort()
-                outdata = ",".join(self.outlier_samples)
+                outdata = "\n".join(self.outlier_samples)
                 fout.write(outdata + "\n")
 
             if self.verbose >= 1:
@@ -825,12 +913,36 @@ class DataStructure:
             args, X=self.genotypes_enc_imp, alg=args.embedding_type, transform_only=True
         )
 
+        self.logger.debug(
+            f"Encoded and Imputed Genotypes: {self.genotypes_enc_imp}, Shape: {self.genotypes_enc_imp.shape}"
+        )
+
         if args.verbose >= 1 and args.embedding_type != "none":
             self.logger.info("Finished embedding features!")
 
         if args.verbose >= 1:
             self.logger.info("Data split into train, val, and test sets.")
             self.logger.info("Creating DataLoader objects...")
+
+        self.logger.debug(
+            f"Training Features: {self.data['X_train']}, Training Features Shape: {self.data['X_train'].shape}"
+        )
+        self.logger.debug(
+            f"Validation Features: {self.data['X_val']}, Validation Featurs Shape: {self.data['X_val'].shape}"
+        )
+        self.logger.debug(
+            f"Test Features: {self.data['X_test']}, Test Features Shape: {self.data['X_test'].shape}"
+        )
+
+        self.logger.debug(
+            f"Training Targets: {self.data['y_train']}, Training Target Shape: {self.data['y_train'].shape}"
+        )
+        self.logger.debug(
+            f"Validation Targets: {self.data['y_val']}, Validation Target Shape: {self.data['y_val'].shape}"
+        )
+        self.logger.debug(
+            f"Test Targets: {self.data['y_test']}, Test Target Shape: {self.data['y_test'].shape}"
+        )
 
         # Creating DataLoaders
         self.train_loader = self.call_create_dataloaders(
@@ -864,7 +976,44 @@ class DataStructure:
             self.logger.info("DataLoaders created succesfully!")
             self.logger.info("Data loading and preprocessing completed!")
 
+        # For setting new prefix.
+        self.n_samples = self.genotypes_enc.shape[0]
+        self.n_loci = self.data["X_train"].shape[1]
+        return f"{args.prefix}_N{self.n_samples}_L{self.n_loci}"
+
+    def generate_unknowns(self, p=0.1, seed=None, verbose=False):
+        """Randomly choose unknown samples for prediction.
+
+        Only gets used if user does not supply and unkowns.
+
+        Args:
+            p (float): Proportion of samples to randomly select for the unknown prediction dataset. Defaults to 0.1.
+            seed (int or None): Random seed to use for the random choice generator. Defaults to None (no random seed supplied).
+            verbose (bool): Whether in verbose mode. Defaults to False.
+        """
+        if verbose:
+            msg = f"Unknown 'nan' values were not provided in the '--sample_data' file. Randomly selecting {p * 100} percent of the samples (N={p * len(self.locs)} samples) for the unknown prediction dataset."
+            self.logger.info(msg)
+
+        N = len(self.locs)  # Number of rows in pred_mask.
+        self.pred_mask = np.ones(N, dtype=bool)
+        rng = np.random.default_rng(seed=seed)
+        pred_idx = rng.choice(
+            a=N, size=int(np.ceil(p * N)), replace=False, shuffle=False
+        )
+        self.pred_mask[pred_idx] = False
+
     def extract_datasets(self, outliers, args):
+        """Extracts and separates datasets into known and predicted sets based on the presence of missing data.
+
+        Args:
+            outliers (numpy.ndarray): Array of outlier indices.
+            args (argparse.Namespace): User-supplied arguments.
+
+        Returns:
+            tuple: Extracted datasets and sample indices.
+        """
+
         self.mask[np.isin(self.all_indices, self.pred_indices)] = False
         pred_mask = np.zeros(len(self.all_indices), dtype=bool)
         pred_mask[np.isin(self.all_indices, self.pred_indices)] = True
@@ -889,12 +1038,25 @@ class DataStructure:
         )
 
     def validate_feature_target_len(self):
+        """Validate that the feature and target datasets have the same length.
+
+        Raises:
+            InvalidInputShapeError: If the shapes of the feature and target datasets do not match.
+        """
         if self.genotypes_enc.shape[0] != self.locs.shape[0]:
             msg = f"Invalid input shapes for genotypes and coorindates. The number of rows (samples) must be equal, but got: {self.genotypes_enc.shape}, {self.locs.shape}"
             self.logger.error(msg)
-            raise ValueError(msg)
+            raise InvalidInputShapeError(self.genotypes_enc.shape, self.locs.shape)
 
     def setup_index_masks(self, X):
+        """Sets up index masks for filtering the data.
+
+        Args:
+            X (numpy.ndarray): Feature data.
+
+        Returns:
+            tuple: Filtered feature data, indices, target data, and sample indices.
+        """
         indices = np.arange(self.locs.shape[0])
         X = X[self.pred_mask, :]
         y = self.locs[self.pred_mask, :]
@@ -906,43 +1068,70 @@ class DataStructure:
         return X, indices, y, index
 
     def run_outlier_detection(self, args, X, indices, y, index, filter_stage_indices):
-        outlier_detector = GeoGeneticOutlierDetector(
-            args,
-            pd.DataFrame(X, index=index),
-            pd.DataFrame(y, index=index),
-            output_dir=args.output_dir,
-            prefix=args.prefix,
-            n_jobs=args.n_jobs,
-            url=args.shapefile,
-            buffer=0.1,
-            show_plots=args.show_plots,
-            seed=args.seed,
-            debug=False,
-            verbose=args.verbose,
-            fontsize=args.fontsize,
-            filetype=args.filetype,
-            dpi=args.plot_dpi,
-        )
+        """Performs outlier detection using geographic and genetic criteria.
 
-        outliers = outlier_detector.composite_outlier_detection(
-            sig_level=args.significance_level,
-            maxk=args.maxk,
-            min_nn_dist=args.min_nn_dist,
-        )
+        Args:
+            args (argparse.Namespace): User-supplied arguments.
+            X (numpy.ndarray): Feature matrix.
+            indices (numpy.ndarray): Indices of samples.
+            y (numpy.ndarray): Target variable (coordinates).
+            index (numpy.ndarray): Index array for samples.
+            filter_stage_indices (list of np.ndarray): List of filter stage indices.
 
-        all_outliers = np.concatenate((outliers["geographic"], outliers["genetic"]))
+        Returns:
+            numpy.ndarray: Array of outlier indices.
 
-        # Returns outiler indices, remapped.
-        mapped_all_outliers = self.map_outliers_through_filters(
-            indices, filter_stage_indices, all_outliers
-        )
+        Raises:
+            OutlierDetectionError: If an error occurs during outlier detection.
+        """
+        try:
+            outlier_detector = GeoGeneticOutlierDetector(
+                args,
+                pd.DataFrame(X, index=index),
+                pd.DataFrame(y, index=index),
+                output_dir=args.output_dir,
+                prefix=args.prefix,
+                n_jobs=args.n_jobs,
+                url=args.shapefile,
+                buffer=0.1,
+                show_plots=args.show_plots,
+                seed=args.seed,
+                debug=args.debug,
+                verbose=args.verbose,
+            )
 
-        # Remove mapped outliers from data
-        self.mask[np.isin(self.all_indices, mapped_all_outliers)] = False
+            outliers = outlier_detector.composite_outlier_detection(
+                sig_level=args.significance_level,
+                maxk=args.maxk,
+                min_nn_dist=args.min_nn_dist,
+            )
 
-        return all_outliers
+            all_outliers = np.concatenate((outliers["geographic"], outliers["genetic"]))
+
+            # Returns outiler indices, remapped.
+            mapped_all_outliers = self.map_outliers_through_filters(
+                indices, filter_stage_indices, all_outliers
+            )
+
+            # Remove mapped outliers from data
+            self.mask[np.isin(self.all_indices, mapped_all_outliers)] = False
+
+            return all_outliers
+        except Exception as e:
+            raise OutlierDetectionError(f"Error occurred during outlier detection: {e}")
 
     def call_create_dataloaders(self, X, y, args, is_val):
+        """Helper method to create DataLoader objects for different datasets.
+
+        Args:
+            X (numpy.ndarray or list of PyG Data objects): Feature data.
+            y (numpy.ndarray or None): Target data.
+            args (argparse.Namespace): User-supplied arguments.
+            is_val (bool): Whether the dataset is validation/test data. Default is False.
+
+        Returns:
+            torch.utils.data.DataLoader: DataLoader object.
+        """
         return self.create_dataloaders(
             X,
             y,
@@ -963,21 +1152,17 @@ class DataStructure:
         """Embed SNP data using one of several dimensionality reduction techniques.
 
         Args:
-            args (argparse.Namespace): User-supplied command-line arguments.
-            X (numpy.ndarray): Data to embed. If is None, then self.genotypes_enc gets used instead. Defaults to None.
-            alg (str): Algorithm to use. Valid arguments include: 'polynomial', 'pca', 'tsne', 'mds', and 'none' (no embedding). Defaults to 'pca'.
-            full_dataset_only (bool): If True, only embed and return full dataset. Defaults to False.
-            transform_only (bool): If True, then only transforms and does not fit input features. This is used for validation and test datasets. Defaults to False.
-
-        Warnings:
-            Setting 'polynomial_degree' > 2 can lead to extremely large computational overhead. Do so at your own risk!!!
+            args (argparse.Namespace): User-supplied arguments.
+            X (numpy.ndarray): Data to embed. If None, uses self.genotypes_enc. Default is None.
+            alg (str): Algorithm to use. Default is 'pca'.
+            full_dataset_only (bool): If True, only embed and return full dataset. Default is False.
+            transform_only (bool): If True, only transform without fitting. Default is False.
 
         Returns:
             numpy.ndarray: Embedded data.
 
-        ToDo:
-            Make T-SNE plot.
-            Make MDS plot.
+        Raises:
+            EmbeddingError: If the optimal number of components cannot be estimated.
         """
         if X is None:
             X = self.genotypes_enc.copy()
@@ -998,7 +1183,7 @@ class DataStructure:
                 if n_components is None:
                     msg = "n_componenets could not be estimated for PCA embedding."
                     self.logger.error(msg)
-                    raise TypeError(msg)
+                    raise EmbeddingError(msg)
 
                 if args.verbose >= 1:
                     self.logger.info(
@@ -1016,7 +1201,7 @@ class DataStructure:
             if n_components is None:
                 msg = "n_components could not be estimated for kernelpca embedding."
                 self.logger.error(msg)
-                raise TypeError(msg)
+                raise EmbeddingError(msg)
 
             if args.verbose >= 1:
                 self.logger.info(
@@ -1033,9 +1218,9 @@ class DataStructure:
             emb = NMF(n_components=n_components, random_state=args.seed)
 
             if n_components is None:
-                msg = "n_components could not be estimated for nmf embedding."
+                msg = "n_components could not be estimated for NMF embedding."
                 self.logger.error(msg)
-                raise TypeError(msg)
+                raise EmbeddingError(msg)
 
             if args.verbose >= 1:
                 self.logger.info(f"Optimal number of NMF components: {n_components}")
@@ -1046,12 +1231,12 @@ class DataStructure:
             )
 
             if n_components is None:
-                msg = "n_components could not be estimated for nmf embedding."
+                msg = "n_components could not be estimated for MCA embedding."
                 self.logger.error(msg)
-                raise TypeError(msg)
+                raise EmbeddingError(msg)
 
             if args.verbose >= 1:
-                self.logger.info(f"Optimal number of NMF components: {n_components}")
+                self.logger.info(f"Optimal number of MCA components: {n_components}")
 
             emb = MCA(
                 n_components=n_components,
@@ -1158,8 +1343,7 @@ class DataStructure:
             return X.copy()
 
     def perform_mca_and_select_components(self, data, n_components_range, S):
-        """
-        Perform MCA on the provided data and select the optimal number of components.
+        """Perform MCA on the provided data and select the optimal number of components.
 
         Args:
             data (pd.DataFrame): The categorical data.
@@ -1167,26 +1351,21 @@ class DataStructure:
             S (float): Sensitivity setting for selecting optimal number of components.
 
         Returns:
-            MCA: The MCA model fitted with the optimal number of components.
             int: The optimal number of components.
         """
         mca = MCA(n_components=max(n_components_range), n_iter=5, one_hot=True)
         mca = mca.fit(data)
         cumulative_inertia = mca.cumulative_inertia_
-        optimal_n = self.select_optimal_components(
-            cumulative_inertia, n_components_range, S
-        )
+        optimal_n = self.select_optimal_components(cumulative_inertia, S)
 
         self.plotting.plot_mca_curve(cumulative_inertia, optimal_n)
         return optimal_n
 
-    def select_optimal_components(self, cumulative_inertia, n_components_range, S):
-        """
-        Select the optimal number of components based on explained inertia.
+    def select_optimal_components(self, cumulative_inertia, S):
+        """Select the optimal number of components based on explained inertia.
 
         Args:
-            explained_inertia (list): The explained inertia for each component.
-            n_components_range (range): The range of components to explore.
+            cumulative_inertia (list): The cumulative inertia for each component.
             S (float): Sensitivity setting for selecting optimal number of components.
 
         Returns:
@@ -1204,8 +1383,7 @@ class DataStructure:
         return optimal_n
 
     def find_optimal_nmf_components(self, data, min_components, max_components):
-        """
-        Find the optimal number of components for NMF based on reconstruction error.
+        """Find the optimal number of components for NMF based on reconstruction error.
 
         Args:
             data (np.array): The data to fit the NMF model.
@@ -1213,7 +1391,7 @@ class DataStructure:
             max_components (int): The maximum number of components to try.
 
         Returns:
-            int: The optimal number of components.
+            tuple: The optimal number of components and the reconstruction errors.
         """
         errors = []
         components_range = range(min_components, max_components + 1)
@@ -1263,15 +1441,14 @@ class DataStructure:
         args,
         is_val=False,
     ):
-        """
-        Create dataloaders for training, testing, and validation datasets.
+        """Create dataloaders for training, testing, and validation datasets.
 
         Args:
             X (numpy.ndarray or list of PyG Data objects): X dataset. Train, test, or validation.
             y (numpy.ndarray or None): Target data (train, test, or validation). None for GNN.
             batch_size (int): Batch size to use with model.
             args (argparse.Namespace): User-supplied arguments.
-            is_val (bool): Whether using validation/ test dataset. Otherwise should be training dataset. Defaults to False.
+            is_val (bool): Whether using validation/ test dataset. Otherwise should be training dataset. Default is False.
 
         Returns:
             torch.utils.data.DataLoader: DataLoader object suitable for the specified model type.
@@ -1300,6 +1477,9 @@ class DataStructure:
         Args:
             y (numpy.ndarray): Target values.
             args (argparse.Namespace): User-supplied arguments.
+
+        Returns:
+            GeographicDensitySampler: The weighted sampler with estimated sample weights.
         """
         # Initialize weighted sampler if class weights are used
         self.weighted_sampler = None
@@ -1334,43 +1514,6 @@ class DataStructure:
             self.samples_weight_indices = weighted_sampler.indices
             self.densities = self.weighted_sampler.density
         return self.weighted_sampler
-
-    def read_gtseq(
-        self,
-        filename,
-        output_dir,
-        prefix,
-        loci2drop=None,
-        subset_vcf_gtseq=None,
-    ):
-        if self.verbose >= 1:
-            self.logger.info("Reading GTSeq input file.")
-        # Create an instance of the class with the path to your data file
-        converter = GTseqToVCF(filename, str2drop=loci2drop)
-
-        # Load and preprocess the data
-        converter.load_data()
-        converter.parse_sample_column()
-        converter.calculate_ref_alt_alleles()
-        converter.transpose_data()
-
-        # Generate the VCF content
-        converter.create_vcf_header()
-        converter.format_genotype_data()
-
-        output_dir = os.path.join(output_dir, f"{prefix}_Genotypes.vcf")
-
-        # Write the VCF to a file
-        converter.write_vcf(output_dir)
-
-        if subset_vcf_gtseq is not None:
-            # Subset the VCF by locus IDs and write to a new file
-            converter.subset_vcf_by_locus_ids(
-                subset_vcf_gtseq, output_dir, f"{prefix}_gtseq_loci_subset.vcf"
-            )
-
-        if self.verbose >= 1:
-            self.logger.info("Successfully loaded GTSeq data.")
 
     @property
     def params(self):

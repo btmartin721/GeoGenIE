@@ -1,6 +1,7 @@
 import logging
 import time
 from os import path
+from pathlib import Path
 
 import numpy as np
 from pynndescent import NNDescent
@@ -30,9 +31,6 @@ class GeoGeneticOutlierDetector:
         show_plots=False,
         debug=False,
         verbose=0,
-        fontsize=24,
-        filetype="png",
-        dpi=300,
     ):
         """Initialize GeoGeneticOutlierDetector.
 
@@ -49,10 +47,15 @@ class GeoGeneticOutlierDetector:
             verbose (int): Verbosity setting (0-2), least to most verbose.
         """
         if debug:
-            genetic_data.to_csv("data/test_eigen.csv", header=False, index=False)
+            data_dir = Path(output_dir, "data")
+            fn = data_dir / "debug_eigen.csv"
+            genetic_data.to_csv(fn, header=False, index=False)
             tmp = geographic_data.reset_index()
             tmp.columns = ["sampleID", "x", "y"]
-            tmp.to_csv("data/test_coords_train.txt", header=True, index=False)
+
+            fn2 = data_dir / "train_test_coords.csv"
+            tmp.to_csv(fn2, header=True, index=False)
+
         self.genetic_data = genetic_data.to_numpy()
         self.geographic_data = geographic_data.to_numpy()
 
@@ -66,7 +69,10 @@ class GeoGeneticOutlierDetector:
         self.url = url
         self.buffer = buffer
         self.show_plots = show_plots
+        self.debug = debug
+        self.verbose = verbose
         self.logger = logging.getLogger(__name__)
+
         self.plotting = PlotGenIE(
             "cpu",
             self.args.output_dir,
@@ -80,7 +86,11 @@ class GeoGeneticOutlierDetector:
             dpi=self.args.plot_dpi,
             remove_splines=self.args.remove_splines,
         )
-        self.verbose = verbose
+
+        # Ensure correct coordinate projection and CRS.
+        df_geo = self.plotting.processor.to_geopandas(self.geographic_data)
+        self.geographic_data = self.plotting.processor.to_numpy(df_geo)
+        geo_coords_is_valid(self.geographic_data)
 
     def calculate_dgeo(self, pred_geo_coords, geo_coords, scalar):
         """Calculate the Dgeo statistic for geographic coordinates.
@@ -93,8 +103,9 @@ class GeoGeneticOutlierDetector:
         Returns:
             np.array: Calculated Dgeo values.
         """
-        if self.verbose >= 2:
-            self.logger.info("Estimating Dgeo statistic...")
+        if self.verbose >= 2 or self.debug:
+            msg = "Estimating Dgeo statistic..."
+            self.logger.debug(msg) if self.debug else self.logger.info(msg)
 
         if pred_geo_coords.shape[1] > 2:
             msg = f"Invalid shape for pred_geo_coords: {pred_geo_coords.shape}"
@@ -111,8 +122,9 @@ class GeoGeneticOutlierDetector:
             / scalar
         )
 
-        if self.verbose >= 2:
-            self.logger.info("Finished estimating Dgeo statistic.")
+        if self.verbose >= 2 or self.debug:
+            msg = "Finished estimating Dgeo statistic."
+            self.logger.debug(msg) if self.debug else self.logger.info(msg)
         return distances
 
     def calculate_statistic(
@@ -180,130 +192,6 @@ class GeoGeneticOutlierDetector:
             # new min_nn_dist adjusted according to new s
             min_nn_dist = orig_min_nn_dist / s
         return min_nn_dist, s, recalculate
-
-    def detect_genetic_outliers(
-        self,
-        geo_coords,
-        gen_coords,
-        maxk,
-        min_nn_dist=100,
-        w_power=2,
-        sig_level=0.95,
-        scale_factor=100,
-    ):
-        """Detect outliers based on geographic data using the KNN approach.
-
-        Args:
-            geo_coords (np.array): Array of geographic coordinates.
-            gen_coords (np.array): Array of genetic data coordinates.
-            maxk (int): Maximum number of neighbors to search for optimal K.
-            min_nn_dist (float): Minimum neighbor distance for geographic KNN.
-            w_power (float): Power of distance weight in KNN prediction.
-            sig_level (float): Significance level for detecting outliers.
-            scale_factor (int): Scaling factor for geogrpahic coordinates.
-
-        Returns:
-            np.array: Indices of detected outliers.
-        """
-        # Step 1: Calculate geographic distances and scale
-        geo_dist_matrix = self.calculate_geographic_distances(
-            geo_coords, scale_factor=scale_factor, min_nn_dist=min_nn_dist
-        )
-        gen_dist_matrix = self.get_dist_matrices(gen_coords, dtype="genetic")
-
-        optk = self.find_optimal_k(
-            gen_coords,
-            geo_dist_matrix,
-            (1, maxk),  # does k + 1
-            w_power,
-            min_nn_dist,
-            is_genetic=False,
-        )
-
-        if self.verbose >= 1:
-            self.logger.info(f"Optimal K for KNN Genetic Regression: {optk}")
-
-        # Step 2: Find KNN based on geographic distances
-        knn_indices = self.find_geo_knn(optk, min_nn_dist)
-
-        # Step 3: Predict genetic data using weighted KNN
-        predicted_gen_data = self.predict_coords_knn(
-            gen_coords, geo_dist_matrix, knn_indices, w_power
-        )
-
-        predicted_geo_data = self.predict_coords_knn(
-            geo_coords, gen_dist_matrix, knn_indices, w_power
-        )
-
-        # Step 4: Calculate Dg statistic and detect outliers
-        dg = self.calculate_statistic(predicted_gen_data, gen_coords)
-        dgeo = self.calculate_dgeo(
-            predicted_geo_data, geo_coords, scale_factor=scale_factor
-        )
-
-        r2 = calculate_r2_knn(predicted_gen_data, gen_coords)
-
-        if self.verbose >= 1:
-            self.logger.info(f"r-squared for genetic outlier detection: {r2}")
-
-        outliers, p_values, gamma_params = self.fit_gamma_mle(dg, sig_level)
-        fn = path.join(self.output_dir, "plots", f"{self.prefix}_gamma_genetic.png")
-
-        self.plotting.plot_gamma_distribution(
-            gamma_params[0],
-            gamma_params[1],
-            dg,
-            sig_level,
-            fn,
-            "Genetic Outlier Gamma Distribution",
-        )
-        return outliers, p_values, gamma_params
-
-    def detect_geographic_outliers(
-        self,
-        geo_coords,
-        gen_coords,
-        maxk,
-        min_nn_dist=100,
-        w_power=2,
-        sig_level=0.95,
-        scale_factor=100,
-    ):
-        # Calculate genetic distances
-        gen_dist_matrix = self.get_dist_matrices(gen_coords, dtype="genetic")
-
-        # Find optimal K using genetic distances to predict geo coords
-        optk = self.find_optimal_k(
-            geo_coords, gen_dist_matrix, (1, maxk), w_power, min_nn_dist=min_nn_dist
-        )
-
-        knn_indices = self.find_gen_knn(optk)
-
-        # Predict geographic coordinates using weighted genetic KNN
-        predicted_geo_coords = self.predict_coords_knn(
-            geo_coords, gen_dist_matrix, knn_indices, w_power
-        )
-
-        # Calculate the Dgeo statistic
-        dgeo = self.calculate_dgeo(predicted_geo_coords, geo_coords, scale_factor)
-
-        r2 = calculate_r2_knn(predicted_geo_coords, geo_coords)
-
-        if self.verbose >= 1:
-            self.logger.info(f"r-squared for geographic outlier detection: {r2}")
-
-        outliers, p_values, gamma_params = self.fit_gamma_mle(dgeo, sig_level)
-        fn = path.join(self.output_dir, "plots", f"{self.prefix}_gamma_geographic.png")
-
-        self.plotting.plot_gamma_distribution(
-            gamma_params[0],
-            gamma_params[1],
-            dgeo,
-            sig_level,
-            fn,
-            "Geographic Outlier Gamma Distribution",
-        )
-        return outliers, p_values, gamma_params
 
     def find_gen_knn(self, coords, k, scale_factor):
         """Find K-nearest neighbors for genetic data using PyNNDescent.
@@ -405,7 +293,7 @@ class GeoGeneticOutlierDetector:
                     D_statistic,
                     min_nn_dist,
                     scale_factor,
-                    pred_r2,
+                    _,
                 ) = self.calculate_statistic(
                     predictions, gen_coords, is_genetic, min_nn_dist, scale_factor
                 )
@@ -423,7 +311,7 @@ class GeoGeneticOutlierDetector:
                     D_statistic,
                     min_nn_dist,
                     scale_factor,
-                    pred_r2,
+                    _,
                 ) = self.calculate_statistic(
                     predictions, geo_coords, is_genetic, min_nn_dist, scale_factor
                 )
@@ -616,10 +504,10 @@ class GeoGeneticOutlierDetector:
         opt_ks,
         res,
         at,
-        time_durations,
+        time_duration,
     ):
         (
-            time_durations,
+            time_duration,
             outlier_flags,
             d_stats,
             p_values,
@@ -634,7 +522,7 @@ class GeoGeneticOutlierDetector:
             max_iter,
             opt_ks[at],
             analysis_type,
-            time_durations,
+            time_duration,
         )
 
         if self.verbose >= 1:
@@ -646,16 +534,15 @@ class GeoGeneticOutlierDetector:
         self.plot_gamma_dist(sig_level, d_stats, gamma_params, at)
 
         end_time = time.time()
-        time_durations[f"plot_gamma_distribution_{at}"] = end_time - start_time
+        time_duration[f"plot_gamma_distribution_{at}"] = end_time - start_time
 
-        if self.verbose >= 2:
+        if self.verbose >= 2 or self.debug:
             key = f"plot_gamma_distribution_{at}"
-            self.logger.info(
-                f"Plotted Gamma distributions. Time taken: {time_durations[key]} seconds"
-            )
+            msg = f"Plotted Gamma distributions in {time_duration[key]} seconds"
+            self.logger.debug(msg) if self.debug else self.logger.info(msg)
 
         res[at] = {
-            "time_duration": time_durations,
+            "time_duration": time_duration,
             "outlier_flags": outlier_flags,
             "d_stats": d_stats,
             "p_values": p_values,
@@ -737,8 +624,9 @@ class GeoGeneticOutlierDetector:
                     self.logger.info(break_msg)
                 break
 
-            if self.verbose >= 2:
-                self.logger.info(f"Finished iteration {iteration}.")
+            if self.verbose >= 2 or self.debug:
+                msg = f"Finished iteration {iteration}."
+                self.logger.debug(msg) if self.debug else self.logger.info(msg)
 
         return (
             time_durations,
@@ -911,11 +799,10 @@ class GeoGeneticOutlierDetector:
         end_time = time.time()
         time_durations[f"find_knn_{analysis_type}"] = end_time - start_time
 
-        if self.verbose >= 2:
+        if self.verbose >= 2 or self.debug:
+            msg = f"Found KNN indices in: {time_durations[key]} seconds"
             key = f"find_knn_{analysis_type}"
-            self.logger.info(
-                f"Found KNN indices, Time taken: {time_durations[key]} seconds"
-            )
+            self.logger.debug(msg) if self.debug else self.logger.info(msg)
 
         # Step 3: Predict using weighted KNN
         start_time = time.time()
@@ -925,11 +812,10 @@ class GeoGeneticOutlierDetector:
         end_time = time.time()
         time_durations[f"predict_knn_{analysis_type}"] = end_time - start_time
 
-        if self.verbose >= 2:
+        if self.verbose >= 2 or self.debug:
+            msg = f"Predicted using weighted KNN: {time_durations[key]} seconds"
             key = f"predict_knn_{analysis_type}"
-            self.logger.info(
-                f"Predicted using weighted KNN, Time taken: {time_durations[key]} seconds"
-            )
+            self.logger.debug(msg) if self.debug else self.logger.info(msg)
 
         # Step 4: Calculate D statistics and detect outliers
         start_time = time.time()
@@ -943,11 +829,10 @@ class GeoGeneticOutlierDetector:
         end_time = time.time()
         time_durations[f"calculate_statistic_{analysis_type}"] = end_time - start_time
 
-        if self.verbose >= 2:
+        if self.verbose >= 2 or self.debug:
+            msg = f"Calculated D statistics in: {time_durations[key]} seconds"
             key = f"calculate_statistic_{analysis_type}"
-            self.logger.info(
-                f"Calculated D statistics, Time taken: {time_durations[key]} seconds"
-            )
+            self.logger.debug(msg) if self.debug else self.logger.info(msg)
 
         if self.verbose >= 1:
             self.logger.info(
@@ -960,11 +845,10 @@ class GeoGeneticOutlierDetector:
         end_time = time.time()
         time_durations[f"fit_gamma_{analysis_type}"] = end_time - start_time
 
-        if self.verbose >= 2:
+        if self.verbose >= 2 or self.debug:
             key = f"fit_gamma_{analysis_type}"
-            self.logger.info(
-                f"Fitted gamma distribution for {analysis_type} outliers, Time taken: {time_durations[key]} seconds"
-            )
+            msg = f"Fitted gamma distribution for {analysis_type} outliers in: {time_durations[key]} seconds"
+            self.logger.debug(msg) if self.debug else self.logger.info(msg)
 
         return (
             time_durations,
@@ -987,7 +871,7 @@ class GeoGeneticOutlierDetector:
         (
             outliers["geographic"],
             outliers["genetic"],
-            results,
+            _,
         ) = self.multi_stage_outlier_knn(
             dgeo,
             dgen,
@@ -1002,39 +886,3 @@ class GeoGeneticOutlierDetector:
         if self.verbose >= 1:
             self.logger.info("Outlier detection completed.")
         return outliers
-
-    def compute_pairwise_p(self, distmat, gamma_params, k):
-        """Compute p-values for each pair of sample and K nearest neighbors."""
-        shape, scale, _ = gamma_params
-        n_samples = distmat.shape[0]
-        pairwise_p_val = np.zeros((n_samples, k))
-        for i in range(n_samples):
-            sorted_indices = np.argsort(distmat[i])
-            for j in range(k):
-                neighbor_index = sorted_indices[j]
-                dist = distmat[i, neighbor_index]
-                pairwise_p_val[i, j] = 1 - gamma.cdf(dist, a=shape, scale=scale)
-        return pairwise_p_val
-
-    def construct_adjacency_matrix(self, pairwise_pval, distmat, k):
-        """Construct an adjacency matrix based on pairwise p-values."""
-        n_samples = distmat.shape[0]
-        adjacency_matrix = np.zeros((n_samples, n_samples))
-
-        for i in range(n_samples):
-            knn_indices = np.argsort(distmat[i])[:k]
-            for j in knn_indices:
-                # Direct assignment of p-value as connection strength
-                adjacency_matrix[i, j] = pairwise_pval[i, j]
-        return self.adjust_mutual_neighborhoods(adjacency_matrix)
-
-    def adjust_mutual_neighborhoods(self, adjacency_mat):
-        """Adjust the adjacency matrix for mutual neighborhoods."""
-        n_samples = adjacency_mat.shape[0]
-        for i in range(n_samples):
-            for j in range(n_samples):
-                if adjacency_mat[i, j] != adjacency_mat[j, i]:
-                    adjacency_mat[i, j] = adjacency_mat[j, i] = max(
-                        adjacency_mat[i, j], adjacency_mat[j, i]
-                    )
-        return adjacency_mat

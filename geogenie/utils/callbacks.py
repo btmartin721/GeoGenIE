@@ -19,14 +19,19 @@ class EarlyStopping:
         boot=None,
     ):
         """
+        Initialize the EarlyStopping callback.
+
         Args:
             output_dir (str): Directory to save checkpoints.
             prefix (str): Prefix for the checkpoint filenames.
-            patience (int): How long to wait after last time validation loss improved. Default: 100
-            verbose (int): Verbosity mode. Default: 0
-            delta (float): Minimum change in the monitored quantity to qualify as an improvement. Default: 0
-            trial (optuna.trial): Optuna trial for hyperparameter optimization. Default: None
-            boot (int): Bootstrap number for ensemble models. Default: None
+            patience (int): How long to wait after last time validation loss improved. Default: 100.
+            verbose (int): Verbosity mode. Default: 0.
+            delta (float): Minimum change in the monitored quantity to qualify as an improvement. Default: 0.
+            trial (optuna.trial.Trial, optional): Optuna trial for hyperparameter optimization. Default: None.
+            boot (int, optional): Bootstrap number for ensemble models. Default: None.
+
+        Raises:
+            ValueError: If both boot and trial are defined.
         """
         self.patience = patience
         self.verbose = verbose
@@ -50,6 +55,16 @@ class EarlyStopping:
             raise ValueError(msg)
 
     def __call__(self, val_loss, model):
+        """
+        Call method to check if early stopping condition is met.
+
+        Args:
+            val_loss (float): Current validation loss.
+            model (torch.nn.Module): The model being trained.
+
+        Returns:
+            bool: True if early stopping is triggered, False otherwise.
+        """
         if self.best_score is None:
             self.best_score = val_loss
             self.save_checkpoint(val_loss, model)
@@ -67,7 +82,13 @@ class EarlyStopping:
             self.counter = 0
 
     def save_checkpoint(self, val_loss, model):
-        """Saves model when validation loss decreases."""
+        """
+        Save the model when validation loss decreases.
+
+        Args:
+            val_loss (float): Current validation loss.
+            model (torch.nn.Module): The model being trained.
+        """
         if self.verbose:
             self.logger.info(
                 f"Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ..."
@@ -89,7 +110,18 @@ class EarlyStopping:
         self.val_loss_min = val_loss
 
     def load_best_model(self, model):
-        """Loads the best model from the checkpoint file."""
+        """
+        Load the best model from the checkpoint file.
+
+        Args:
+            model (torch.nn.Module): The model to load the checkpoint into.
+
+        Returns:
+            torch.nn.Module: The model with weights loaded from the best checkpoint.
+
+        Raises:
+            FileNotFoundError: If the checkpoint file is not found.
+        """
         chkdir = Path(self.output_dir, "models")
 
         if self.boot is not None:
@@ -109,11 +141,42 @@ class EarlyStopping:
 
 
 def callback_init(optimizer, args, trial=None, boot=None):
+    """
+    Initialize early stopping and learning rate scheduler callbacks.
+
+        EarlyStopping Arguments:
+        output_dir (str): Directory to save the outputs.
+        prefix (str): Prefix for the saved files.
+        patience (int): Number of epochs to wait for improvement before stopping.
+        verbose (bool): If True, prints messages about early stopping.
+        delta (float): Minimum change to qualify as an improvement.
+        trial (optuna.trial.Trial): Optuna trial object.
+        boot (any): Boot object or identifier.
+
+    ReduceLROnPlateau Arguments:
+        optimizer (torch.optim.Optimizer): Wrapped optimizer.
+        mode (str): One of 'min', 'max'. In 'min' mode, lr will be reduced when the quantity monitored has stopped decreasing; in 'max' mode it will be reduced when the quantity monitored has stopped increasing.
+        factor (float): Factor by which the learning rate will be reduced. new_lr = lr * factor.
+        patience (int): Number of epochs with no improvement after which learning rate will be reduced.
+        verbose (bool): If True, prints a message to stdout for each update.
+
+    Args:
+        optimizer (torch.optim.Optimizer): The optimizer for which the learning rate scheduler will be applied.
+        args (argparse.Namespace): Argument namespace containing the necessary hyperparameters and settings.
+        trial (optuna.trial.Trial, optional): Optuna trial object for hyperparameter optimization. Defaults to None.
+        boot (any, optional): Boot object or identifier, used for early stopping callback. Defaults to None.
+
+    Returns:
+        tuple: A tuple containing the initialized EarlyStopping and ReduceLROnPlateau scheduler.
+    """
+
+    verbose = args.verbose >= 2 or args.debug
+
     early_stopping = EarlyStopping(
         output_dir=args.output_dir,
         prefix=args.prefix,
         patience=args.early_stop_patience,
-        verbose=args.verbose >= 2,
+        verbose=verbose,
         delta=0,
         trial=trial,
         boot=boot,
@@ -124,7 +187,7 @@ def callback_init(optimizer, args, trial=None, boot=None):
         mode="min",
         factor=args.lr_scheduler_factor,
         patience=args.lr_scheduler_patience,
-        verbose=args.verbose >= 2,
+        verbose=verbose,
     )
 
     return early_stopping, lr_scheduler

@@ -8,7 +8,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import torch
-from sklearn.ensemble import RandomForestRegressor
 from torch import optim
 from torch.utils.data import DataLoader
 
@@ -16,6 +15,8 @@ from geogenie.plotting.plotting import PlotGenIE
 from geogenie.samplers.interpolate import run_genotype_interpolator
 from geogenie.utils.callbacks import callback_init
 from geogenie.utils.data import CustomDataset
+from geogenie.utils.exceptions import InvalidInputShapeError
+from geogenie.utils.utils import read_csv_with_dynamic_sep, check_column_dtype
 
 
 class Bootstrap:
@@ -220,12 +221,12 @@ class Bootstrap:
             )
 
             model_params = {
-                "input_size": train_loader.dataset.features.shape[1],
+                "input_size": train_loader.dataset.n_features,
                 "width": self.best_params["width"],
                 "nlayers": self.best_params["nlayers"],
                 "dropout_prop": self.best_params["dropout_prop"],
                 "device": self.device,
-                "output_width": train_loader.dataset.labels.shape[1],
+                "output_width": train_loader.dataset.n_labels,
                 "dtype": self.dtype,
             }
 
@@ -245,7 +246,7 @@ class Bootstrap:
                 lr_scheduler=lr_scheduler,
             )
 
-            if self.args.verbose >= 2:
+            if self.args.verbose >= 2 or self.args.debug:
                 self.logger.info(f"Completed bootstrap replicate: {boot}")
 
             return (
@@ -279,12 +280,12 @@ class Bootstrap:
             for future in futures:
                 boot = futures[future]
 
-                if self.args.verbose >= 2:
+                if self.args.verbose >= 2 or self.args.debug:
                     self.logger.info(f"Awaiting result for boot {boot}")
                 try:
                     result = future.result()
 
-                    if self.args.verbose >= 2:
+                    if self.args.verbose >= 2 or self.args.debug:
                         self.logger.info(f"Completed job for boot {boot}")
                     if all(r is None for r in result):
                         self.logger.error(f"Bootstrap iteration {boot} had an error.")
@@ -364,7 +365,7 @@ class Bootstrap:
             # If this is the first bootstrap iteration, delete existing file
             if boot_file_path.exists():
                 if self.verbose >= 2:
-                    self.logger.warn("Found existing metrics file. Removing it.")
+                    self.logger.warn("Removing existing metrics files.")
                 boot_file_path.unlink()  # Remove the file.
 
         if test_metrics is not None and dataset == "pred":
@@ -536,31 +537,6 @@ class Bootstrap:
         return df, df["sampleID"].to_numpy().tolist()
 
     def _process_boot_preds(self, outdir, bootstrap_preds, dataset):
-        """Process bootstrap predictions on real unseen data and write the summarized predictions to file.
-
-        Args:
-            outdir (str): Output directory to use.
-            bootstrap_pred (list of pd.DataFrame): Data to process.
-            dataset (str): Which dataset to use {"val", "test", "pred"}.
-        """
-        if dataset not in {"val", "test", "pred"}:
-            msg = f"dataset must be either 'val', 'test', or 'pred': {dataset}"
-            self.logger.error(msg)
-            raise ValueError(msg)
-
-        bootstrap_df = pd.concat(bootstrap_preds)
-        predout = self._grouped_ci_boot(bootstrap_df, dataset)
-
-        pth = Path(outdir)
-        pth = pth.joinpath("bootstrap_summaries")
-        pth.mkdir(exist_ok=True, parents=True)
-        of = f"{self.args.prefix}_bootstrap_summary_{dataset}_predictions.csv"
-        summary_outfile = pth.joinpath(of)
-
-        predout.to_csv(summary_outfile, header=True, index=False)
-        return predout
-
-    def _process_boot_preds(self, outdir, bootstrap_preds, dataset):
         if dataset not in {"val", "test", "pred"}:
             msg = f"dataset must be either 'val', 'test', or 'pred': {dataset}"
             self.logger.error(msg)
@@ -579,15 +555,28 @@ class Bootstrap:
         return predout
 
     def _grouped_ci_boot(self, df, dataset):
-        if self.args.known_sample_data is not None and dataset != "pred":
-            df_known = pd.read_csv(
-                self.args.known_sample_data,
-                names=["sampleID", "x", "y"],
-                sep="\t",
-                header=0,
-            )
-        else:
-            df_known = None
+        df_known = None
+        if self.args.known_sample_data is not None:
+            fn = self.args.known_sample_data
+            df_known = read_csv_with_dynamic_sep(fn)
+
+            # Handle invalid known_sample_data file columns.
+            if df_known.shape[1] != 3:
+                msg = f"'--known_sample_data' file contains invalid dimensions. Expected three columns, but got {df_known.shape[1]}."
+                self.logger.error(msg)
+                raise InvalidInputShapeError(msg)
+
+            col_names = ["sampleID", "x", "y"]
+            df_known.columns = col_names
+
+            for col_name, col_order, col_dtype in zip(
+                col_names,
+                ["first", "second", "third"],
+                ["string", "numeric", "numeric"],
+            ):
+                self._validate_sample_data(
+                    df_known, col_name, column_order=col_order, expected_dtype=col_dtype
+                )
 
         if df_known is None and dataset != "pred":
             self.logger.warning("Known coordinates were not provided.")
@@ -636,7 +625,7 @@ class Bootstrap:
 
         dfres = pd.DataFrame(results)
 
-        if df_known is not None:
+        if df_known is not None and dataset != "pred":
             dfres = dfres.sort_values(by="sampleID")
             df_known = df_known[~df_known["x"].isna()]
             df_known = df_known[df_known["sampleID"].isin(dfres["sampleID"])]
@@ -679,3 +668,13 @@ class Bootstrap:
 
         df.to_csv(boot_outfile, header=True, index=True)
         return df
+
+    def _validate_sample_data(
+        self, df, column_name, column_order="first", expected_dtype="numeric"
+    ):
+
+        dtype = check_column_dtype(df, column_name)
+        if dtype != expected_dtype:
+            msg = f"--known_sample_data' file is supposed to contain sampleIDs of type '{expected_dtype}' as the {column_order} column ({column_name}), but got: {dtype} data type"
+            self.logger.error(msg)
+            raise TypeError(msg)

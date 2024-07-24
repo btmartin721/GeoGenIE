@@ -1,10 +1,8 @@
 import logging
 import math
-from math import asin, cos, radians, sin, sqrt
 
 import numba
 import numpy as np
-import pandas as pd
 import scipy.stats as stats
 from sklearn.manifold import LocallyLinearEmbedding
 from sklearn.metrics import mean_squared_error
@@ -58,80 +56,6 @@ class LocallyLinearEmbeddingWrapper(LocallyLinearEmbedding):
         return -estimator.reconstruction_error_
 
 
-# def evaluate_outliers(
-#     train_samples, outlier_geo_indices, outlier_gen_indices, dt, args
-# ):
-#     if not isinstance(train_samples, pd.Series):
-#         train_samples = pd.Series(train_samples, name="ID")
-
-#     """Evaluate and plot results from GeoGenOutlierDetector."""
-#     y_pred = process_pred(train_samples, outlier_geo_indices, outlier_gen_indices, dt)
-#     y_true = process_truths(train_samples, dt)
-
-#     plotting = PlotGenIE(
-#         "cpu",
-#         args.output_dir,
-#         args.prefix,
-#         args.show_plots,
-#         args.fontsize,
-#     )
-#     plotting.plot_confusion_matrix(y_true["Label"], y_pred["Label"], dt)
-
-#     logger.info(f"Accuracy: {accuracy_score(y_true['Label'], y_pred['Label'])}")
-#     logger.info(f"F1 Score: {f1_score(y_true['Label'], y_pred['Label'])}")
-
-
-def process_truths(train_samples):
-    """Process true values."""
-    truths = pd.read_csv("data/real_outliers.csv", sep=" ")
-    truths["method"] = truths["method"].str.replace('"', "")
-    truths["method"] = truths["method"].str.replace("'", "")
-    y_true = pd.DataFrame(columns=["ID"])
-    y_true["ID"] = train_samples
-    y_true["Label"] = y_true["ID"].isin(truths["ID"]).astype(int)
-    y_true["Type"] = "True"
-    return y_true.sort_values(by=["ID"])
-
-
-def process_pred(train_samples, outlier_geo_indices, outlier_gen_indices, label_type):
-    """Process predictions."""
-    # Create the y_pred DataFrame
-    y_pred = pd.DataFrame(columns=["ID"])
-    y_pred["ID"] = train_samples
-    y_pred[label_type] = 0
-    y_pred["Type"] = "Pred"
-
-    # Convert outlier indices to IDs
-    outlier_geo_ids = train_samples.iloc[outlier_geo_indices]
-    outlier_gen_ids = train_samples.iloc[outlier_gen_indices]
-
-    outlier_ids = pd.concat([outlier_geo_ids, outlier_gen_ids])
-
-    # Mark the outliers in y_pred based on IDs
-    y_pred["Label"] = y_pred["ID"].isin(outlier_ids).astype(int)
-    return y_pred.sort_values(by=["ID"])
-
-
-def haversine_distances_agg(y_true, y_pred, func):
-    """
-    Calculate the distance metric between y_true and y_pred using the specified aggregation function (e.g., np.mean or np.median)
-
-    Args:
-        y_true (numpy.ndarray): Array of true values (latitude, longitude).
-        y_pred (numpy.ndarray): Array of predicted values (latitude, longitude).
-        func (callable): Function to aggregate distances. e.g., np.mean
-
-    Returns:
-        float: Aggregated distance.
-    """
-    return func(
-        [
-            haversine(y_pred[x, 0], y_pred[x, 1], y_true[x, 0], y_true[x, 1])
-            for x in range(len(y_pred))
-        ]
-    )
-
-
 def calculate_r2_knn(predicted_data, actual_data):
     """
     Calculate the coefficient of determination (R^2) for predictions.
@@ -153,40 +77,6 @@ def calculate_rmse(preds, targets):
     return mean_squared_error(
         np.zeros_like(haversine_errors), haversine_errors, squared=False
     )
-
-
-def haversine(lon1, lat1, lon2, lat2):
-    """
-    Calculate the great circle distance in kilometers between two points
-    on the earth (specified in decimal degrees).
-    """
-    # Convert decimal degrees to radians
-    lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
-
-    # Haversine formula
-    dlon = lon2 - lon1
-    dlat = lat2 - lat1
-    a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
-    c = 2 * asin(sqrt(a))
-    r = 6371  # Radius of Earth in kilometers
-    return c * r
-
-
-def haversine_numpy(lon1, lat1, lon2, lat2):
-    """
-    Calculate the great circle distance between two points
-    on the earth (specified in decimal degrees) using numpy.
-    """
-    # Convert decimal degrees to radians
-    lon1, lat1, lon2, lat2 = map(np.radians, [lon1, lat1, lon2, lat2])
-
-    # Haversine formula
-    dlon = lon2 - lon1
-    dlat = lat2 - lat1
-    a = np.sin(dlat / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2) ** 2
-    c = 2 * np.arcsin(np.sqrt(a))
-    r = 6371  # Radius of earth in kilometers
-    return c * r
 
 
 @numba.njit(fastmath=True)
@@ -212,10 +102,3 @@ def haversine_distance(coord1, coord2):
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
     return radius * c
-
-
-def compute_drms(std_dev_x, std_dev_y):
-    """
-    Calculate the Distance Root Mean Squared (DRMS).
-    """
-    return np.sqrt(std_dev_x**2 + std_dev_y**2)

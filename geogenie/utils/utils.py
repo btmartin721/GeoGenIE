@@ -1,10 +1,8 @@
 import logging
-import os
 import signal
-import sys
 from contextlib import contextmanager
+from io import StringIO
 
-import geopandas as gpd
 import numpy as np
 import pandas as pd
 import torch
@@ -15,24 +13,67 @@ from geogenie.utils.exceptions import TimeoutException
 logger = logging.getLogger(__name__)
 
 
-def load_directory_of_locs(directory):
+def check_column_dtype(df, column_name):
     """
-    Load all CSV files from the given directory and concatenate them into a single geopandas.GeoDataFrame.
+    Check if a DataFrame column is string dtype or numeric dtype.
 
     Args:
-        directory (str): Path to the directory containing CSV files.
+        df (pd.DataFrame): The DataFrame to check.
+        column_name (str): The name of the column to check.
 
     Returns:
-        geopandas.GeoDataFrame: Combined GeoDataFrame containing all data.
+        str: 'string' if the column is of string dtype, 'numeric' if the column is of numeric dtype, otherwise 'other'.
     """
-    files = [
-        os.path.join(directory, f)
-        for f in os.listdir(directory)
-        if f.endswith(".csv") or f.endswith(f"txt")
-    ]
-    df = pd.concat([pd.read_csv(f) for f in files], ignore_index=True)
-    gdf = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.x, df.y))
-    return gdf
+    dtype = df[column_name].dtype
+    if dtype == "object" or dtype == "string":
+        return "string"
+    elif pd.api.types.is_numeric_dtype(dtype):
+        return "numeric"
+    else:
+        return "other"
+
+
+def detect_separator(file_path):
+    """
+    Detects the separator used in a CSV file by reading the first line.
+
+    Args:
+        file_path (str): Path to the CSV file.
+
+    Returns:
+        str: The detected separator (one of ',', '\t', or ' ').
+    """
+    with open(file_path, "r") as file:
+        first_line = file.readline()
+
+    if "," in first_line:
+        return ","
+    elif "\t" in first_line:
+        return "\t"
+    else:
+        return " "
+
+
+def read_csv_with_dynamic_sep(file_path):
+    """
+    Reads a CSV file with a dynamically detected separator, replacing spaces with tabs in-memory.
+
+    Args:
+        file_path (str): Path to the CSV file.
+
+    Returns:
+        pd.DataFrame: The DataFrame containing the CSV data.
+    """
+    sep = detect_separator(file_path)
+
+    if sep == " ":
+        with open(file_path, "r") as file:
+            data = file.read().replace(" ", "\t")
+        data_io = StringIO(data)
+        sep = "\t"
+        return pd.read_csv(data_io, sep=sep)
+    else:
+        return pd.read_csv(file_path, sep=sep)
 
 
 @contextmanager
@@ -59,31 +100,6 @@ def validate_is_numpy(features, labels, sample_weights):
     if isinstance(sample_weights, torch.Tensor):
         sample_weights = sample_weights.numpy()
     return features, labels, sample_weights
-
-
-@contextmanager
-def suppress_output():
-    """
-    A context manager to suppress standard output and standard error.
-
-    Usage:
-        with suppress_output():
-            # Code that generates output to be suppressed
-
-    This temporarily redirects sys.stdout and sys.stderr to os.devnull.
-    """
-
-    original_stdout = sys.stdout
-    original_stderr = sys.stderr
-
-    with open(os.devnull, "w") as devnull:
-        sys.stdout = devnull
-        sys.stderr = devnull
-        try:
-            yield
-        finally:
-            sys.stdout = original_stdout
-            sys.stderr = original_stderr
 
 
 def assign_to_bins(
@@ -173,72 +189,6 @@ def geo_coords_is_valid(coordinates):
     return True
 
 
-def rmse_to_distance(rmse, latitudes):
-    """
-    Convert RMSE in decimal degrees to distance in kilometers for a batch of predictions,
-    and calculate the mean, median, and standard deviation of the distance errors.
-
-    Args:
-        rmse (numpy.ndarray): RMSE values in decimal degrees, shape [batch_size, 2] ([rmse_longitude, rmse_latitude]).
-        latitudes (numpy.ndarray): Latitudes at which to estimate the distances, shape (n_samples,).
-
-    Returns:
-        dict: A dictionary containing the mean, median, and standard deviation of the error distances.
-    """
-    km_per_degree_latitude = 111  # Approximate value; better away from poles.
-    km_per_degree_longitude = km_per_degree_latitude * np.cos(np.radians(latitudes))
-
-    # Convert RMSE from degrees to kilometers
-    distance_longitude = rmse[:, 0] * km_per_degree_longitude
-    distance_latitude = rmse[:, 1] * km_per_degree_latitude
-
-    # Combine the latitudinal and longitudinal errors
-    total_distance_error = np.sqrt(distance_longitude**2 + distance_latitude**2)
-
-    # Calculate mean, median, and standard deviation
-    mean_error = np.mean(total_distance_error)
-    median_error = np.median(total_distance_error)
-    std_dev_error = np.std(total_distance_error)
-
-    return {
-        "mean": mean_error,
-        "median": median_error,
-        "std_dev": std_dev_error,
-        "dist_error": total_distance_error,
-    }
-
-
-class StreamToLogger:
-    """
-    Custom stream object that redirects writes to a logger instance.
-    """
-
-    def __init__(self, logger, log_level=logging.INFO):
-        self.logger = logger
-        self.log_level = log_level
-
-    def write(self, buf):
-        for line in buf.rstrip().splitlines():
-            self.logger.log(self.log_level, line.rstrip())
-
-    def flush(self):
-        pass
-
-
-@contextmanager
-def redirect_logging(logger):
-    """Redirects logging by manipulating sys.stdout and sys.stderr."""
-    old_stdout = sys.stdout
-    old_stderr = sys.stderr
-    try:
-        sys.stdout = StreamToLogger(logger, logging.INFO)
-        sys.stderr = StreamToLogger(logger, logging.ERROR)
-        yield
-    finally:
-        sys.stdout = old_stdout
-        sys.stderr = old_stderr
-
-
 def get_iupac_dict():
     return {
         ("A", "A"): "A",
@@ -292,25 +242,4 @@ def get_iupac_dict():
         ("T", "G", "C", "A"): "N",
         ("A", "T", "G", "C"): "N",
         ("N", "N"): "N",  # any nucleotide
-    }
-
-
-def base_to_int():
-    return {
-        "A": 0,
-        "T": 1,
-        "G": 2,
-        "C": 3,
-        "N": 4,
-        "R": 5,
-        "Y": 6,
-        "S": 7,
-        "W": 8,
-        "K": 9,
-        "M": 10,
-        "B": 11,
-        "D": 12,
-        "H": 13,
-        "V": 14,
-        "Z": 15,
     }

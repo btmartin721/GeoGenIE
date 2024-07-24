@@ -38,24 +38,24 @@ class SpatialDataProcessor:
 
         try:
             # Log the download attempt
-            if self.logger:
+            if self.logger is not None:
                 self.logger.info(f"Attempting to download file from {url}")
             response = requests.get(url, stream=True)
             response.raise_for_status()
             with open(dest, "wb") as f:
                 for chunk in response.iter_content(chunk_size=8192):
                     f.write(chunk)
-            if self.logger:
+            if self.logger is not None:
                 self.logger.info(f"Successfully downloaded file to {dest}")
         except requests.RequestException as e:
             msg = f"Error downloading shapefile from {url}: {e}"
-            if self.logger:
+            if self.logger is not None:
                 self.logger.error(msg)
             raise e
 
         if not Path(dest).is_file():
             msg = f"Could not find shapefile in provided path: {dest}"
-            if self.logger:
+            if self.logger is not None:
                 self.logger.error(msg)
             raise FileNotFoundError(msg)
 
@@ -69,7 +69,7 @@ class SpatialDataProcessor:
                 mapdata = gpd.read_file(dest)
             return mapdata.to_crs(self.crs)
         except Exception as e:
-            if self.logger:
+            if self.logger is not None:
                 self.logger.error(
                     f"Could not read map file {dest} from {url}. Error: {e}"
                 )

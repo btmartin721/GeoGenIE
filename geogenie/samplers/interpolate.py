@@ -1,6 +1,6 @@
 import logging
-import os
 from copy import deepcopy
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -457,10 +457,8 @@ class GenotypeInterpolator:
         plt.ylabel("Density", fontsize=self.fontsize)
         plt.legend(fontsize=self.fontsize, loc="best", fancybox=True, shadow=True)
 
-        fn = os.path.join(
-            self.args.output_dir, "plots", f"cluster_probabilities.{self.plot_type}"
-        )
-
+        outdir = Path(self.args.output_dir / "plots")
+        fn = outdir / f"cluster_probabilities.{self.plot_type}"
         plt.savefig(fn, facecolor="white", bbox_inches="tight", dpi=self.dpi)
 
     def _calculate_centroids(self):
