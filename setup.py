@@ -5,10 +5,10 @@ with open("README.md", "r") as fh:
 
 setup(
     name="GeoGenIE",
-    version="1.0.0",
+    version="1.0.1",
     author="Bradley T. Martin, Ph.D.",
     author_email="evobio721@gmail.com",
-    description="Deep learning model to predict geographic coordinates from genome-wide SNP data.",
+    description="Deep learning software package to predict geographic coordinates from genome-wide SNP data.",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/btmartin721/GeoGenIE",
@@ -51,36 +51,38 @@ setup(
     ],
     setup_requires=["numpy"],
     entry_points={
-        "console_scripts": [
-            "geogenie=geogenie.cli:main",
-        ],
+        "console_scripts": ["geogenie=geogenie.cli:main"],
     },
     classifiers=[
         "Development Status :: 4 - Beta",
         "Intended Audience :: Science/Research",
         "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+        "Natural Language :: English",
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
-        "Programming Language :: Python :: 3.13",
         "Topic :: Scientific/Engineering :: Bio-Informatics",
+        "Topic :: Scientific/Engineering :: GIS",
+        "Topic :: Scientific/Engineering :: Information Analysis",
     ],
     python_requires=">=3.11",
     include_package_data=True,
     extras_require={
         "dev": [
-            "demes",
-            "msprime",
             "pdf2image",
             "PyPDF2",
             "pytest",
             "snpio",
             "sphinx",
             "sphinx-rtd-theme",
+            "twine",
+            "wheel",
         ],
         "docs": [
             "sphinx",
             "sphinx-rtd-theme",
+            "sphinxcontrib-napoleon",
+            "sphinx-autodoc-typehints",
         ],
     },
 )
