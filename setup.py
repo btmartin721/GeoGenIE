@@ -75,6 +75,8 @@ setup(
             "snpio",
             "sphinx",
             "sphinx-rtd-theme",
+            "sphinxcontrib-napoleon",
+            "sphinx-autodoc-typehints",
             "twine",
             "wheel",
         ],
