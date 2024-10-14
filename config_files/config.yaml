@@ -21,6 +21,9 @@ sample_data: "data/wtd_fy23_samples_known_sorted.txt"  # Important. Tab-delimite
 # Path to the known coordinates file.
 known_sample_data: "data/wtd_fy23_samples_known_sorted.txt"  # Same as sample_data. For now, it is a bit redundant, and will be folded into sample_data in a future version. Default: None.
 
+# Proportion of samples to set to 'unknown' for the prediction dataset. This is useful for testing the model's ability to predict unknown samples.
+prop_unknowns: 0.1  # Default: 0.1.
+
 # Minimum minor allele count (MAC) to retain SNPs.
 min_mac: 2  # Important. Default: 2.
 
