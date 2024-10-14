@@ -9,9 +9,9 @@ warnings.filterwarnings(action="ignore", category=RuntimeWarning)
 
 import numpy as np
 import pandas as pd
+import pysam
 import torch
 from kneed import KneeLocator
-from pysam import VariantFile
 from sklearn.base import clone
 from sklearn.cluster import KMeans
 from sklearn.decomposition import NMF, PCA, KernelPCA
@@ -173,27 +173,99 @@ class DataStructure:
             dtype (torch.dtype): Data type for tensors. Default is torch.float32.
             debug (bool): Whether to enable debug mode. Default is False.
         """
-        self.vcf = VariantFile(vcf_file)  # loads with pysam
-        self.samples = list(self.vcf.header.samples)
-        self.logger = logging.getLogger(__name__)
-        self.genotypes, self.is_missing, self.genotypes_iupac = self._parse_genotypes()
+        self.vcf_file = vcf_file
         self.verbose = verbose
-        self.data = {}
         self.dtype = dtype
         self.debug = debug
+        self.data = {}
+        self.logger = logging.getLogger(__name__)
 
+        # Attempt to load the VCF file with a fallback on decompression and
+        # recompression
+        self.vcf = self._load_vcf_file()
+
+        # Continue with initialization after loading VCF
+        self.samples = list(self.vcf.header.samples)
+        self.genotypes, self.is_missing, self.genotypes_iupac = self._parse_genotypes()
         self.mask = np.ones_like(self.samples, dtype=bool)
         self.simputer = SimpleImputer(missing_values=np.nan, strategy="most_frequent")
-
         self.norm = MinMaxScalerGeo()
 
-    def define_params(self, args):
-        """Sets up or updates parameters for the class from an argparse.Namespace object.
+    def _load_vcf_file(self):
+        """Tries to load the VCF file and handles decompression and recompression if necessary.
+
+        Returns:
+            pysam.VariantFile: Loaded VCF file.
+        """
+        try:
+            return pysam.VariantFile(self.vcf_file)
+        except NotImplementedError as e:
+            self.logger.warning(f"Encountered issue with VCF compression: {e}")
+            return self._decompress_recompress_index_and_load_vcf()
+
+    def _decompress_recompress_index_and_load_vcf(self):
+        """Decompresses, recompresses, indexes, and reloads the VCF file.
+
+        Returns:
+            pysam.VariantFile: Recompressed and reloaded VCF file.
+        """
+        decompressed_vcf = self._decompress_vcf()
+        recompressed_vcf = self._recompress_vcf(decompressed_vcf)
+        self._index_vcf(recompressed_vcf)
+        self._cleanup_decompressed_file(decompressed_vcf)
+        return pysam.VariantFile(recompressed_vcf)
+
+    def _decompress_vcf(self):
+        """Decompresses the gzipped VCF file and returns the decompressed file path.
+
+        Returns:
+            str: Path to the decompressed VCF file.
+        """
+        decompressed_vcf_file = self.vcf_file.replace(".gz", "")
+        with pysam.BGZFile(self.vcf_file, "rb") as compressed_vcf, open(
+            decompressed_vcf_file, "wb"
+        ) as decompressed_vcf:
+            decompressed_vcf.write(compressed_vcf.read())
+        self.logger.info(f"Decompressed VCF file: {decompressed_vcf_file}")
+        return decompressed_vcf_file
+
+    def _recompress_vcf(self, decompressed_vcf_file):
+        """Recompresses the VCF file using bgzip and returns the recompressed file path.
 
         Args:
-            args (argparse.Namespace): Argument namespace containing the parameters.
+            decompressed_vcf_file (str): Path to the decompressed VCF file.
+
+        Returns:
+            str: Path to the recompressed VCF file.
         """
-        self._params = vars(args)
+        dvcf = Path(decompressed_vcf_file)
+        recompressed_vcf_file = (
+            str(dvcf.with_name(dvcf.stem + "_recompressed.vcf")) + ".gz"
+        )
+        with open(decompressed_vcf_file, "rb") as decompressed_vcf, pysam.BGZFile(
+            recompressed_vcf_file, "wb"
+        ) as recompressed_vcf:
+            recompressed_vcf.write(decompressed_vcf.read())
+        self.logger.info(f"Recompressed VCF file: {recompressed_vcf_file}")
+        return recompressed_vcf_file
+
+    def _index_vcf(self, recompressed_vcf_file):
+        """Indexes the recompressed VCF file using tabix.
+
+        Args:
+            recompressed_vcf_file (str): Path to the recompressed VCF file.
+        """
+        pysam.tabix_index(recompressed_vcf_file, preset="vcf", force=True)
+        self.logger.info(f"Indexed VCF file: {recompressed_vcf_file}")
+
+    def _cleanup_decompressed_file(self, decompressed_vcf_file):
+        """Deletes the decompressed VCF file to save space.
+
+        Args:
+            decompressed_vcf_file (str): Path to the decompressed VCF file.
+        """
+        Path(decompressed_vcf_file).unlink()
+        self.logger.info(f"Deleted decompressed VCF file: {decompressed_vcf_file}")
 
     def _parse_genotypes(self):
         """Parse genotypes from the VCF file and store them in a NumPy array.
@@ -263,6 +335,16 @@ class DataStructure:
             bool: True if the record is biallelic, False otherwise.
         """
         return len(record.alleles) == 2
+
+    def define_params(self, args):
+        """Defines/ updates class attrubutes from an argparse.Namespace object.
+
+        This method sets the class attributes based on the parameters provided in the argparse.Namespace object. It is used to update the class parameters with the values provided in the command-line arguments.
+
+        Args:
+            args (argparse.Namespace): Argument namespace containing the parameters.
+        """
+        self._params = vars(args)
 
     def count_alleles(self):
         """Count alleles for each SNP across all samples.
