@@ -588,7 +588,7 @@ class Bootstrap:
         if self.args.samples_to_plot is None:
             plot_indices = np.arange(n_uniq_samples)
         elif (
-            self.args.samples_to_plot is not None
+            isinstance(self.args.samples_to_plot, (str, int))
             and self.args.samples_to_plot.isdigit()
         ):
             plot_indices = np.random.choice(
@@ -597,13 +597,10 @@ class Bootstrap:
                 replace=False,
             )
         else:
+            # Is a list of sampleIDs
             df = df.copy()
             s2p = self.args.samples_to_plot
-            if not isinstance(s2p, str):
-                msg = f"'--samples_to_plot' must be of type str, but got: {type(s2p)}"
-                self.logger.error(msg)
-                raise TypeError(msg)
-            sids = s2p.split(",")
+            sids = s2p if isinstance(s2p, list) else s2p.split(",")
             sids = [x.strip() for x in sids]
             plot_indices = np.where(np.isin(df["sampleID"].unique(), sids))[0]
 
