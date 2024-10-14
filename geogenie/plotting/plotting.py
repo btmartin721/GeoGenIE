@@ -8,6 +8,8 @@ from pathlib import Path
 
 import geopandas as gpd
 import matplotlib as mpl
+
+mpl.use("Agg")
 import matplotlib.colors as mcolors
 import matplotlib.lines as mlines
 import matplotlib.patches as mpatches
