@@ -21,7 +21,7 @@ Furthermore, GeoGenIE employs a regression-based synthetic oversampling method a
 \label{fig:Figure1}
 \end{figure}
 
-GeoGenIE was written in PyTorch. Below is the deep learning model architecture \hyperref[fig:Figure1](Figure 1)), as adapted from the original Locator architecture [@locator]. GeoGenIE allows lots of flexibility in the architecture, with each hidden layer either being constant or reduced by a factor with the `--factor` option. The model also includes batch normalization and dropout layers to reduce overfitting and facilitate better cross-batch training.
+GeoGenIE was written in PyTorch. Below is the deep learning model architecture \hyperref[fig:Figure1](Figure 1), as adapted from the original Locator architecture [@locator]. GeoGenIE allows lots of flexibility in the architecture, with each hidden layer either being constant or reduced by a factor with the `--factor` option. The model also includes batch normalization and dropout layers to reduce overfitting and facilitate better cross-batch training.
 
 ## Installation
 
@@ -53,6 +53,7 @@ Here is the list of dependencies:
 - pandas
 - plotly
 - pynndescent
+- pykrige
 - pysam
 - pyyaml
 - requests
@@ -81,7 +82,7 @@ You can see all the command-line options by running the help flag:
 geogenie -h
 ```
 
-**Note:** If you don't want to use the configuration file, you can specify each argument individually on the command line. For example:
+**Note:** If you do not want to use the configuration file, you can specify each argument individually on the command line. For example:
 
 ```bash
 geogenie --vcf <path/to/vcf_file.vcf.gz> --sample_data <path/to/coordinates_file.tsv> <other arguments>
@@ -107,33 +108,25 @@ geogenie --config config_files/config.yaml
 
 ## Required Input Files
 
-- VCF file
-  - Specified with `--vcf <path/to/vcf_file.vcf.gz>`.
+\small
 
-- Coordinates file
-  - Specified with `--sample_data <path/to/coordinates_file.tsv>`.
-  - Tab-delimited file with three columns:
-    - "sampleID"
-    - "x" (longitude)
-    - "y" (latitude)
-  - Coordinates ("x" and "y") should be in decimal degree format.
-  - Unknown coordinates for which predictions should be made should contain the string "nan" in the "x" and "y" columns.
+| **Input Argument**              | **Description**                                                                                                 |
+|---------------------------------|-----------------------------------------------------------------------------------------------------------------|
+| **vcf**                         | VCF file containing SNP data.                                                                                   |
+| **sample_data**                 | CSV or TSV file with per-sample coordinates. Columns: "sampleID", "x", "y". Set unknown coordinates to "nan"    |
+| **known_coords_file**           | File with known coordinates for all samples. For per-sample bootstrap plots. Can be same as sample_data.        |
 
-- Known Coordinates file
-  - Specified with `--known_sample_data <path/to/coordinates_file.tsv>`.
-  - Tab-delimited file with three columns:
-    - "sampleID"
-    - "x" (longitude)
-    - "y" (latitude)
-  - Known coordinates file provides recorded localities for per-sample bootstrapped output plots.
+\normalsize
 
-## Algorithms for Sampling Imbalances
+## Algorithms to Mitigate Sampling Imbalance
 
 GeoGenIE employs several advanced algorithms to accommodate sampling imbalances, ensuring robust and accurate geographic predictions:
 
-- **Outlier Detection Algorithm**: Adapted from GGOutlieR, this algorithm identifies and removes translocated individuals that deviate significantly from expected geographic and/or genetic patterns.
-- **Weighted Loss Function**: Implemented with PyTorch, this function uses inverse sample weights to focus the loss function (RMSE, Huber, or MAE) more heavily on areas with lower sample densities, balancing the influence of samples from different regions.
-- **Synthetic Oversampling Method**: Adapted from SMOTE, this regression-based method uses a genotype interpolation algorithm based on Mendelian inheritance to generate synthetic samples in underrepresented regions, balancing the dataset.
+| **Feature**                   | **Description**                                                                          |
+|-------------------------------|------------------------------------------------------------------------------------------|
+| **detect_outliers**           | Remove individuals deviating from expected geographic and/or genetic patterns.           |
+| **use_weighted**              | Use inverse sample weights, focusing loss function on areas with lower densities.        |
+| **oversample_method**         | Oversamples by generating synthetic samples in underrepresented regions.                 |
 
 ## GeoGenIE Features and Settings
 
@@ -141,188 +134,102 @@ GeoGenIE employs several advanced algorithms to accommodate sampling imbalances,
 
 GeoGenIE supports various options for data input and preprocessing:
 
-- `--min_mac`: Minimum minor allele count (MAC) to retain SNPs. Default: 2.
-  - **Description**: This setting filters out SNPs with a minor allele count below the specified threshold. Increasing the MAC helps to remove rare variants, which can reduce noise and improve the signal for common genetic patterns.
-  - **Tip**: Increasing the MAC can help to filter out rare variants and reduce noise in the data. However, be wary of overfiltering the data so as not to lose inherent data patterns and information that the model can learn from.
-  - **Importance**: **High**
-
-- `--max_SNPs`: Maximum number of SNPs to randomly subset. Default: None (Use all SNPs).
-  - **Description**: This setting limits the number of SNPs used in the analysis to reduce computational load. Subsetting the SNPs can speed up processing but may result in loss of some genetic information.
-  - **Tip**: Use this option to reduce computational load by limiting the number of SNPs used in the analysis. However, note that removing too many SNPs could reduce the amount of information that the model can learn from.
-  - **Importance**: **Medium**
+| **Option**                | **Description**                                                               | **Default**         | **Importance** |
+|---------------------------|-------------------------------------------------------------------------------|---------------------|----------------|
+| **min_mac**             |  Filters out SNPs with a minor allele count below the specified threshold.     |  2                  | **High**      |
+| **max_SNPs**            | Limits the number of SNPs used in the analysis to reduce computational load.  | None (Use all SNPs) | **Medium**     |
 
 ### Model Configuration
 
 Configure the deep learning model with the following options:
 
-- `--dropout_prop`: Dropout rate to reduce overfitting. Default: 0.25.
-  - **Description**: Dropout is a regularization technique that helps prevent overfitting by randomly setting a fraction of input units to zero during training. This encourages the network to learn more robust features that generalize well to new data.
-  - **Tip**: Adjust this rate to balance model complexity and generalization.
-  - **Importance**: **High**
+| **Option**                       | **Description**                                          | **Default**    | **Importance** |
+|----------------------------------|----------------------------------------------------------|----------------|----------------|
+| **dropout_prop**                 | Dropout rate to reduce overfitting.                      | 0.25           | **High**       |
+| **nlayers**                      | Number of hidden layers in the neural network.           | 10             | **Medium**     |
+| **width**                        | Number of neurons per hidden layer.                      | 256            | **Medium**     |
+| **criterion**                    | Loss function. Options: 'rmse', 'huber', 'drms'.         | "rmse"         | **Medium**     |
+| **load_best_params**             | Reuse the best parameters from a previous Optuna search  | None           | **Medium**     |
+| **dtype**                        | PyTorch data type. Options: 'float32' or 'float64'.      | "float32"      | **Medium**     |
 
-- `--nlayers`: Number of hidden layers to include in the neural network. Default: 10.
-  - **Description**: The number of hidden layers in the neural network. More layers can capture more complex patterns but also increase the risk of overfitting.
-  - **Tip**: Increase the number of layers for more complex models but beware of overfitting.
-  - **Importance**: **Medium**
+#### Model Configuration Tips
 
-- `--width`: Number of neurons per layer. Default: 256.
-  - **Description**: The number of neurons in each hidden layer. More neurons allow the network to learn more detailed patterns, but also increase computational complexity and the risk of overfitting.
-  - **Tip**: Higher width values allow the model to learn more complex features but increase computation time and can also lead to overfitting.
-  - **Importance**: **Medium**
-
-- `--criterion`: Model loss criterion. Options: 'rmse', 'huber', 'drms'. Default
-
-: 'rmse'.
-
-- **Description**: The loss function used to evaluate the model's performance. RMSE (Root Mean Squared Error) is a standard measure of prediction accuracy. Huber loss is a combination of RMSE and MAE (Mean Absolute Error), which is less sensitive to outliers.
-- **Tip**: Try 'rmse' first, but use 'huber' for a combination of mean squared error and mean absolute error to handle outliers.
-- **Importance**: **Medium**
-
-- `--load_best_params`: Load best parameters from previous Optuna search. The value specified here (if not None) should be the path to the JSON file with the best found parameters from a previous Optuna search. This file can be found in: `<output_dir>/optimize`. Default: None.
-  - **Description**: This setting allows you to reuse the best parameters found in a previous parameter search, saving time and ensuring consistent model performance.
-  - **Tip**: Use this option to save time by reusing optimized parameters without having to re-run the parameter search.
-  - **Importance**: **Medium**
-
-- `--use_gradient_boosting`: Use Gradient Boosting model instead of deep learning model. **NOTE**: This option is currently still in developmental stages. Default: False.
-  - **Description**: This setting switches from using a deep learning model to a Gradient Boosting model, which can be more effective for smaller datasets or when the deep learning model overfits.
-  - **Tip**: Gradient Boosting can be effective for smaller datasets or when deep learning models overfit.
-  - **Importance**: **Low**
-
-- `--dtype`: PyTorch data type. Options: 'float32', 'float64'. **NOTE**: Only 'float32' can be used with a GPU. Either 'float64' or 'float32' can be used if only using CPU threads. Default: 'float32'.
-  - **Description**: The data type used for computations. 'float32' is standard for GPU computation due to its balance of precision and performance. 'float64' provides higher precision but requires more memory (i.e., RAM).
-  - **Tip**: Use 'float64' for higher precision at the cost of increased memory usage.
-  - **Importance**: **Medium**
+- **dropout_prop**: Adjust higher to reduce overfitting. Lower if underfitting.
+- **criterion**: We recommend starting with the default "rmse" criterion, and then if you get poor performance, try "huber" next.
+- **load_best_params**: Load the best params from the JSON file saved when running the Optuna grid search.
+- **dtype**: Only "float32" is supported if using a GPU.
+- **nlayers** and **width**: More layers or higher widths can learn more complex models, but use caution; setting too high can lead to overfiting.
 
 ### Training Parameters
 
 Define training parameters:
 
-- `--max_epochs`: Maximum training epochs. Default: 5000.
-  - **Description**: The maximum number of training cycles through the entire dataset. Setting this high allows the early stopping mechanism to control when training should halt.
-  - **Tip**: Set this high and rely on the early stopping mechanism to prevent overfitting.
-  - **Importance**: **High**
+| **Option**                          | **Description**                                        | **Default** | **Importance** |
+|-------------------------------------|--------------------------------------------------------|-------------|----------------|
+| **max_epochs**                      | Maximum number of training cycles.                     | 5000        | **High**       |
+| **learning_rate**                   | Step size used to update model weights.                | 0.001       | **High**       |
+| **train_split**                     | Proportion of the dataset used for training.           | 0.8         | **High**       |
+| **val_split**                       | Proportion of the dataset used for validation.         | 0.2         | **High**       |
+| **batch_size**                      | Samples processed before updating model weights.       | 32          | **Medium**     |
+| **early_stop_patience**             | Epochs with no improvement before early stopping.      | 48          | **Medium**     |
+| **l2_reg**                          | Used to penalize large weights, reducing overfitting.  |  0.0        | **Medium**     |
+| **do_bootstrap**                    | Enable bootstrapping to estimate confidence intervals. | False       | **Medium**     |
+| **nboots**                          | Number of bootstrap replicates.                        | 100         | **Medium**     |
 
-- `--learning_rate`: Learning rate for optimizer. Default: 0.001.
-  - **Description**: The step size used by the optimizer to update model weights. Lower learning rates allow for finer adjustments, while higher rates speed up training but may overshoot optimal values.
-  - **Tip**: Adjust this parameter to control the speed of learning; lower values provide finer adjustments.
-  - **Importance**: **High**
+#### Training Parameter Tips
 
-- `--train_split`: Training data proportion. Default: 0.8.
-  - **Description**: The proportion of the dataset to be used for training. The remainder is used for validation and testing.
-  - **Tip**: Ensure the sum of `--train_split` and `--val_split` is 1.0.
-  - **Importance**: **High**
-
-- `--val_split`: Validation data proportion. Default: 0.2.
-  - **Description**: The proportion of the dataset to be used for validation. Validation helps monitor model performance and avoid overfitting.
-  - **Tip**: Use a larger validation split for more robust model evaluation.
-  - **Importance**: **High**
-
-- `--batch_size`: Training batch size. Default: 32.
-  - **Description**: The number of samples processed before the model's weights are updated. Larger batch sizes provide more stable updates but require more memory.
-  - **Tip**: Larger batch sizes can lead to more stable training but require more memory.
-  - **Importance**: **Medium**
-
-- `--early_stop_patience`: Epochs to wait after no improvement before stopping. Default: 48.
-  - **Description**: The number of epochs with no improvement in validation performance before stopping training early. Helps prevent overfitting by halting training once performance plateaus.
-  - **Tip**: Decrease this value to stop training earlier if no performance improvement has occurred for many iterations, leading to overfitting.
-  - **Importance**: **Medium**
-
-- `--l2_reg`: L2 regularization weight. Default: 0.0.
-  - **Description**: A penalty added to the loss function to penalize large weights, helping to reduce overfitting.
-  - **Tip**: Use L2 regularization to penalize large weights and reduce overfitting.
-  - **Importance**: **Medium**
-
-- `--do_bootstrap`: Enable bootstrapping. Default: False.
-  - **Description**: Bootstrapping involves repeatedly resampling the dataset (i.e., the loci) with replacement to estimate confidence intervals for predictions.
-  - **Tip**: Enable bootstrapping to estimate confidence intervals for predictions.
-  - **Importance**: **Medium**
-
-- `--nboots`: Number of bootstrap replicates. Default: 100.
-  - **Description**: The number of bootstrap samples to generate. More replicates provide more accurate confidence intervals but increase computation time.
-  - **Tip**: Increase this value for more accurate confidence intervals.
-  - **Importance**: **Medium**
+- **max_epochs**: Set this high and let early stopping take effect.
+- **train_split** and **val_split**: Ensure these sum to 1.0.
+- **batch_size**: Larger values can lead to more training stability, but consumes more memory.
+- **do_bootstrap**: Use this to estimate confidence intervals for predictions and evaluations.
 
 ### Geographic Density Sampler
 
 Configure the geographic density sampler:
 
-- `--use_weighted`: Use inverse-weighted probability sampling. Options: 'loss', 'none'. Default: 'none'.
-  - **Description**: Applies weights to samples based on their inverse density, giving more importance to underrepresented regions during training.
-  - **Tip**: Apply inverse weighting to address imbalanced sampling densities.
-  - **Importance**: **High**
+\small
 
-- `--oversample_method`: Synthetic oversampling/undersampling method. Options: 'kmeans', 'none'. Default: 'none'.
-  - **Description**: Generates synthetic samples in underrepresented regions using clustering methods and our custom adaptation of a regression-based SMOTE algorithm that interpolates genotypes with a Mendelian inheritance pattern. This option will balance the dataset by creating synthetic samples where sampling densities are low.
-  - **Tip**: Use 'kmeans' to create synthetic samples for underrepresented regions.
-  - **Importance**: **High**
+| **Option**                                  | **Description**                                              | **Default** | **Importance** |
+|---------------------------------------------|--------------------------------------------------------------|-------------|----------------|
+| **use_weighted**                            | Weights samples by inverse density during training.          | "none"      | **High**       |
+| **oversample_method**                       | Generates synthetic samples in underrepresented regions.     | "none"      | **High**       |
+| **oversample_neighbors**                    | Number of nearest neighbors with synthetic samples.          | 5           | **Medium**     |
+| **use_kmeans**                              | Use KMeans clustering for calculating inverse weights.       | False       | **High**       |
+| **use_kde**                                 | Use Kernel Density Estimation to calculate inverse weights.  | False       | **High**       |
+| **use_dbscan**                              | Use DBSCAN clustering to calculate inverse weights.          | False       | **Low**        |
+| **n_bins**                                  | Adjust granularity of the sampling density (KMeans method)   | 8           | **Medium**     |
+| **w_power**                                 | Controls the strength of the sample weighting.               | 1.0         | **Medium**     |
+| **max_clusters**                            | Upper limit for the number of clusters with KMeans.          | 10          | **Medium**     |
+| **focus_regions**                           | Specifies regions to prioritize during sampling.             | None        | **Low**        |
+| **normalize_sample_weights**                | Put all sample weights on a comparable scale.                | False       | **Low**        |
 
-- `--oversample_neighbors`: Number of nearest neighbors for oversampling. Default: 5.
-  - **Description**: Controls the number of nearest neighbors considered when generating synthetic samples. More neighbors can provide more diverse synthetic samples.
-  - **Tip**: Adjust to control the number of synthetic samples generated.
-  - **Importance**: **Medium**
+\normalsize
 
-- `--use_kmeans`: Use KMeans clustering in the sampler. Default: True.
-  - **Description**: KMeans clustering helps to generate synthetic samples based on clusters, ensuring that synthetic samples are representative of the data structure.
-  - **Tip**: Essential for generating synthetic samples based on clusters.
-  - **Importance**: **High**
+#### Geographic Density Sampler Tips
 
-- `--n_bins`: Number of bins for synthetic resampling. Default: 8.
-  - **Description**: Determines the granularity of the sampling density adjustments. More bins provide finer adjustments.
-  - **Tip**: Increase for finer-grained sampling density adjustments.
-  - **Importance**: **Medium**
-
-- `--w_power`: Exponential power for inverse density weighting. Default: 1.0.
-  - **Description**: Controls the strength of the weighting applied to sample densities. Higher values result in more aggressive weighting.
-  - **Tip**: Adjust for more aggressive weighting of sampling density.
-  - **Importance**: **Medium**
-
-- `--max_clusters`: Maximum number of clusters for KMeans. Default: 10.
-  - **Description**: Sets the upper limit for the number of clusters used in KMeans clustering. More clusters provide more detailed clustering.
-  - **Tip**: Increase for more detailed clustering, but note that this will increase computation time.
-  - **Importance**: **Medium**
-
-- `--focus_regions`: Geographic regions of interest for sampling density weights.
-  - **Description**: Specifies regions to prioritize during sampling. Helps focus the model on areas of interest by adjusting sampling weights.
-  - **Tip**: Use to prioritize specific geographic areas in sampling. Should be a list of tuples with focus region bounding areas (min_lon, min_lat, max_lon, max_lat). Multiple regions can be specified in the list.
-  - **Importance**: **Low**
-
-- `--normalize_sample_weights`: Normalize sample weights between 0 and 1. Default: False.
-  - **Description**: Ensures that all sample weights are on a comparable scale, which can improve the stability of the training process.
-  - **Tip**: Ensure all sample weights are on a comparable scale.
-  - **Importance**: **Low**
+- **use_kmeans** and **use_kde**: These methods are used to estimate inverse sampling densities for weighting samples during training. Gets used with the weighted loss function.
+- **use_dbscan**: This method is highly experimental still. Use with caution.
+- **w_power**: Increase to make sample weights more aggressive.
+- **use_weighted**: Supported options are "none" or "loss". Enable "loss" weighting to focus model training on underrepresented regions to mitigate sampling imbalance.
+- **oversample_method**: Enable this to generate synthetic samples in underrepresented regions in order to balance sampling densities. Supported options are "none" or "kmeans".
 
 ### Outlier Detection
 
 GeoGenIE can remove outliers flagged as distant from nearby samples in spatial and genetic contexts:
 
-- `--detect_outliers`: Enable outlier detection. Default: False.
-  - **Description**: Detects and removes samples that deviate significantly from expected geographic and/or genetic patterns, improving model accuracy.
-  - **Tip**: Enable to remove samples that deviate significantly from expected geographic and/or genetic patterns.
-  - **Importance**: **High**
+| **Option**                 |**Description**                                                          | **Default** | **Importance** |
+|----------------------------|-------------------------------------------------------------------------|-------------|------------|
+| **detect_outliers**        | Remove samples deviating from expected geographic and genetic patterns. | False       | **High**   |
+| **min_nn_dist**            | Threshold (meters) to consider samples as outliers.                     | 1000        | **Medium** |
+| **scale_factor**           | Adjust geographic distance scaling for outlier detection.               | 100         | **Low**    |
+| **significance_level**     | Set the p-value threshold for identifying outliers.                     | 0.05        | **Medium** |
+| **maxk**                   | Set number of nearest neighbor range considered in outlier detection.   | 50          | **Medium** |
 
-- `--min_nn_dist`: Minimum distance between nearest neighbors for outlier detection. Units are in
+#### Outlier Detection Tips
 
- meters. Default: 1000.
-
-- **Description**: Sets the threshold for considering samples as outliers based on their distance from nearest neighbors. Higher values detect more distant outliers.
-- **Tip**: Increase to detect only very distant outliers. This setting is also useful to exclude neighbors that are in very close proximity to each other.
-- **Importance**: **Medium**
-
-- `--scale_factor`: Scale factor for geographic distance. Default: 100.
-  - **Description**: Adjusts the scaling of geographic distances in outlier detection. Helps fine-tune the sensitivity of outlier detection.
-  - **Tip**: Adjust to control the scaling of distances in outlier detection. Probably safer to not adjust this setting, unless you know what you are doing.
-  - **Importance**: **Low**
-
-- `--significance_level`: Significance level for p-values with Maximum Likelihood Estimation (MLE) gamma distribution to determine outliers. Default: 0.05.
-  - **Description**: Sets the p-value threshold for identifying outliers. Lower values increase stringency, reducing the risk of false positives but potentially missing true outliers.
-  - **Tip**: Lower values increase the stringency of outlier detection, at the risk of more false negatives.
-  - **Importance**: **Medium**
-
-- `--maxk`: Maximum number of nearest neighbors for outlier detection. The optimal K will be searched between K = 2 and K = 'maxk'. Used for KMeans clustering. Default: 50.
-  - **Description**: Sets the range for the number of nearest neighbors considered in outlier detection. Higher values increase computational complexity but can improve accuracy.
-  - **Tip**: Adjust to control the scope of neighbor comparisons.
-  - **CAUTION**: Raising too high can increase computation time and resources.
-  - **Importance**: **Medium**
+- **detect_outliers**: Use this option if you suspect your study system has a history of e.g., translocations.
+- **min_nn_dist**: Increase to detect only very distant outliers. Useful to exclude neighbors in close proximity.
+- **scale_factor**: Best not to mess with, unless necessary.
 
 ### Bootstrapping for Error Estimates
 
@@ -334,170 +241,82 @@ The file type for output plots can be specified with `--filetype "pdf"`, `--file
 
 ### Embedding Settings
 
-GeoGenIE offers several embedding options for input features (i.e., loci):
+GeoGenIE offers several embedding options for input features (i.e., loci). We recommend starting without using embeddings, but if you have very high-dimensional data or are getting poor performance due to many uninformative loci, try using one of the embedding methods:
 
-- `--embedding_type`: Embedding to use with input SNP dataset. Supported options: 'pca', 'kernelpca', 'nmf', 'lle', 'mca', 'mds', 'polynomial', 'tsne', and 'none'. Default: 'none' (no embedding).
-  - **Description**: Determines the type of embedding technique used to reduce the dimensionality of the input SNP data. Different techniques capture different aspects of the data.
-  - **Tip**: Use 'pca' for principal component analysis to reduce dimensionality.
-  - **Importance**: **High**
+\footnotesize
 
-- `--n_components`: Number of components for 'pca' or 'tsne' embeddings. Default: None (Search for optimal components).
-  - **Description**: Sets the number of components to retain in the embedding process. More components capture more variance but increase computational complexity.
-  - **Tip**: Specifying a higher number of components can capture more variance but may also increase computational complexity.
-  - **Importance**: **Medium**
+| **Option**                       | **Description**                                               | **Default** | **Importance** |
+|----------------------------------|---------------------------------------------------------------|-------------|----------------|
+| **embedding_type**               | Embedding input SNPs to reduce dimensionality.                | "none"      | **High**       |
+| **n_components**                 | Set the number of components to retain in the embedding.      | None        | **Medium**     |
+| **embedding_sensitivity**        | Adjust the sensitivity for determining number of components.  | 1.0         | **Medium**     |
+| **tsne_perplexity**              | Control the balance between local and global aspects T-SNE.   | 30          | **Medium**     |
+| **polynomial_degree**            | Set the polynomial degree if "polynimial" method is used.     | 2           | **Low**        |
+| **n_init**                       | Set number of embedding initializations.                      | 4           | **Low**        |
 
-- `--embedding_sensitivity`: Sensitivity setting for selecting the optimal number of components with 'mca' and 'pca'. Default: 1.0.
-  - **Description**: Adjusts the sensitivity for determining the number of components to retain. Higher sensitivity captures more variance but can lead to overfitting.
-  - **Tip**: Adjust this parameter to fine-tune the balance between overfitting and underfitting.
-  - **Importance**: **Medium**
+\normalsize
 
-- `--tsne_perplexity`: Perplexity setting for T-SNE embedding. Default: 30.
-  - **Description**: Controls the balance between local and global aspects of the data captured by T-SNE. Lower perplexity values focus more on local structure.
-  - **Tip**: Lower perplexity values can capture finer details but may lead to more noise.
-  - **Importance**: **Medium**
+#### Embedding Setting Tips
 
-- `--polynomial_degree`: Polynomial degree for 'polynomial' embedding. Default: 2.
-  - **Description**: Sets the degree of the polynomial used in the embedding process. Higher degrees increase complexity and computational load.
-  - **CAUTION**: Higher degrees add complexity and computational overhead; increase with caution.
-  - **Importance**: **Low**
-
-- `--n_init`: Number of initialization runs for Multi-Dimensional Scaling embedding. Default: 4.
-  - **Description**: Sets the number of times the embedding algorithm is run with different initializations. More runs provide more stable results.
-  - **Tip**: More initialization runs can provide more stable results but increase computation time.
-  - **Importance**: **Low**
+- **embedding_type**: Supported options include: "none", "kernelpca", "nmf", "lle", "mca", "mds", "polynomial", and "tsne". We recommend starting with "none". This option is most useful if you have many loci that are uninformative. "lle" = Locally Linear Embedding, mca = "Multiple Correspondence Analysis", "nmf" = "Non-negative Matrix Factorization", "mds" = "Multi-Dimensional Scaling", "tsne" = "T-distributed Stochastic Neighbor Embedding", "polynomial" = "PolynomialFeatures".
+- **n_components**: Number of components (dimensions) to retain with embedding.
+- **polynomial_degree**: Only used if "embedding_type" is set to "polynomial". **CAUTION**: Setting this value higher than 2 can lead to extremely heavy computational loads.
 
 ### Plot Settings
 
 Set plotting parameters to customize the visualizations:
 
-- `--show_plots`: Show in-line plots. Default: False.
-  - **Description**: Controls whether plots are displayed interactively. Useful for Jupyter or Google Collab notebooks.
-  - **Tip**: Enable for interactive environments like Jupyter or Google Collab notebooks.
-  - **Importance**: **Low**
+\footnotesize
 
-- `--fontsize`: Font size for plot labels, ticks, and titles. Default: 24.
-  - **Description**: Sets the font size for all text in the plots, ensuring readability.
-  - **Tip**: Adjust to improve readability of plots.
-  - **Importance**: **Low**
+| **Option**                                           | **Description**                                                   | **Default** | **Importance** |
+|------------------------------------------------|-------------------------------------------------------------------|-------------|---------------|
+| **show_plots**                                       | Control whether plots are displayed interactively (in-line).      | False       | **Low**        |
+| **fontsize**                                         | Set the font size for all text in the plots.                      | 24          | **Low**        |
+| **filetype**                                         | Specify the file format for saving plots.                         | "png"       | **Low**        |
+| **plot_dpi**                                         | Set the resolution for image format plots.                        | 300         | **Low**        |
+| **remove_splines**                                   | Control whether axis lines are removed from plots.                | False       | **Low**        |
+| **shapefile**                                        | Specify the shapefile to use as a base map.                       | Continental USA | **Low**    |
+| **basemap_fips**                                     | Subset the basemap to focus on a specific region using FIPS code. | None        | **Low**        |
+| **highlight_basemap_counties**                       | Highlight counties on the base map by name.                       | None        | **Low**        |
+| **samples_to_plot**                                  | Specify samples to plot with bootstrap contours.                  | None        | **Low**        |
+| **n_contour_levels**                                 | Set the number of contour levels for Kriging plots.               | 20          | **Low**        |
+| **min_colorscale**                                   | Set the minimum value for the color scale in Kriging plots.       | 0           | **Low**        |
+| **max_colorscale**                                   | Set the maximum value for the color scale in Kriging plots.       | 300         | **Low**        |
+| **sample_point_scale**                               | Adjusts the size of sample points in plots.                       | 2           | **Low**        |
+| **bbox_buffer**                                      | Adds a buffer around the sampling area in map visualizations.     | 0.1         | **Low**        |
 
-- `--filetype`: File type for saving plots. Default: 'pdf'.
-  - **Description**: Specifies the format for saving plots. 'pdf' is suitable for high-quality vector graphics, while 'png' and 'jpg' are image formats.
-  - **Tip**: Use 'pdf' for high-quality vector graphics, or 'png' or 'jpg' for an image format.
-  - **Importance**: **Low**
-
-- `--plot_dpi`: DPI for image format plots. Has no effect on 'pdf' format. Default: 300.
-  - **Description**: Sets the resolution for saved plots in image formats. Higher DPI values produce clearer images.
-  - **Tip**: Higher DPI produces clearer images but increases file size.
-  - **Importance**: **Low**
-
-- `--remove_splines`: Remove all axis splines from map plots. Default: False.
-  - **Description**: Controls whether axis lines are removed from plots, creating a cleaner appearance.
-  - **Tip**: Use for cleaner map visualizations.
-  - **Importance**: **Low**
-
-- `--shapefile`: URL or file path for shapefile used in plotting. Default: Continental USA County Lines basemap.
-  - **Description**: Specifies the shapefile to use as a base map for geographic plots. Custom shapefiles can be used for different regions.
-  - **Tip**: Specify a custom shapefile for regions outside the continental USA.
-  - **Importance**: **Low**
-
-- `--basemap_fips`: FIPS code for basemap. This will subset the basemap to just the appropriate region encoded by the FIPS code. For example, the Arkansas state FIPS code is '05'. Default: None (do not zoom to FIPS code on basemap).
-  - **Description**: Subsets the basemap to focus on a specific region using FIPS codes. Useful for zooming into specific areas.
-  - **Tip**: Use to focus plots on specific states or regions. E.g., the Arkansas FIPS code is "05".
-  - **Importance**: **Low**
-
-- `--highlight_basemap_counties`: Highlight specified counties on the base map in gray. Default: None (no highlighting).
-  - **Description**: Highlights specified counties on the base map, enhancing visualization of areas of interest.
-  - **Tip**: Highlight areas of interest for better visualization.
-  - **Importance**: **Low**
-
-- `--samples_to_plot`: Comma-separated sample IDs to plot when using bootstrapping. The provided samples will be plotted with confidence intervals as contours on top of the basemap. Default: None (make a plot for every sample).
-  - **Description**: Specifies samples to plot, allowing focused visualization of particular cases.
-  - **Tip**: Plot specific samples to focus on particular cases.
-  - **Importance**: **Low**
-
-- `--n_contour_levels`: Number of contour levels for the `<output_dir>/plots/<prefix>_geographic_error_distribution.<filetype>` plot. Default: 20.
-  - **Description**: Sets the number of contour levels for error distribution plots. More levels provide more detailed contours.
-  - **Tip**: Adjust for more detailed or simplified contour plots.
-  - **Importance**: **Low**
-
-- `--min_colorscale`: Minimum colorbar value for the `<output_dir>/plots/<prefix>_geographic_error_distribution.<filetype>` plot. Default: 0.
-  - **Description**: Sets the minimum value for the color scale in error distribution plots. Ensures color scale matches data range.
-  - **Tip**: Set to match the range of
-
- your data.
-
-- **Importance**: **Low**
-
-- `--max_colorscale`: Maximum colorbar value for the `<output_dir>/plots/<prefix>_geographic_error_distribution.<filetype>` plot. Default: 300.
-  - **Description**: Sets the maximum value for the color scale in error distribution plots. Ensures color scale matches data range.
-  - **Tip**: Increase if your data range exceeds the default.
-  - **Importance**: **Low**
-
-- `--sample_point_scale`: Scale factor for sample point size on plots. Default: 2.
-  - **Description**: Adjusts the size of sample points in plots for better visibility.
-  - **Tip**: Adjust to ensure points are visible but not overwhelming.
-  - **Importance**: **Low**
-
-- `--bbox_buffer`: Buffer for the sampling bounding box on map visualizations. Default: 0.1.
-  - **Description**: Adds a buffer around the sampling area in map visualizations, providing additional context.
-  - **Tip**: Increase to add more context around the sampling area.
-  - **Importance**: **Low**
+\normalsize
 
 ### Output and Miscellaneous
 
-Configure output and other miscellaneous settings:
-
-- `--prefix`: Output file prefix. Used for all output files. Default: 'output'.
-  - **Description**: Sets a prefix for all output files, helping to organize results from different runs.
-  - **Tip**: Use meaningful prefixes to organize output files from different GeoGenIE runs.
-  - **Importance**: **High**
-
-- `--output_dir`: Directory to store output files. Default: './output'.
-  - **Description**: Specifies the directory for storing output files, keeping results organized.
-  - **Tip**: Organize outputs by specifying a unique directory and/or unique prefix for each run.
-  - **Importance**: **High**
-
-- `--n_jobs`: Number of CPU jobs to use. Default: -1 (use all CPUs).
-  - **Description**: Controls the number of CPU threads used for parallel processing.
-  - **Tip**: Adjust to limit CPU usage if running multiple processes.
-  - **Importance**: **High**
-
-- `--gpu_number`: GPU number (an integer) for computation. Default: None (use CPU only).
-  - **Description**: Specifies the GPU to use for computation, speeding up training for large datasets.
-  - **Tip**: Use a GPU to speed up training for large datasets.
-  - **Importance**: **Low**
-
-- `--seed`: Random seed for reproducibility. Default: None.
-  - **Description**: Sets a random seed to ensure reproducible results across runs.
-  - **Tip**: Set a seed to ensure reproducible results.
-  - **Importance**: **Low**
-
-- `--sqldb`: SQLite3 database directory for Optuna optimization. Specifying a file path here allows Optuna parameter searches to be resumed. Leaving this value as None stores all Optuna searches in-memory and renders resumability disabled. Default: None.
-  - **Description**: Stores Optuna optimization results in a SQLite3 database, enabling resumption of parameter searches.
-  - **Tip**: Specify to save optimization results for future use and resuming Optuna optimization.
-  - **Importance**: **Low**
-
-- `--verbose`: Verbosity level for logging. Default: 1.
-  - **Description**: Sets the level of detail for logging messages. Higher levels provide more detailed logs.
-  - **Tip**: Increase to 2 get more detailed logging information, or decrease to 0 to reduce logging information.
-  - **Importance**: **Low**
+| **Option**                           | **Description**                                       | **Default**     | **Importance** |
+|--------------------------------------|-------------------------------------------------------|-----------------|----------------|
+| **prefix**                           | Set a prefix for all output files.                    | "output"        | **High**       |
+| **output_dir**                       | Specify the directory for storing output files.       | "output"        | **High**       |
+| **n_jobs**                           | Number of CPU threads used for parallel processing.   | -1              | **High**       |
+| **gpu_number**                       | Specify the GPU to use for computation.               | None (CPU only) | **Low**        |
+| **seed**                             | Set a random seed for reproducible results results.   | None            | **Low**        |
+| **sqldb**                            | Store Optuna optimization results in SQLite3 database | None            | **Low**        |
+| **verbose**                          | Set the level of detail for logging messages.         | 1               | **Low**        |
 
 ## Output Files and File Structure
 
 Outputs are saved to the directory specified by `--output_dir <my_output_dir>/<prefix_>_*`. The prefix is specified with `--prefix <prefix>`. The directory structure of `<output_dir>` includes:
 
-- `benchmarking`: Execution times for model training and prediction, with one line per bootstrap replicate if using bootstrapping.
-- `bootstrapped_sample_ci`: One plot per sample showing confidence intervals on a map.
-- `bootstrap_metrics`: JSON files with statistical metrics for each bootstrap replicate, in `test` and `val` subdirectories.
-- `bootstrap_predictions`: CSV files containing predictions for each bootstrap replicate, in `test`, `val`, and `unknown` subdirectories.
-- `bootstrap_summaries`: Mean, median, and standard deviation representations of bootstrap replicates for the test, val, and unknown ("pred") datasets.
-- `data`: Text files with sample IDs detected as outliers if `--detect_outliers` is enabled.
-- `logfiles`: Logs with INFO, WARNING, and ERROR messages, including timestamps and GeoGenIE modules.
-- `models`: Trained PyTorch models saved as ".pt" files, one per bootstrap if `--do_bootstrap` is enabled.
-- `optimize`: Optuna results, including the best-found parameters as a JSON file.
-- `plots`: All plots and visualizations, including model prediction error visualizations and the basemap shapefile specified with `--shapefile <url>`. Per-sample plots visualizing bootstrapped prediction error are saved in the `<output_dir>/plots/bootstrapped_sample_ci` subdirectory.
+| **Directory**                                        | **Description**                                                         |
+|------------------------------------------------------|-------------------------------------------------------------------------|
+| **benchmarking**                                     | Execution times for model training and prediction.                      |
+| **bootstrapped_sample_ci**                           | One plot per sample showing confidence intervals on a map.              |
+| **bootstrap_metrics**                                | Files with evaluation metrics per bootstrap.                            |
+| **bootstrap_predictions**                            | CSV files containing predictions for each bootstrap replicate.          |
+| **bootstrap_summaries**                              | Bootstrap summary statistics (aggregated).                              |
+| **data**                                             | Text files with detected outliers.                                      |
+| **logfiles**                                         | Logs with INFO, WARNING, and ERROR messages.                            |
+| **models**                                           | Trained PyTorch models saved as ".pt" files.                            |
+| **optimize**                                         | Optuna results, including the best-found parameters (JSON file).        |
+| **plots**                                            | All plots and visualizations.                                           |
 
-**Warning**: Re-running GeoGenIE with the same `output_dir` and `prefix` will overwrite all outputs except the Optuna SQL database.
+**CAUTION**: Re-running GeoGenIE with the same `output_dir` and `prefix` will overwrite all outputs except the Optuna SQL database.
 
 \newpage
 
@@ -615,268 +434,77 @@ Outputs are saved to the directory specified by `--output_dir <my_output_dir>/<p
 
 ## Metric Descriptions
 
-### Metric 1: Root Mean Squared Error (RMSE)
-
-**Description**: RMSE measures the square root of the average squared differences between predicted and actual values. It provides a measure of prediction accuracy, with lower values indicating better performance.
-
-### Metric 2: Mean Absolute Error (MAE)
-
-**Description
-
-**: MAE calculates the average absolute differences between predicted and actual values. It is less sensitive to outliers compared to RMSE, providing a straightforward measure of prediction accuracy.
-
-### Metric 3: Huber Loss
-
-**Description**: Huber loss combines RMSE and MAE, offering a balance between sensitivity to outliers and overall accuracy. It is particularly useful when dealing with datasets that contain outliers.
-
-### Metric 4: Mean Distance (mean_dist)
-
-**Description**: The mean distance measures the average distance between predicted and actual geographic coordinates. Lower values indicate better predictive accuracy.
-
-### Metric 5: Median Distance (median_dist)
-
-**Description**: The median distance represents the middle value of the distance distribution between predicted and actual geographic coordinates. It is less sensitive to extreme values compared to the mean distance.
-
-### Metric 6: Standard Deviation of Distance (stdev_dist)
-
-**Description**: This metric measures the dispersion of distances between predicted and actual geographic coordinates. A lower standard deviation indicates more consistent prediction accuracy.
-
-### Metric 7: Kolmogorov-Smirnov Statistic (kolmogorov_smirnov)
-
-**Description**: The Kolmogorov-Smirnov statistic quantifies the maximum difference between the empirical distribution functions of the predicted and actual distances. It assesses the goodness of fit between the two distributions.
-
-### Metric 8: Kolmogorov-Smirnov p-value (kolmogorov_smirnov_pval)
-
-**Description**: This p-value indicates the statistical significance of the Kolmogorov-Smirnov test. Lower values suggest a significant difference between the distributions of predicted and actual distances.
-
-### Metric 9: Skewness (skewness)
-
-**Description**: Skewness measures the asymmetry of the distance distribution between predicted and actual coordinates. Positive skewness indicates a longer tail on the right, while negative skewness indicates a longer tail on the left.
-
-### Metric 10: Spearman's Rank Correlation Coefficient (rho)
-
-**Description**: Spearman's rho measures the strength and direction of the monotonic relationship between predicted and actual coordinates. Values close to 1 or -1 indicate a strong relationship.
-
-### Metric 11: Spearman's Rank Correlation p-value (rho_p)
-
-**Description**: This p-value assesses the statistical significance of Spearman's rho. Lower values indicate a significant monotonic relationship between predicted and actual coordinates.
-
-### Metric 12: Spearman Correlation for Longitude (spearman_corr_longitude)
-
-**Description**: This metric measures the Spearman correlation between predicted and actual longitude values. Higher values indicate a stronger correlation.
-
-### Metric 13: Spearman Correlation for Latitude (spearman_corr_latitude)
-
-**Description**: This metric measures the Spearman correlation between predicted and actual latitude values. Higher values indicate a stronger correlation.
-
-### Metric 14: Spearman p-value for Longitude (spearman_pvalue_longitude)
-
-**Description**: This p-value assesses the statistical significance of the Spearman correlation for longitude. Lower values indicate a significant correlation.
-
-### Metric 15: Spearman p-value for Latitude (spearman_pvalue_latitude)
-
-**Description**: This p-value assesses the statistical significance of the Spearman correlation for latitude. Lower values indicate a significant correlation.
-
-### Metric 16: Pearson Correlation for Longitude (pearson_corr_longitude)
-
-**Description**: This metric measures the Pearson correlation between predicted and actual longitude values. Higher values indicate a stronger linear relationship.
-
-### Metric 17: Pearson Correlation for Latitude (pearson_corr_latitude)
-
-**Description**: This metric measures the Pearson correlation between predicted and actual latitude values. Higher values indicate a stronger linear relationship.
-
-### Metric 18: Pearson p-value for Longitude (pearson_pvalue_longitude)
-
-**Description**: This p-value assesses the statistical significance of the Pearson correlation for longitude. Lower values indicate a significant linear relationship.
-
-### Metric 19: Pearson p-value for Latitude (pearson_pvalue_latitude)
-
-**Description**: This p-value assesses the statistical significance of the Pearson correlation for latitude. Lower values indicate a significant linear relationship.
-
-### Metric 20: Mean Absolute Deviation Haversine (mad_haversine)
-
-**Description**: This metric calculates the mean absolute deviation using the Haversine formula, which accounts for the curvature of the Earth. It measures the average absolute distance between predicted and actual coordinates.
-
-### Metric 21: Coefficient of Variation (coefficient_of_variation)
-
-**Description**: The coefficient of variation is the ratio of the standard deviation to the mean distance. It provides a standardized measure of the dispersion of distances.
-
-### Metric 22: Interquartile Range (interquartile_range)
-
-**Description**: The interquartile range measures the spread of the middle 50% of the distance distribution. It is calculated as the difference between the 75th and 25th percentiles.
-
-### Metric 23: 25th Percentile (percentile_25)
-
-**Description**: This metric represents the 25th percentile of the distance distribution, indicating the value below which 25% of the distances fall.
-
-### Metric 24: 50th Percentile (percentile_50)
-
-**Description**: This metric represents the 50th percentile (or median) of the distance distribution, indicating the middle value of the distances.
-
-### Metric 25: 75th Percentile (percentile_75)
-
-**Description**: This metric represents the 75th percentile of the distance distribution, indicating the value below which 75% of the distances fall.
-
-### Metric 26: Percent Within 20km (percent_within_20km)
-
-**Description**: This metric indicates the percentage of predicted coordinates that are within 20 kilometers of the actual coordinates. Higher values indicate better accuracy.
-
-### Metric 27: Percent Within 50km (percent_within_50km)
-
-**Description**: This metric indicates the percentage of predicted coordinates that are within 50 kilometers of the actual coordinates. Higher values indicate better accuracy.
-
-### Metric 28: Percent Within 75km (percent_within_75km)
-
-**Description**: This metric indicates the percentage of predicted coordinates that are within 75 kilometers of the actual coordinates. Higher values indicate better accuracy.
-
-### Metric 29: Mean Absolute Z-Score (mean_absolute_z_score)
-
-**Description**: This metric measures the average absolute z-score of the distances between predicted and actual coordinates. It provides a standardized measure of how far the distances deviate from the mean in terms of standard deviations.
+| **Metric**                           | **Description**                                                                                                                     |
+|---------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------|
+| **Root Mean Squared Error (RMSE)**   | Measures the square root of the average squared differences between predicted and actual values. Lower values indicate better performance. |
+| **Mean Absolute Error (MAE)**         | Calculates the average absolute differences between predicted and actual values. Less sensitive to outliers compared to RMSE.       |
+| **Huber Loss**                        | Combines RMSE and MAE, balancing sensitivity to outliers and overall accuracy. Useful for datasets with outliers.                  |
+| **Mean Distance (mean_dist)**         | Measures the average distance between predicted and actual geographic coordinates. Lower values indicate better predictive accuracy. |
+| **Median Distance (median_dist)**     | Represents the middle value of the distance distribution between predicted and actual geographic coordinates. Less sensitive to extreme values. |
+| **Standard Deviation of Distance (stdev_dist)** | Measures the dispersion of distances between predicted and actual geographic coordinates. Lower values indicate consistency. |
+| **Kolmogorov-Smirnov Statistic (kolmogorov_smirnov)** | Quantifies the maximum difference between the empirical distributions of predicted and actual distances.                         |
+| **Kolmogorov-Smirnov p-value (kolmogorov_smirnov_pval)** | Indicates the statistical significance of the Kolmogorov-Smirnov test. Lower values suggest significant differences in distributions. |
+| **Skewness (skewness)**               | Measures the asymmetry of the distance distribution. Positive values indicate a longer right tail; negative values, a longer left tail. |
+| **Spearman's Rank Correlation Coefficient (rho)** | Measures the monotonic relationship strength and direction between predicted and actual coordinates. Values close to 1 or -1 indicate strong relationships. |
+| **Spearman's Rank Correlation p-value (rho_p)** | Assesses the statistical significance of Spearman's rho. Lower values indicate significant relationships.                        |
+| **Spearman Correlation for Longitude** | Measures the Spearman correlation between predicted and actual longitude values. Higher values indicate stronger relationships.   |
+| **Spearman Correlation for Latitude** | Measures the Spearman correlation between predicted and actual latitude values. Higher values indicate stronger relationships.     |
+| **Spearman p-value for Longitude**    | Assesses the statistical significance of Spearman correlation for longitude. Lower values indicate significant relationships.       |
+| **Spearman p-value for Latitude**     | Assesses the statistical significance of Spearman correlation for latitude. Lower values indicate significant relationships.        |
+| **Pearson Correlation for Longitude** | Measures the Pearson correlation between predicted and actual longitude values. Higher values indicate stronger linear relationships. |
+| **Pearson Correlation for Latitude**  | Measures the Pearson correlation between predicted and actual latitude values. Higher values indicate stronger linear relationships. |
+| **Pearson p-value for Longitude**     | Assesses the statistical significance of Pearson correlation for longitude. Lower values indicate significant linear relationships. |
+| **Pearson p-value for Latitude**      | Assesses the statistical significance of Pearson correlation for latitude. Lower values indicate significant linear relationships.  |
+| **Mean Absolute Deviation Haversine (mad_haversine)** | Calculates the mean absolute deviation using the Haversine formula, accounting for Earth's curvature. Measures average absolute distances. |
+| **Coefficient of Variation (coefficient_of_variation)** | Ratio of the standard deviation to the mean distance. Standardized measure of distance dispersion.                                |
+| **Interquartile Range (interquartile_range)** | Measures the spread of the middle 50% of the distance distribution. Calculated as the difference between the 75th and 25th percentiles. |
+| **25th Percentile (percentile_25)**   | Represents the value below which 25% of distances fall in the distribution.                                                        |
+| **50th Percentile (percentile_50)**   | Represents the median value of the distance distribution, indicating the middle distance.                                          |
+| **75th Percentile (percentile_75)**   | Represents the value below which 75% of distances fall in the distribution.                                                        |
+| **Percent Within 20km (percent_within_20km)** | Indicates the percentage of predicted coordinates within 20 km of actual coordinates. Higher values indicate better accuracy.    |
+| **Percent Within 50km (percent_within_50km)** | Indicates the percentage of predicted coordinates within 50 km of actual coordinates. Higher values indicate better accuracy.    |
+| **Percent Within 75km (percent_within_75km)** | Indicates the percentage of predicted coordinates within 75 km of actual coordinates. Higher values indicate better accuracy.    |
+| **Mean Absolute Z-Score (mean_absolute_z_score)** | Measures the average absolute z-score of distances, providing a standardized measure of distance deviation from the mean.        |
 
 ## Glossary
 
-### Activation Function
-
-**Definition**: A mathematical function applied to each neuron in a neural network to introduce non-linearity. Common activation functions include ReLU (Rectified Linear Unit), sigmoid, and tanh.
-
-### Backpropagation
-
-**Definition**: A training algorithm used for neural networks, where the error is propagated backward through the network to update the weights. This process helps the network learn by minimizing the loss function.
-
-### Batch Normalization
-
-**Definition**: A technique to improve the training of deep neural networks by normalizing the inputs of each layer. It helps to stabilize and speed up the training process.
-
-### Bootstrapping
-
-**Definition**: A statistical method that involves resampling a dataset with replacement to create multiple simulated samples. This technique is used to estimate the variability of a statistic and to create confidence intervals for model predictions.
-
-### Confidence Intervals
-
-**Definition**: A range of values derived from the sample data that is likely to contain the true value of an unknown population parameter. Confidence intervals provide a measure of the uncertainty associated with a sample estimate.
-
-### Convolutional Neural Network (CNN)
-
-**Definition**: A type of deep learning model particularly effective for image and spatial data processing. CNNs use convolutional layers to automatically and adaptively learn spatial hierarchies of features.
-
-### Cross-Validation
-
-**Definition**: A technique used to evaluate the performance of a machine learning model by dividing the data into several subsets and training/testing the model on different combinations of these subsets.
-
-### Dropout
-
-**Definition**: A regularization technique used in neural networks to prevent overfitting. Dropout involves randomly setting a fraction of input units to zero at each update during training, which helps to prevent the network from becoming too reliant on specific nodes.
-
-### Early Stopping
-
-**Definition**: A form of regularization used to prevent overfitting when training a machine learning model. Early stopping halts the training process if the model's performance on a validation set does not improve after a certain number of epochs.
-
-### Epoch
-
-**Definition**: One complete pass through the entire training dataset. Training a machine learning model typically involves multiple epochs, with the model's weights being updated after each pass through the dataset.
-
-### Feedforward Neural Network
-
-**Definition**: A type of artificial neural network where connections between the nodes do not form a cycle. It is the simplest form of neural networks.
-
-### Gradient Boosting
-
-**Definition**: A machine learning technique used for regression and classification tasks, which builds an ensemble of weak prediction models (usually decision trees). Gradient boosting sequentially adds models to correct the errors of the combined ensemble.
-
-### Haversine Formula
-
-**Definition**: A formula used to calculate the distance between two points on the surface of a sphere, given their latitude and longitude. The Haversine formula accounts for the curvature of the Earth, making it useful for geographic distance calculations.
-
-### Hyperparameter Optimization
-
-**Definition**: The process of finding the best hyperparameters for a machine learning model. Hyperparameters are the parameters that are set before the learning process begins, such as learning rate, number of hidden layers, and dropout rate. Techniques such as grid search, random search, and Bayesian optimization are commonly used for hyperparameter tuning.
-
-### Imbalanced Sampling
-
-**Definition**: A situation where some classes or categories are underrepresented or overrepresented in the training dataset. Imbalanced sampling can lead to biased models that perform poorly on the minority classes.
-
-### KMeans Clustering
-
-**Definition**: A popular unsupervised learning algorithm used to partition a dataset into K clusters, where each data point belongs to the cluster with the nearest mean. KMeans clustering is used to group similar data points together.
-
-### Learning Rate
-
-**Definition**: A hyperparameter that controls how much to change the model in response to the estimated error each time the model weights are updated. It determines the step size at each iteration while moving toward a minimum of the loss function.
-
-### Mean Absolute Error (MAE)
-
-**Definition**: A metric used to measure the average absolute differences between predicted and actual values. MAE is less sensitive to outliers compared to other metrics like Root Mean Squared Error (RMSE).
-
-### Mendelian Inheritance
-
-**Definition**: The basic principles of heredity established by Gregor Mendel, which describe how traits are passed from parents to offspring. Mendelian inheritance involves the segregation and independent assortment of alleles.
-
-### Minor Allele Count (MAC)
-
-**Definition**: The count of the less common allele in a population. Setting a minimum MAC threshold helps to filter out rare variants that might introduce noise into the analysis.
-
-### Neural Network
-
-**Definition**: A computational model inspired by the human brain, composed of layers of interconnected nodes (neurons). Neural networks are used for a variety of tasks, including classification, regression, and pattern recognition.
-
-### Optuna
-
-**Definition**: A hyperparameter optimization framework designed to automatically find the best hyperparameters for machine learning models. Optuna uses techniques such as Bayesian optimization to efficiently search the hyperparameter space.
-
-### Detecting Outliers
-
-**Definition**: The process of identifying and removing data points that deviate significantly from the rest of the dataset. Outliers can skew the results of analysis and lead to inaccurate predictions.
-
-### Overfitting
-
-**Definition**: A modeling error in machine learning where the model learns the details and noise in the training data to the extent that it negatively impacts the model's performance on new data. Overfitting occurs when the model is too complex.
-
-### Principal Component Analysis (PCA)
-
-**Definition**: A dimensionality reduction technique used to transform a large set of variables into a smaller set of uncorrelated variables called principal components. PCA is commonly used to simplify data, reduce noise, and visualize high-dimensional data.
-
-### Regularization
-
-**Definition**: A technique used to prevent overfitting by adding a penalty to the loss function. Common forms of regularization include L1 (lasso) and L2 (ridge) regularization.
-
-### Root Mean Squared Error (RMSE)
-
-**Definition**: A metric used to measure the square root of the average squared differences between predicted and actual values. RMSE provides a measure of prediction accuracy, with lower values indicating better performance.
-
-### Sampling Density
-
-**Definition**: The concentration of samples in a given area. In geographic data, sampling density can vary across regions, leading to imbalanced datasets.
-
-### SMOTE (Synthetic Minority Over-sampling Technique)
-
-**Definition**: A technique used to address imbalanced datasets by creating synthetic samples of the minority class. SMOTE generates new samples by interpolating between existing samples of the minority class.
-
-### Spearman's Rank Correlation Coefficient
-
-**Definition**: A non-parametric measure of the strength and direction of the monotonic relationship between two variables. Spearman's rank correlation coefficient ranges from -1 to 1, with values close to 1 or -1 indicating a strong relationship.
-
-### Synthetic Oversampling
-
-**Definition**: The process of generating synthetic data points to balance an imbalanced dataset. This technique helps to ensure that the model has sufficient data to learn from underrepresented classes or regions.
-
-### T-SNE (t-distributed Stochastic Neighbor Embedding)
-
-**Definition**: A dimensionality reduction technique used for visualizing high-dimensional data. T-SNE transforms the data into a lower-dimensional space while preserving the relative distances between data points.
-
-### Underfitting
-
-**Definition**: A modeling error in machine learning where the model is too simple to capture the underlying structure of the data. Underfitting occurs when the model has high bias and low variance.
-
-### Validation Split
-
-**Definition**: The portion of the dataset set aside for evaluating the model's performance during training. The validation split helps to monitor the model's generalization ability and to detect overfitting.
-
-### Weighted Loss Function
-
-**Definition**: A loss function that assigns different weights to different samples based on their importance. In GeoGenIE, the weighted loss function uses inverse sampling densities to focus more on areas with lower sample densities, balancing the influence of samples from different regions.
-
-### Xavier Initialization
-
-**Definition**: A method of initializing the weights of a neural network to ensure that the variances of the input and output of each layer are equal. This helps to improve the convergence speed during training.
+| **Term**                           | **Definition**                                                                                                                      |
+|------------------------------------|------------------------------------------------------------------------------------------------------------------------------------|
+| **Activation Function**            | A mathematical function applied to each neuron in a neural network to introduce non-linearity. Common examples include ReLU, sigmoid, and tanh. |
+| **Backpropagation**                | A training algorithm where the error is propagated backward through the network to update the weights, minimizing the loss function. |
+| **Batch Normalization**            | A technique to normalize inputs to each layer, stabilizing and speeding up the training of deep neural networks.                    |
+| **Bootstrapping**                  | A statistical method that involves resampling a dataset with replacement to estimate variability and create confidence intervals.   |
+| **Confidence Intervals**           | A range of values likely to contain the true value of a parameter, providing a measure of uncertainty in the estimate.              |
+| **Convolutional Neural Network**   | A type of deep learning model effective for image and spatial data processing using convolutional layers.                          |
+| **Cross-Validation**               | A technique to evaluate model performance by dividing data into subsets for training and testing in different combinations.         |
+| **Dropout**                        | A regularization technique that randomly sets a fraction of input units to zero during training to prevent overfitting.            |
+| **Early Stopping**                 | A regularization method that halts training when the validation performance stops improving, preventing overfitting.               |
+| **Epoch**                          | One complete pass through the entire training dataset during model training.                                                       |
+| **Feedforward Neural Network**     | A simple neural network where connections between nodes do not form a cycle.                                                       |
+| **Gradient Boosting**              | A machine learning technique that builds an ensemble of weak models, typically decision trees, to correct errors sequentially.      |
+| **Haversine Formula**              | A formula to calculate the distance between two points on a sphere, accounting for Earth's curvature, using latitude and longitude. |
+| **Hyperparameter Optimization**    | The process of tuning hyperparameters like learning rate or number of layers using methods such as grid search or Bayesian optimization. |
+| **Imbalanced Sampling**            | A situation where some classes are overrepresented or underrepresented, leading to biased models.                                   |
+| **KMeans Clustering**              | An algorithm to partition data into K clusters by grouping data points with the nearest mean.                                       |
+| **Learning Rate**                  | A hyperparameter that controls how much to update the model weights during training.                                                |
+| **Mean Absolute Error (MAE)**      | Measures the average absolute differences between predicted and actual values. Less sensitive to outliers than RMSE.               |
+| **Mendelian Inheritance**          | Principles of heredity describing the segregation and independent assortment of alleles.                                            |
+| **Minor Allele Count (MAC)**       | The count of the less common allele in a population. A minimum MAC threshold helps filter out rare variants.                       |
+| **Neural Network**                 | A computational model inspired by the human brain, composed of interconnected layers of nodes for tasks like classification.        |
+| **Optuna**                         | A hyperparameter optimization framework using techniques like Bayesian optimization to efficiently search the parameter space.      |
+| **Detecting Outliers**             | The process of identifying and removing data points that deviate significantly from the dataset, improving model accuracy.           |
+| **Overfitting**                    | A modeling error where the model learns noise or details in training data, reducing performance on unseen data.                    |
+| **Principal Component Analysis (PCA)** | A dimensionality reduction technique transforming data into uncorrelated variables called principal components.                  |
+| **Regularization**                 | Techniques like L1 and L2 that add penalties to the loss function to prevent overfitting.                                          |
+| **Root Mean Squared Error (RMSE)** | Measures the square root of the average squared differences between predicted and actual values. Lower values indicate better performance. |
+| **Sampling Density**               | The concentration of samples in a given area, affecting the balance of the dataset.                                                |
+| **SMOTE (Synthetic Minority Over-sampling Technique)** | Generates synthetic samples for the minority class by interpolating between existing samples.                                 |
+| **Spearman's Rank Correlation Coefficient** | A non-parametric measure of monotonic relationships between two variables, ranging from -1 to 1.                                |
+| **Synthetic Oversampling**         | Generating synthetic data points to balance an imbalanced dataset, improving model performance.                                     |
+| **T-SNE (t-distributed Stochastic Neighbor Embedding)** | A dimensionality reduction technique for visualizing high-dimensional data.                                                      |
+| **Underfitting**                   | A modeling error where the model is too simple to capture data structure, resulting in poor performance.                           |
+| **Validation Split**               | The portion of the dataset used to evaluate model performance during training to detect overfitting.                               |
+| **Weighted Loss Function**         | Assigns different weights to samples based on importance, focusing on areas with lower sampling densities.                         |
+| **Xavier Initialization**          | A weight initialization method ensuring equal variances of input and output, improving convergence speed during training.           |
 
 ## References
