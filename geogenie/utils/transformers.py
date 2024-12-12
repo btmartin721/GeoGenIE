@@ -1,7 +1,6 @@
 import logging
 
 import numpy as np
-import pandas as pd
 import scipy.sparse as sp
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.preprocessing import OneHotEncoder
@@ -12,6 +11,8 @@ from sklearn.utils.validation import check_array, check_is_fitted
 class MCA(BaseEstimator, TransformerMixin):
     """Class to perform Multiple Correspondence Analayis (MCA).
 
+    This class performs Multiple Correspondence Analysis (MCA) on the input data.
+
     Attributes:
         n_components (int): Number of MCA components to output.
         n_iter (int): Number of randomized SVD iterations to perform.
@@ -20,6 +21,7 @@ class MCA(BaseEstimator, TransformerMixin):
         one_hot (bool): Flag for one-hot encoding the input data.
         categories (list): Possible categories in input features.
         epsilon (float): Small value to prevent division by 0.
+        logger (logging.Logger): Logger object for the class
     """
 
     def __init__(
@@ -32,6 +34,17 @@ class MCA(BaseEstimator, TransformerMixin):
         categories=[0, 1, 2],
         epsilon=1e-5,
     ):
+        """Initialize the MCA class.
+
+        Args:
+            n_components (int, optional): Number of MCA components to output. Defaults to 2.
+            n_iter (int, optional): Number of randomized SVD iterations to perform. Defaults to 10.
+            check_input (bool, optional): Whether to check input data for conformity. Defaults to True.
+            random_state (int or None, optional): Random state for reproducibility. Defaults to None.
+            one_hot (bool, optional): Flag for one-hot encoding the input data. Defaults to True.
+            categories (list, optional): Possible categories in input features. Defaults to [0, 1, 2].
+            epsilon (float, optional): Small value to prevent division by 0. Defaults to 1e-5.
+        """
         self.n_components = n_components
         self.n_iter = n_iter
         self.check_input = check_input
@@ -43,7 +56,12 @@ class MCA(BaseEstimator, TransformerMixin):
         self.logger = logging.getLogger(__name__)
 
     def fit(self, X, y=None):
-        """Fit the input data."""
+        """Fit the input data.
+
+        Args:
+            X (np.ndarray): Array to fit.
+            y (None, optional): Ignored. This parameter exists only for compatibility with the sklearn API.
+        """
         if self.check_input:
             X = check_array(X, dtype=None, force_all_finite="allow-nan")
 
@@ -80,7 +98,6 @@ class MCA(BaseEstimator, TransformerMixin):
         Args:
             X (np.ndarray): Array to transform.
         """
-        """Transform input data X using MCA."""
         check_is_fitted(self, ["U_", "Sigma_", "VT_", "row_sums_", "col_sums_"])
 
         X = check_array(X, dtype=None, force_all_finite="allow-nan")
@@ -110,6 +127,15 @@ class MCA(BaseEstimator, TransformerMixin):
         return transformed_X
 
     def _normalize_data(self, X):
+        """Normalize the input data.
+
+        Args:
+            X (np.ndarray): Array to normalize.
+
+        Returns:
+            np.ndarray: Normalized array.
+        """
+
         X_normalized = X.astype(float) / X.sum()
         row_sums = X_normalized.sum(axis=1) + self.epsilon
         col_sums = X_normalized.sum(axis=0) + self.epsilon
@@ -117,6 +143,14 @@ class MCA(BaseEstimator, TransformerMixin):
         return X_normalized
 
     def _compute_S_matrix(self, X):
+        """Compute the S matrix.
+
+        Args:
+            X (np.ndarray): The input data.
+
+        Returns:
+            sp.spmatrix: The S matrix
+        """
         # Convert row_sums_ and col_sums_ to 1D numpy arrays if they are not
         # already
         row_sums = np.asarray(self.row_sums_).flatten()
@@ -131,6 +165,7 @@ class MCA(BaseEstimator, TransformerMixin):
         return S
 
     def _store_results(self):
+        """Store the results of the MCA."""
         self.eigenvalues_ = np.square(self.Sigma_)
         total_variance = np.sum(self.eigenvalues_)
         self.explained_inertia_ = self.eigenvalues_ / total_variance
@@ -138,10 +173,22 @@ class MCA(BaseEstimator, TransformerMixin):
 
 
 class MinMaxScalerGeo(BaseEstimator, TransformerMixin):
+    """Class to scale geographic coordinates to a specified range.
+
+    Attributes:
+        lat_range (tuple): Minimum and maximum values for latitude.
+        lon_range (tuple): Minimum and maximum values for longitude.
+        scale_min (float): Minimum value of the scaled range.
+        scale_max (float): Maximum value of the scaled range.
+        logger (logging.Logger): Logger object for the class.
+    """
+
     def __init__(
         self, lat_range=(-90, 90), lon_range=(-180, 180), scale_min=0, scale_max=1
     ):
         """Initialize the MinMaxScalerGeo with specified ranges.
+
+        This class scales geographic coordinates to a specified range.
 
         Args:
             lat_range (tuple): Minimum and maximum values for latitude.
