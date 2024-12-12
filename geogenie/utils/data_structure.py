@@ -1,7 +1,12 @@
 import logging
 import os
+from re import S
 import warnings
 from pathlib import Path
+
+from matplotlib.pylab import f
+from pyparsing import C
+import test
 
 os.environ["PYTHONWARNINGS"] = "ignore::RuntimeWarning"
 warnings.filterwarnings(action="ignore", category=RuntimeWarning)
@@ -13,13 +18,14 @@ import pysam
 import torch
 from kneed import KneeLocator
 from sklearn.base import clone
-from sklearn.cluster import KMeans
+from sklearn.cluster import KMeans, DBSCAN
 from sklearn.decomposition import NMF, PCA, KernelPCA
 from sklearn.impute import SimpleImputer
 from sklearn.manifold import MDS, TSNE
-from sklearn.metrics import silhouette_score
+from sklearn.metrics import silhouette_score, pairwise_distances
 from sklearn.model_selection import GridSearchCV, train_test_split
-from sklearn.preprocessing import PolynomialFeatures
+from sklearn.neighbors import KernelDensity
+from sklearn.preprocessing import PolynomialFeatures, MinMaxScaler
 from torch.utils.data import DataLoader
 
 from geogenie.outliers.detect_outliers import GeoGeneticOutlierDetector
@@ -222,9 +228,10 @@ class DataStructure:
             str: Path to the decompressed VCF file.
         """
         decompressed_vcf_file = self.vcf_file.replace(".gz", "")
-        with pysam.BGZFile(self.vcf_file, "rb") as compressed_vcf, open(
-            decompressed_vcf_file, "wb"
-        ) as decompressed_vcf:
+        with (
+            pysam.BGZFile(self.vcf_file, "rb") as compressed_vcf,
+            open(decompressed_vcf_file, "wb") as decompressed_vcf,
+        ):
             decompressed_vcf.write(compressed_vcf.read())
         self.logger.info(f"Decompressed VCF file: {decompressed_vcf_file}")
         return decompressed_vcf_file
@@ -242,9 +249,10 @@ class DataStructure:
         recompressed_vcf_file = (
             str(dvcf.with_name(dvcf.stem + "_recompressed.vcf")) + ".gz"
         )
-        with open(decompressed_vcf_file, "rb") as decompressed_vcf, pysam.BGZFile(
-            recompressed_vcf_file, "wb"
-        ) as recompressed_vcf:
+        with (
+            open(decompressed_vcf_file, "rb") as decompressed_vcf,
+            pysam.BGZFile(recompressed_vcf_file, "wb") as recompressed_vcf,
+        ):
             recompressed_vcf.write(decompressed_vcf.read())
         self.logger.info(f"Recompressed VCF file: {recompressed_vcf_file}")
         return recompressed_vcf_file
@@ -583,25 +591,107 @@ class DataStructure:
 
         return gt
 
-    def _find_optimal_clusters(self, features):
+    def _find_optimal_clusters(self, features, args):
         """Find optimnal number of clusters from input features.
 
         Args:
             features (numpy.ndarray): Input features.
+            args (argparse.Namespace): Argument namespace containing additional parameters.
 
         Returns:
             optimal_k (int): Optimal number of clusters.
         """
-        max_k = min(10, features.shape[1])  # Restrict max clusters
+        max_k = args.maxk
         silhouette_scores = []
 
-        for k in range(2, max_k + 1):
-            kmeans = KMeans(n_clusters=k, random_state=0)
+        for k in range(3, max_k + 1):
+            kmeans = KMeans(n_clusters=k, n_init="auto", random_state=args.seed)
             cluster_labels = kmeans.fit_predict(features)
             silhouette_scores.append(silhouette_score(features, cluster_labels))
 
         optimal_k = np.argmax(silhouette_scores) + 2  # +2 to get the K value
         return optimal_k
+
+    def _determine_bandwidth(self, data):
+        """
+        Automatically determine the bandwidth for KernelDensity using cross-validation.
+
+        Args:
+            data (array-like): The data to estimate density.
+
+        Returns:
+            float: Optimal bandwidth for KDE.
+        """
+        bandwidths = np.logspace(-1, 1, 20)  # Test a range of bandwidths
+        grid = GridSearchCV(
+            KernelDensity(kernel="gaussian", metric="haversine"),
+            param_grid={"bandwidth": bandwidths},
+            cv=5,
+        )
+        grid.fit(data)
+        optimal_bandwidth = grid.best_params_["bandwidth"]
+
+        if self.verbose >= 1:
+            self.logger.info(
+                f"Optimal bandwidth for KernelDensity: {optimal_bandwidth}"
+            )
+        return optimal_bandwidth
+
+    def _determine_eps(self, data, k=5):
+        """
+        Automatically determine the epsilon parameter for DBSCAN using k-distance.
+
+        Args:
+            data (array-like): The data to cluster.
+            k (int): Number of nearest neighbors.
+
+        Returns:
+            float: Optimal eps for DBSCAN.
+        """
+        # Compute pairwise distances
+        distances = pairwise_distances(data)
+        k_distances = np.sort(distances, axis=1)[
+            :, k
+        ]  # k-th nearest neighbor distances
+        elbow_point = np.percentile(
+            k_distances, 95
+        )  # Use the 95th percentile as heuristic
+
+        if self.verbose >= 1:
+            self.logger.info(f"Estimated epsilon (eps) for DBSCAN: {elbow_point}")
+        return elbow_point
+
+    # Adjust the splits
+    def _adjust_splits(self, train_split, val_split):
+        """Adjust train, validation, and test splits based on user input.
+
+
+        Args:
+            train_split (float): Proportion of the data to use for training.
+            val_split (float): Proportion of the data to use for validation and test combined.
+
+        Returns:
+            tuple: Adjusted train, validation, and test splits.
+
+        """
+        if train_split >= 1.0 or val_split >= 1.0:
+            msg = "train_split and val_split must each be less than 1.0."
+            self.logger.error(msg)
+            raise ValueError(msg)
+
+        if train_split + val_split != 1.0:
+            msg = "The sum of train_split and val_split must equal 1.0."
+            self.logger.error(msg)
+            raise ValueError(msg)
+
+        # Remaining proportion after training split
+        remaining = 1.0 - train_split
+
+        # Divide remaining proportion into validation and test splits
+        validation_split = (remaining * val_split) / 2
+        test_split = (remaining * val_split) / 2
+
+        return train_split, validation_split, test_split
 
     def split_train_test(self, train_split, val_split, seed, args):
         """Splits the data into training, validation, and test datasets.
@@ -617,7 +707,23 @@ class DataStructure:
                 "Splitting data into train, validation, and test datasets."
             )
 
+        weighted_sampler = self.get_sample_weights(self.y, args)
+
+        weights = (
+            np.ones(self.y.shape[0])
+            if weighted_sampler is None
+            else weighted_sampler.weights
+        )
+
+        self.samples_weight = weights
+
+        if self.verbose >= 1:
+            self.logger.info(
+                "Splitting data into train, validation, and test datasets."
+            )
+
         val_split /= 2
+        val_size = val_split / (train_split + val_split)
 
         if train_split + val_split >= 1:
             raise ValueError("The sum of train_split and val_split must be < 1.")
@@ -641,16 +747,17 @@ class DataStructure:
         # Ensure no overlap between train/val and test sets
         assert not set(train_val_indices).intersection(
             test_indices
-        ), "Data leakage detected between train/val and test sets!"
+        ), "Data leakage detected between train + val and test sets!"
 
-        optimal_k = self._find_optimal_clusters(y_train_val)
+        optimal_k = self._find_optimal_clusters(y_train_val, args)
         kmeans = KMeans(n_clusters=optimal_k, random_state=seed)
         cluster_labels = kmeans.fit_predict(y_train_val)
 
         X_train_val_list, X_test_list, X_train_list, X_val_list = [], [], [], []
         y_train_val_list, y_test_list, y_train_list, y_val_list = [], [], [], []
-        train_val_indices_list, train_indices_list = [], []
-        val_indices_list, test_indices_list = [], []
+        train_val_indices_list, val_indices_list, test_indices_list = [], [], []
+        train_val_samples_list, test_samples_list = [], []
+        train_val_weights_list, test_weights_list = [], []
 
         for cluster_id in range(optimal_k):
             cluster_indices = np.where(cluster_labels == cluster_id)[0]
@@ -665,10 +772,14 @@ class DataStructure:
             X_train_val_list.append(self.X[train_val_indices_cluster])
             y_train_val_list.append(self.y[train_val_indices_cluster])
             train_val_indices_list.append(train_val_indices_cluster)
+            train_val_samples_list.append(self.samples[train_val_indices_cluster])
+            train_val_weights_list.append(weights[train_val_indices_cluster])
 
             X_test_list.append(self.X[test_indices_cluster])
             y_test_list.append(self.y[test_indices_cluster])
             test_indices_list.append(test_indices_cluster)
+            test_samples_list.append(self.samples[test_indices_cluster])
+            test_weights_list.append(weights[test_indices_cluster])
 
         X_train_val = np.concatenate(X_train_val_list, axis=0)
         y_train_val = np.concatenate(y_train_val_list, axis=0)
@@ -677,8 +788,8 @@ class DataStructure:
         X_test = np.concatenate(X_test_list, axis=0)
         y_test = np.concatenate(y_test_list, axis=0)
         test_indices = np.concatenate(test_indices_list, axis=0)
-
-        val_size = val_split / (train_split + val_split)
+        test_samples = np.concatenate(test_samples_list, axis=0)
+        test_weights = np.concatenate(test_weights_list, axis=0)
 
         (
             X_train,
@@ -702,6 +813,9 @@ class DataStructure:
         ), "Data leakage detected between train and val sets!"
 
         if args.use_gradient_boosting:
+            raise NotImplementedError(
+                "Gradient Boosting is not yet supported with clustering-based sampling."
+            )
             (
                 X_val,
                 X_train_val,
@@ -711,12 +825,14 @@ class DataStructure:
                 train_val_indices,
             ) = train_test_split(X_val, y_val, val_indices, test_size=0.5)
 
-        optimal_k = self._find_optimal_clusters(y_train_val)
+        optimal_k = self._find_optimal_clusters(y_train_val, args)
         kmeans = KMeans(n_clusters=optimal_k, random_state=seed)
         cluster_labels = kmeans.fit_predict(y_train_val)
 
         X_train_list, y_train_list, train_indices_list = [], [], []
         X_val_list, y_val_list, val_indices_list = [], [], []
+        train_samples_list, val_samples_list = [], []
+        train_weights_list, val_weights_list = [], []
 
         for cluster_id in range(optimal_k):
             cluster_indices = np.where(cluster_labels == cluster_id)[0]
@@ -730,10 +846,14 @@ class DataStructure:
             X_train_list.append(self.X[train_indices_cluster])
             y_train_list.append(self.y[train_indices_cluster])
             train_indices_list.append(train_indices_cluster)
+            train_samples_list.append(self.samples[train_indices_cluster])
+            train_weights_list.append(weights[train_indices_cluster])
 
             X_val_list.append(self.X[val_indices_cluster])
             y_val_list.append(self.y[val_indices_cluster])
             val_indices_list.append(val_indices_cluster)
+            val_samples_list.append(self.samples[val_indices_cluster])
+            val_weights_list.append(weights[val_indices_cluster])
 
         X_train = np.concatenate(X_train_list, axis=0)
         y_train = np.concatenate(y_train_list, axis=0)
@@ -741,6 +861,18 @@ class DataStructure:
         X_val = np.concatenate(X_val_list, axis=0)
         y_val = np.concatenate(y_val_list, axis=0)
         val_indices = np.concatenate(val_indices_list, axis=0)
+        train_samples = np.concatenate(train_samples_list, axis=0)
+        val_samples = np.concatenate(val_samples_list, axis=0)
+        train_weights = np.concatenate(train_weights_list, axis=0)
+        val_weights = np.concatenate(val_weights_list, axis=0)
+
+        self.train_samples = train_samples
+        self.val_samples = val_samples
+        self.test_samples = test_samples
+        self.pred_samples = self.all_samples[self.pred_indices]
+
+        self.known_indices = np.concatenate([train_indices, val_indices, test_indices])
+        self.known_indices.sort()
 
         data = {
             "X_train": X_train,
@@ -752,6 +884,14 @@ class DataStructure:
             "y_val": y_val,
             "y_test": y_test,
             "y": self.y,
+            "train_samples": self.train_samples,
+            "val_samples": self.val_samples,
+            "test_samples": self.test_samples,
+            "pred_samples": self.pred_samples,
+            "known_samples": self.all_samples[self.known_indices],
+            "train_weights": train_weights,
+            "val_weights": val_weights,
+            "test_weights": test_weights,
         }
 
         if args.use_gradient_boosting:
@@ -767,6 +907,7 @@ class DataStructure:
             "test_indices": test_indices,
             "pred_indices": self.pred_indices,
             "true_indices": self.true_indices,
+            "known_indices": self.known_indices,
         }
 
         if args.use_gradient_boosting:
@@ -782,11 +923,37 @@ class DataStructure:
         y_val = self.plotting.processor.to_numpy(gdf_val)
         y_test = self.plotting.processor.to_numpy(gdf_test)
 
-        self.plotting.plot_scatter_samples_map(y_train, y_val, "val")
-        self.plotting.plot_scatter_samples_map(y_train, y_test, "test")
+        self.logger.debug(
+            f"Data Dictionary Object Shapes: {{str(k): v.shape for k, v in self.data.items()}}"
+        )
+        self.logger.debug(
+            f"All indices object shapes: {{str(k): v.shape for k, v in self.indices.items()}}"
+        )
 
-        self.logger.debug(f"Data Dictionary Object: {self.data}")
-        self.logger.debug(f"All indices objects: {self.indices}")
+        # Visualize results
+        self.plotting.plot_scatter_samples_map(
+            y_train, y_test, dataset="test", hue1=train_weights, hue2=test_weights
+        )
+        self.plotting.plot_scatter_samples_map(
+            y_train, y_val, dataset="val", hue1=train_weights, hue2=val_weights
+        )
+
+        self.logger.info(f"Train Dataset Size: {X_train.shape[0]}")
+        self.logger.info(f"Validation Dataset Size: {X_val.shape[0]}")
+        self.logger.info(f"Test Dataset Size: {X_test.shape[0]}")
+        self.logger.info(f"Train Weights Size: {train_weights.shape[0]}")
+        self.logger.info(f"Validation Weights Size: {val_weights.shape[0]}")
+        self.logger.info(f"Test Weights Size: {test_weights.shape[0]}")
+        self.logger.info(f"Known Indices Size: {self.known_indices.shape[0]}")
+        self.logger.info(f"Train Indices Size: {train_indices.shape[0]}")
+        self.logger.info(f"Validation Indices Size: {val_indices.shape[0]}")
+        self.logger.info(f"Test Indices Size: {test_indices.shape[0]}")
+        self.logger.info(f"True Indices Size: {self.true_indices.shape[0]}")
+        self.logger.info(f"Predicted Indices Size: {self.pred_indices.shape[0]}")
+        self.logger.info(f"Train Samples Size: {self.train_samples.shape[0]}")
+        self.logger.info(f"Validation Samples Size: {self.val_samples.shape[0]}")
+        self.logger.info(f"Test Samples Size: {self.test_samples.shape[0]}")
+        self.logger.info(f"Predicted Samples Size: {self.pred_samples.shape[0]}")
 
     def map_outliers_through_filters(self, original_indices, filter_stages, outliers):
         """Maps outlier indices through multiple filtering stages back to the original dataset.
@@ -935,13 +1102,13 @@ class DataStructure:
 
         # Here X has not been imputed.
         (
-            self.X,
-            self.y,
-            self.X_pred,
-            self.true_idx,
+            self.X,  # Known features only
+            self.y,  # Knowns labels only
+            self.X_pred,  # Unknown features only
+            self.true_idx,  # Known indices only
             self.all_samples,  # All samples.
-            self.samples,  # Non-outliers + non-unknowns.
-            self.pred_samples,  # Outliers + non-outliers + unknowns.
+            self.samples,  # Non-outliers + knowns
+            self.pred_samples,  # Unknowns only.
             self.outlier_samples,  # Only outliers.
             self.non_outlier_samples,  # Only non-outliers.
         ) = self.extract_datasets(all_outliers, args)
@@ -1028,13 +1195,28 @@ class DataStructure:
 
         # Creating DataLoaders
         self.train_loader = self.call_create_dataloaders(
-            self.data["X_train"], self.data["y_train"], args, False
+            self.data["X_train"],
+            self.data["y_train"],
+            args,
+            False,
+            self.data["train_samples"],
+            dataset="train",
         )
         self.val_loader = self.call_create_dataloaders(
-            self.data["X_val"], self.data["y_val"], args, True
+            self.data["X_val"],
+            self.data["y_val"],
+            args,
+            True,
+            self.data["val_samples"],
+            dataset="val",
         )
         self.test_loader = self.call_create_dataloaders(
-            self.data["X_test"], self.data["y_test"], args, True
+            self.data["X_test"],
+            self.data["y_test"],
+            args,
+            True,
+            self.data["test_samples"],
+            dataset="test",
         )
 
         # Plot dataset distributions.
@@ -1051,7 +1233,12 @@ class DataStructure:
 
         if args.use_gradient_boosting:
             self.train_val_loader = self.call_create_dataloaders(
-                self.data["X_train_val"], self.data["y_train_val"], args, True
+                self.data["X_train_val"],
+                self.data["y_train_val"],
+                args,
+                True,
+                self.data["train_samples"] + self.data["val_samples"],
+                dataset="train_val",
             )
 
         if args.verbose >= 1:
@@ -1061,6 +1248,33 @@ class DataStructure:
         # For setting new prefix.
         self.n_samples = self.genotypes_enc.shape[0]
         self.n_loci = self.data["X_train"].shape[1]
+
+        self.logger.info(
+            f"Number of samples in train dataset: {self.data['X_train'].shape[0]}"
+        )
+        self.logger.info(
+            f"Number of samples in validation dataset: {self.data['X_val'].shape[0]}"
+        )
+        self.logger.info(
+            f"Number of samples in test dataset: {self.data['X_test'].shape[0]}"
+        )
+
+        self.logger.info(
+            f"Number of samples in prediction dataset: {self.data['X_pred'].shape[0]}"
+        )
+
+        self.logger.info(
+            f"Number of samples in train weights: {self.data['train_weights'].shape[0]}"
+        )
+
+        self.logger.info(
+            f"Number of samples in validation weights: {self.data['val_weights'].shape[0]}"
+        )
+
+        self.logger.info(
+            f"Number of samples in test weights: {self.data['test_weights'].shape[0]}"
+        )
+
         return f"{args.prefix}_N{self.n_samples}_L{self.n_loci}"
 
     def generate_unknowns(self, p=0.1, seed=None, verbose=False):
@@ -1108,12 +1322,12 @@ class DataStructure:
             outlier_mask = self.mask.copy()
 
         return (
-            self.genotypes_enc[self.mask, :],
-            self.locs[self.mask, :],
-            self.genotypes_enc[pred_mask, :],
-            self.all_indices[self.mask],
+            self.genotypes_enc[self.mask, :],  # Knowns only.
+            self.locs[self.mask, :],  # Knowns only.
+            self.genotypes_enc[pred_mask, :],  # Unknowns only.
+            self.all_indices[self.mask],  # Knowns only.
             self.samples,  # All samples.
-            self.samples[self.mask],  # no outliers + non-unknowns.
+            self.samples[self.mask],  # no outliers + knowns.
             self.samples[pred_mask],  # outliers + unknowns only.
             self.samples[outlier_mask],  # only outliers
             self.samples[~outlier_mask],  # only non-outliers
@@ -1202,7 +1416,7 @@ class DataStructure:
         except Exception as e:
             raise OutlierDetectionError(f"Error occurred during outlier detection: {e}")
 
-    def call_create_dataloaders(self, X, y, args, is_val):
+    def call_create_dataloaders(self, X, y, args, is_val, sample_ids, dataset=None):
         """Helper method to create DataLoader objects for different datasets.
 
         Args:
@@ -1210,16 +1424,33 @@ class DataStructure:
             y (numpy.ndarray or None): Target data.
             args (argparse.Namespace): User-supplied arguments.
             is_val (bool): Whether the dataset is validation/test data. Default is False.
+            sample_ids (list of str): List of sample IDs. Default is None.
+            dataset (str): Dataset type. Required keyword argument. Default is None.
 
         Returns:
             torch.utils.data.DataLoader: DataLoader object.
+
+        Raises:
+            ValueError: If sample IDs are not provided.
         """
+        if sample_ids is None:
+            msg = "Sample IDs must be provided to create DataLoader objects."
+            self.logger.error(msg)
+            raise ValueError(msg)
+
+        if dataset not in {"train", "val", "test", "train_val"}:
+            msg = "Invalid dataset type. Must be one of 'train', 'val', 'test', or 'train_val'."
+            self.logger.error(msg)
+            raise ValueError(msg)
+
         return self.create_dataloaders(
             X,
             y,
             args.batch_size,
             args,
             is_val=is_val,
+            sample_ids=sample_ids,
+            dataset=dataset,
         )
 
     @np.errstate(all="warn")
@@ -1522,6 +1753,8 @@ class DataStructure:
         batch_size,
         args,
         is_val=False,
+        sample_ids=None,
+        dataset=None,
     ):
         """Create dataloaders for training, testing, and validation datasets.
 
@@ -1531,25 +1764,36 @@ class DataStructure:
             batch_size (int): Batch size to use with model.
             args (argparse.Namespace): User-supplied arguments.
             is_val (bool): Whether using validation/ test dataset. Otherwise should be training dataset. Default is False.
+            sample_ids (list of str): List of sample IDs. Default is None.
+            dataset (str): Dataset type. Required keyword argument. Default is None.
 
         Returns:
             torch.utils.data.DataLoader: DataLoader object suitable for the specified model type.
         """
-        if not is_val:
-            # Custom sampler - density-based.
-            weighted_sampler = self.get_sample_weights(
-                self.norm.inverse_transform(y), args
-            )
+        if sample_ids is None:
+            msg = "Sample IDs must be provided to create DataLoader objects."
+            self.logger.error(msg)
+            raise ValueError(msg)
 
-        dataset = CustomDataset(X, y, sample_weights=self.samples_weight)
+        if dataset not in {"train", "val", "test", "train_val"}:
+            msg = "Invalid dataset type. Must be one of 'train', 'val', 'test', or 'train_val'."
+            self.logger.error(msg)
+            raise ValueError(msg)
+
+        args = [X, y]
+
+        kwargs = (
+            {"sample_ids": sample_ids}
+            if is_val
+            else {"sample_weights": self.data["train_weights"]}
+        )
+
+        dataset = CustomDataset(*args, **kwargs)
 
         # Create DataLoader
-        kwargs = {"batch_size": batch_size}
-        if args.use_weighted in {"sampler", "both"} and not is_val:
-            kwargs["sampler"] = weighted_sampler
-        else:
-            kwargs["shuffle"] = False if is_val else True
-        return DataLoader(dataset, **kwargs)
+        kwargs2 = {"batch_size": batch_size}
+        kwargs2["shuffle"] = False if is_val else True
+        return DataLoader(dataset, **kwargs2)
 
     def get_sample_weights(self, y, args):
         """Gets inverse sample_weights based on sampling density.
@@ -1580,11 +1824,13 @@ class DataStructure:
                 focus_regions=args.focus_regions,
                 use_kmeans=args.use_kmeans,
                 use_kde=args.use_kde,
+                use_dbscan=args.use_dbscan,
                 w_power=args.w_power,
                 max_clusters=args.max_clusters,
                 max_neighbors=args.max_neighbors,
                 normalize=args.normalize_sample_weights,
                 verbose=args.verbose,
+                logger=self.logger,
                 dtype=self.dtype,
             )
 
