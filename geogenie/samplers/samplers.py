@@ -1,10 +1,13 @@
+# Standard library imports
 import logging
 import os
-from math import pi
 
+# Third party imports
 import jenkspy
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import seaborn as sns
 import torch
 from geopy.distance import great_circle
 from imblearn.combine import SMOTEENN
@@ -13,14 +16,14 @@ from imblearn.under_sampling import EditedNearestNeighbours
 from scipy import optimize
 from scipy.spatial.distance import cdist
 from scipy.stats import gaussian_kde
-from sklearn.cluster import KMeans
-from sklearn.metrics import silhouette_score
+from sklearn.cluster import DBSCAN, KMeans
+from sklearn.metrics import pairwise_distances
 from sklearn.neighbors import KernelDensity, NearestNeighbors
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
-from torch.utils.data import Sampler
 
+# Local application imports
 from geogenie.utils.spatial_data_processors import SpatialDataProcessor
-from geogenie.utils.utils import assign_to_bins, geo_coords_is_valid, validate_is_numpy
+from geogenie.utils.utils import assign_to_bins, validate_is_numpy
 
 logger = logging.getLogger(__name__)
 
@@ -29,347 +32,353 @@ processor = SpatialDataProcessor(output_dir=None, logger=logger)
 os.environ["TQDM_DISABLE"] = "true"
 
 
-class SampleDensityEstimator:
-    def __init__(self, data, use_kde=True, verbose=1):
-        self.data = data
-        self.use_kde = use_kde
-        self.verbose = verbose
-        self.logger = logger
-        self.density = None
-
-    def calculate_adaptive_bandwidth(self, k_neighbors):
-        nbrs = NearestNeighbors(n_neighbors=k_neighbors + 1, n_jobs=-1).fit(self.data)
-        distances, _ = nbrs.kneighbors(self.data)
-
-        # Exclude the first distance (self-distance)
-        average_distance = np.mean(distances[:, 1:], axis=1)
-        adaptive_bandwidth = np.mean(average_distance)  # Mean over all points
-
-        # Convert bandwidth from degrees to kilometers (approximation)
-        # Example for latitude (you need to adjust it based on your specific location)
-        bandwidth_km = adaptive_bandwidth * 111.32  # 1 degree latitude ~ 111.32 km
-        return bandwidth_km
-
-    def estimate_density(self):
-        if self.use_kde:
-            if self.verbose >= 1:
-                msg = "Estimating sample weights with Kernel Density..."
-                self.logger.info(msg)
-            adaptive_bandwidth = self.calculate_adaptive_bandwidth(10)
-            kde = KernelDensity(
-                bandwidth=adaptive_bandwidth,
-                kernel="gaussian",
-                metric="haversine",
-            )
-            kde.fit(self.data)
-            log_density = kde.score_samples(self.data)
-            self.density = np.exp(log_density)
-            unit_area = pi * (adaptive_bandwidth**2)  # Area of the circle in km^2
-            return unit_area
-
-    def calculate_samples_needed(self, density, area):
-        """
-        Calculate the number of samples needed based on the density and the total area.
-
-        Args:
-            density (float): The number of samples per unit area.
-            area (int): The total area in square kilometers.
-
-        Returns:
-            int: Total number of samples needed.
-        """
-        return int(density * area)
+import numpy as np
+from sklearn.cluster import DBSCAN, KMeans
+from sklearn.metrics import pairwise_distances
+from sklearn.neighbors import KernelDensity, NearestNeighbors
+from sklearn.preprocessing import MinMaxScaler
 
 
-class GeographicDensitySampler(Sampler):
+class GeographicDensitySampler:
+    """Class to sample data points based on spatial density.
+
+    This class provides a method to sample data points based on spatial density using KMeans, KDE, and DBSCAN.
+
+    Attributes:
+        data (pandas.DataFrame): DataFrame with 'longitude' and 'latitude'.
+        focus_regions (list of tuples): Regions of interest.
+        use_kmeans (bool): Use KMeans clustering for weights.
+        use_kde (bool): Use KernelDensity Estimation for weights.
+        use_dbscan (bool): Use DBSCAN clustering for weights.
+        w_power (float): Aggressiveness of inverse density weighting.
+        max_clusters (int): Max clusters for KMeans.
+        max_neighbors (int): Max neighbors for adaptive bandwidth.
+        indices (np.ndarray): Indices for sampling.
+        normalize (bool): Normalize weights.
+        verbose (int): Verbosity level.
+        logger (logging.Logger): Logger instance.
+        dtype (np.dtype): Data type for calculations.
+    """
+
     def __init__(
         self,
         data,
         focus_regions=None,
         use_kmeans=True,
         use_kde=True,
+        use_dbscan=False,
         w_power=1,
         max_clusters=10,
         max_neighbors=10,
         indices=None,
-        objective_mode=False,
         normalize=False,
         verbose=0,
-        dtype=torch.float32,
+        logger=None,
+        dtype=np.float32,
     ):
-        """
+        """Geographic Density Sampler for weighting based on spatial density.
+
+        This class provides a method to sample data points based on spatial density using KMeans, KDE, and DBSCAN.
+
         Args:
-            data (pandas DataFrame): DataFrame containing 'longitude' and 'latitude'.
-            focus_regions (list of tuples): Regions of interest (longitude and latitude ranges).
-            use_kmeans (bool): Whether to use KMeans clustering.
-            use_kde (bool): Whether to use KernelDensity Estimation with adaptive bandwidth.
-            w_power (float): Power to which the inverse density is raised.
-            max_clusters (int): Maximum number of clusters to try for KMeans.
-            max_neighbors (int): Maximum number of neighbors to try for adaptive bandwidth.
-            indices (numpy.ndarray): Indices to use. If None, the uses all indices.
-            objective_mode (bool): Whether to use objective mode with Optuna search. If True, use_kde and use_kmeans can both be False, but sample_weights will be all 1.0.
-            normalize (bool): Whether to normalize the sample weights. Defaults to False.
-            dtype (torch.dtype): PyTorch data type to use. Defaults to torch.float32.
+            data (pandas DataFrame): DataFrame with 'longitude' and 'latitude'.
+            focus_regions (list of tuples): Regions of interest.
+            use_kmeans (bool): Use KMeans clustering for weights.
+            use_kde (bool): Use KernelDensity Estimation for weights.
+            use_dbscan (bool): Use DBSCAN clustering for weights.
+            w_power (float): Aggressiveness of inverse density weighting.
+            max_clusters (int): Max clusters for KMeans.
+            max_neighbors (int): Max neighbors for adaptive bandwidth.
+            indices (np.ndarray): Indices for sampling.
+            normalize (bool): Normalize weights.
+            verbose (int): Verbosity level.
+            logger (logging.Logger): Logger instance.
+            dtype (np.dtype): Data type for calculations.
         """
-        self.logger = logging.getLogger(__name__)
-
-        if not use_kmeans and not use_kde and focus_regions is None:
-            if objective_mode:
-                use_kde = True
-            else:
-                msg = "Either KMeans, KernelDensity, or Focus Regions must be used with 'GeographicDensitySampler' if objective_mode is False."
-                self.logger.error(msg)
-                raise AssertionError(msg)
-
-        geo_coords_is_valid(data.to_numpy())
-
         self.data = data
         self.focus_regions = focus_regions
         self.use_kmeans = use_kmeans
         self.use_kde = use_kde
+        self.use_dbscan = use_dbscan
         self.w_power = w_power
         self.max_clusters = max_clusters
         self.max_neighbors = max_neighbors
-        self.objective_mode = objective_mode
         self.normalize = normalize
         self.verbose = verbose
         self.dtype = dtype
 
         if indices is None:
-            self.indices = np.arange(data.shape[0])
+            self.indices = np.arange(len(data))
         else:
             self.indices = indices
 
-        self.optimal_k_neighbors = self.find_optimal_k_neighbors()
+        if logger is not None:
+            self.logger = logger
+        else:
+            self.logger = logging.getLogger(__name__)
+
+        self.density = None
         self.weights = self.calculate_weights()
+        self._plot_cluster_weights(self.weights)
 
-    @staticmethod
-    def estimate_density(y_true):
-        """
-        Estimate the density of points in the dataset.
+    def _plot_cluster_weights(self, weights):
+        """Plot the sample weights.
 
-        Args:
-            y_true (np.ndarray): Truth values.
-
-        Returns:
-            float: An estimate of the density.
-        """
-        # Example density estimation logic
-        neighbors = NearestNeighbors(
-            n_neighbors=2
-        )  # Using 2 to find the nearest neighbor
-        neighbors.fit(y_true)
-        distances, _ = neighbors.kneighbors(y_true)
-        average_distance = np.mean(
-            distances[:, 1]
-        )  # distances[:, 0] is zero as it's the distance to itself
-        return average_distance
-
-    def define_local_region(self, y_true, point, dynamic_k):
-        """
-        Define a local region around a given point for GWR using dynamic nearest neighbors.
+        This method plots the sample weights on a scatter plot of the data points.
 
         Args:
-            y_true (np.ndarray): Truth values.
-            point (np.ndarray): The central point of the local region.
-            dynamic_k (int): Dynamically determined number of nearest neighbors.
-
-        Returns:
-            np.ndarray: A boolean array indicating which points are in the local region.
+            weights (np.ndarray): Array of sample weights.
         """
-        neighbors = NearestNeighbors(n_neighbors=dynamic_k)
-        neighbors.fit(y_true)
-        indices = neighbors.kneighbors([point], return_distance=False)
-        local_region = np.zeros(y_true.shape[0], dtype=bool)
-        local_region[indices[0]] = True
-        return local_region
+        fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+        sns.set_style("white")
 
-    def perform_gwr(self, predictions, targets, sample_weights=None):
-        """
-        Perform Geographically Weighted Regression for post-training assessment.
+        data = self.data.copy()
+        data["weights"] = weights * 1000
 
-        Args:
-            predictions (np.ndarray): Model predictions.
-            targets (np.ndarray): Actual target values.
-            sample_weights (np.ndarray): Sample weights. Defaults to None.
-
-        Returns:
-            float: Aggregated GWR-based performance metric.
-        """
-        local_metrics = []
-
-        for point in targets:
-            # Determine the dynamic number of neighbors based on optimal k
-            # neighbors
-            dynamic_k = self.find_optimal_k_neighbors()
-
-            # Define the local region around the current point using dynamic
-            # nearest neighbors
-            local_region = self.define_local_region(targets, point, dynamic_k)
-
-            # Extract the subset of predictions and targets that fall within
-            # the local region
-            local_predictions = predictions[local_region]
-            local_targets = targets[local_region]
-
-            # Calculate Haversine error for each pair of points
-            local_error = processor.haversine_distance(local_targets, local_predictions)
-
-            # Adjust the local error using sample weights
-            if sample_weights is not None:
-                local_error_weighted = local_error * sample_weights[local_region]
-                local_metric = np.mean(local_error_weighted)
-            else:
-                local_metric = np.mean(local_error)
-
-            local_metrics.append(local_metric)
-
-        # Aggregate the local metrics into a global performance measure
-        global_performance = np.mean(local_metrics)
-        return global_performance
-
-    def define_local_region(self, y_true, point, threshold=5.0):
-        """
-        Define a local region around a given point for GWR.
-
-        Args:
-            y_true (np.ndarray): Truth values.
-            point (np.ndarray): The central point of the local region.
-            threshold (float): The distance threshold to include points in the local region.
-
-        Returns:
-            np.ndarray: A boolean array indicating which points are in the local region.
-        """
-        # Calculate the distance from the current point to all other points
-        distances = np.sqrt(
-            (y_true[:, 0] - point[0]) ** 2 + (y_true[:, 1] - point[1]) ** 2
+        ax = sns.scatterplot(
+            data=data,
+            x="x",
+            y="y",
+            hue="weights",
+            size="weights",
+            palette="viridis",
+            legend=True,
+            alpha=0.8,
+            ax=ax,
         )
 
-        # Define the local region as points within the distance threshold
-        local_region = distances < threshold
-        return local_region
+        ax.set_title("Sample Weights", fontsize=24)
+        ax.set_xlabel("Longitude", fontsize=24)
+        ax.set_ylabel("Latitude", fontsize=24)
+        ax.legend(
+            title="Sample Weights",
+            loc="upper right",
+            fancybox=True,
+            shadow=True,
+            fontsize=24,
+        )
+
+        fig.savefig(
+            "sample_weights.png", bbox_inches="tight", facecolor="white", dpi=300
+        )
 
     def calculate_weights(self):
-        """Calculate sample weights for geographic coordinates in the form of longitude and latitude.
+        """Calculate sample weights using KMeans, KDE, DBSCAN, and focus regions.
 
-        There are several options for calculating sample weights:
+        This method calculates sample weights using KMeans, KDE, and DBSCAN clustering, and adjusts for focus regions.
 
-        - KMeans clustering
-        - Kernel Density Estimation (KDE)
-        - The KDE method sets the bandwidth adaptively to obtain optimal smoothing for the kernel.
-        - User-specified focal regions; users should specify min/ max longitude and latitude to create a bounding box.
-        - The weights can optionally be normalized from 0 to 1.
-
+        Returns:
+            np.ndarray: Computed sample weights.
         """
-        if not self.objective_mode:
-            if self.verbose >= 1:
-                self.logger.info("Estimating sample weights...")
-
+        if self.verbose >= 1:
+            self.logger.info("Calculating sample weights...")
         weights = np.ones(len(self.data))
 
+        # KMeans-based weights
         if self.use_kmeans:
-            if not self.objective_mode and self.verbose >= 1:
-                self.logger.info("Estimating sample weights with KMeans...")
-            n_clusters = self.find_optimal_clusters()
-            kmeans = KMeans(n_clusters=n_clusters, n_init="auto")
-            labels = kmeans.fit_predict(self.data)
-            cluster_counts = np.bincount(labels, minlength=n_clusters)
-            cluster_weights = 1 / (cluster_counts[labels] + 1e-5)
-            mms = MinMaxScaler(feature_range=(1, 20))
-            weights *= np.squeeze(mms.fit_transform(cluster_weights.reshape(-1, 1)))
-            self.density = None
+            self.logger.info("Calculating KMeans-based weights...")
+            kmeans_weights = self._calculate_kmeans_weights()
+            weights *= kmeans_weights
+
+        # KDE-based weights
         if self.use_kde:
-            if not self.objective_mode and self.verbose >= 1:
-                self.logger.info("Estimating sample weights with Kernel Density...")
-            adaptive_bandwidth = self.calculate_adaptive_bandwidth(
-                self.optimal_k_neighbors
-            )
-            kde = KernelDensity(
-                bandwidth=adaptive_bandwidth,
-                kernel="gaussian",
-                metric="haversine",
-            )
-            kde.fit(self.data)
-            log_density = kde.score_samples(self.data)
-            self.density = np.exp(log_density)
+            self.logger.info("Calculating KDE-based weights...")
+            kde_weights = self._calculate_kde_weights()
+            weights *= kde_weights
 
-            # control aggressiveness of inverse weighting.
-            weights *= 1 / np.power(self.density + 1e-5, self.w_power)
+        # DBSCAN-based weights
+        if self.use_dbscan:
+            self.logger.info("Calculating DBSCAN-based weights...")
+            dbscan_weights = self._calculate_dbscan_weights()
+            weights *= dbscan_weights
 
+        # Focus regions adjustment
         if self.focus_regions:
-            for region in self.focus_regions:
-                lon_min, lon_max, lat_min, lat_max = region
-                in_region = (
-                    (self.data["longitude"] >= lon_min)
-                    & (self.data["longitude"] <= lon_max)
-                    & (self.data["latitude"] >= lat_min)
-                    & (self.data["latitude"] <= lat_max)
-                )
-                weights[in_region] *= 2
+            self.logger.info("Adjusting weights for focus regions...")
+            weights = self._adjust_for_focus_regions(weights)
 
-        if not self.objective_mode and self.verbose >= 1:
-            self.logger.info("Done estimating sample weights.")
-
+        # Normalize final weights
         if self.normalize:
-            mms = MinMaxScaler()
-            weights = np.squeeze(mms.fit_transform(weights.reshape(-1, 1)))
+            self.logger.info("Normalizing weights...")
+            scaler = MinMaxScaler(feature_range=(1, 10))
+            weights = scaler.fit_transform(weights.reshape(-1, 1)).squeeze()
+
+        self.logger.info("Weight calculation complete.")
         return weights
 
-    def calculate_adaptive_bandwidth(self, k_neighbors):
-        """Calculate adaptive bandwidth for Kernel Density Estimation (KDE).
+    def _calculate_kmeans_weights(self):
+        """Compute weights using KMeans clustering.
+
+        This method uses KMeans clustering to assign weights to samples based on cluster sizes.
+
+        Returns:
+            np.ndarray: KMeans-based weights.
+        """
+        n_clusters = self.find_optimal_clusters()
+        kmeans = KMeans(n_clusters=n_clusters, n_init="auto")
+        labels = kmeans.fit_predict(self.data)
+        cluster_counts = np.bincount(labels, minlength=n_clusters)
+        cluster_weights = 1 / (cluster_counts[labels] + 1e-5)
+
+        # Scale weights
+        if self.normalize:
+            scaler = MinMaxScaler(feature_range=(1, 10))
+            return scaler.fit_transform(cluster_weights.reshape(-1, 1)).squeeze()
+        else:
+            return cluster_weights
+
+    def _calculate_kde_weights(self):
+        """Compute weights using Kernel Density Estimation.
+
+        This method uses Kernel Density Estimation (KDE) to assign weights to samples based on density.
+
+        Returns:
+            np.ndarray: KDE-based weights.
+        """
+        kde = KernelDensity(
+            bandwidth=0.03,
+            kernel="gaussian",
+            metric="haversine",
+            algorithm="ball_tree",
+        )
+        kde.fit(self.data)
+        log_density = kde.score_samples(self.data)
+        density = np.exp(log_density)
+        self.density = density
+
+        # Compute weights
+        kde_weights = 1 / np.power(density + 1e-5, self.w_power)
+
+        # Cap extreme weights
+        max_weight = np.percentile(kde_weights, 95)  # Cap at 95th percentile
+        kde_weights = np.clip(kde_weights, None, max_weight)
+
+        return kde_weights
+
+    def _determine_eps(self, data, k=5):
+        """Automatically determine the epsilon parameter for DBSCAN using k-distance.
+
+        This method automatically determines the epsilon parameter for DBSCAN using the k-distance heuristic.
 
         Args:
-            k_neighbors (int): Number of nearest neighbors to consider.
+            data (array-like): The data to cluster.
+            k (int): Number of nearest neighbors.
 
         Returns:
-            float: Bandwidth to use with KDE.
-
+            float: Optimal eps for DBSCAN.
         """
-        nbrs = NearestNeighbors(n_neighbors=k_neighbors + 1, n_jobs=-1).fit(self.data)
+        # Compute pairwise distances
+        distances = pairwise_distances(data)
+
+        # k-th nearest neighbor distances
+        k_distances = np.sort(distances, axis=1)[:, k]
+
+        # Use the 95th percentile as heuristic
+        elbow_point = np.percentile(k_distances, 95)
+
+        if self.verbose >= 1:
+            self.logger.info(f"Estimated epsilon (eps) for DBSCAN: {elbow_point}")
+        return elbow_point
+
+    def _calculate_dbscan_weights(self):
+        """Compute weights using DBSCAN clustering.
+
+        This method uses DBSCAN clustering to assign weights to samples based on cluster sizes.
+
+        Returns:
+            np.ndarray: DBSCAN-based weights.
+        """
+        eps = self._determine_eps(self.data)
+
+        dbscan = DBSCAN(
+            eps=eps, min_samples=2, metric="haversine", algorithm="ball_tree"
+        )
+        labels = dbscan.fit_predict(self.data)
+
+        weights = np.ones(len(self.data))
+        unique_labels = np.unique(labels)
+
+        # Assign weights based on cluster sizes
+        for label in unique_labels:
+            if label != -1:  # For valid clusters
+                cluster_size = np.sum(labels == label)
+                weights[labels == label] = 1 / (cluster_size + 1e-5)
+
+        # Scale weights for non-outliers only
+        scaler = MinMaxScaler(feature_range=(1, 10))
+        non_outlier_weights = weights[labels != -1]
+        scaled_weights = scaler.fit_transform(
+            non_outlier_weights.reshape(-1, 1)
+        ).squeeze()
+
+        # Assign scaled weights back to non-outliers
+        weights[labels != -1] = scaled_weights
+
+        # Assign fixed weight for outliers
+        weights[labels == -1] = scaled_weights.mean()
+
+        return weights
+
+    def _adjust_for_focus_regions(self, weights):
+        """Adjust weights for user-specified focus regions.
+
+        This method adjusts the weights for user-specified focus regions by doubling the weights for samples within the regions.
+
+        Args:
+            weights (np.ndarray): Current weights.
+
+        Returns:
+            np.ndarray: Adjusted weights.
+        """
+        for region in self.focus_regions:
+            lon_min, lon_max, lat_min, lat_max = region
+            in_region = (
+                (self.data["longitude"] >= lon_min)
+                & (self.data["longitude"] <= lon_max)
+                & (self.data["latitude"] >= lat_min)
+                & (self.data["latitude"] <= lat_max)
+            )
+            weights[in_region] *= 2  # Multiplicative adjustment
+        return weights
+
+    def calculate_adaptive_bandwidth(self):
+        """Calculate adaptive bandwidth for KDE using nearest neighbors.
+
+        This method calculates the adaptive bandwidth for KDE using the average distance to the k-th nearest neighbor.
+
+        Returns:
+            float: Adaptive bandwidth.
+        """
+        nbrs = NearestNeighbors(n_neighbors=self.max_neighbors + 1, n_jobs=-1).fit(
+            self.data
+        )
         distances, _ = nbrs.kneighbors(self.data)
-
-        # Exclude the first distance (self-distance)
         average_distance = np.mean(distances[:, 1:], axis=1)
-        adaptive_bandwidth = np.mean(average_distance)  # Mean over all points
-        return adaptive_bandwidth
-
-    def find_optimal_k_neighbors(self):
-        """Uses use the stability of the average distance as the criterion for determining optimal nearest neighbors.
-
-        Returns:
-            int: Optimal number of nearest neighbors (K).
-        """
-        optimal_k = 2
-        min_variation = float("inf")
-        for k in range(2, self.max_neighbors + 1):
-            nbrs = NearestNeighbors(n_neighbors=k + 1, n_jobs=-1).fit(self.data)
-            distances, _ = nbrs.kneighbors(self.data)
-            average_distance = np.mean(distances[:, 1:], axis=1)
-            variation = np.var(average_distance)
-            if variation < min_variation:
-                min_variation = variation
-                optimal_k = k
-        return optimal_k
+        return np.mean(average_distance)
 
     def find_optimal_clusters(self):
-        """Search for the optimal number of clusters for KMeans clustering method. Uses the lowest Mean Silhouette Width (MSW) to obtain optimal K.
+        """
+        Find optimal number of clusters for KMeans using the Elbow Method.
 
         Returns:
-            int: Optimal number of clusters (K) for KMeans clsutering.
+            int: Optimal number of clusters.
         """
-        best_score = -1
-        best_n_clusters = 2
-        for n_clusters in range(2, self.max_clusters + 1):
+        distortions = []
+        cluster_range = range(2, self.max_clusters + 1)
+        for n_clusters in cluster_range:
             kmeans = KMeans(n_clusters=n_clusters, n_init="auto")
-            labels = kmeans.fit_predict(self.data)
-            score = silhouette_score(self.data, labels)
-            if score > best_score:
-                best_score = score
-                best_n_clusters = n_clusters
-        return best_n_clusters
+            kmeans.fit(self.data)
+            distortions.append(kmeans.inertia_)
+
+        elbow_index = np.argmin(np.gradient(distortions))
+        return cluster_range[elbow_index]
 
     def __iter__(self):
-        """Allows use as a PyTorch sampler."""
+        """Allows use as a PyTorch sampler.
+
+        Returns:
+            iterator: An iterator for the sampler.
+        """
         return (
             self.indices[i]
             for i in np.random.choice(
@@ -380,6 +389,11 @@ class GeographicDensitySampler(Sampler):
         )
 
     def __len__(self):
+        """Returns the number of samples.
+
+        Returns:
+            int: The number of samples
+        """
         return len(self.data)
 
 
@@ -393,8 +407,7 @@ def synthetic_resampling(
     smote_neighbors=3,
     verbose=0,
 ):
-    """
-    Performs synthetic resampling on the provided datasets using various binning methods and SMOTE (Synthetic Minority Over-sampling Technique).
+    """Performs synthetic resampling on the provided datasets using various binning methods and SMOTE (Synthetic Minority Over-sampling Technique).
 
     Args:
         features (DataFrame): The feature set.
@@ -507,6 +520,19 @@ def synthetic_resampling(
 
 
 def do_kde_binning(n_bins, verbose, dfy, sample_weights):
+    """Perform binning using KernelDensity Estimation (KDE).
+
+    Args:
+        n_bins (int): Number of bins to create.
+        verbose (int): Verbosity setting (0=silent, 3=most verbose).
+        dfy (pd.DataFrame): DataFrame of labels.
+        sample_weights (np.ndarray): Array of sample weights.
+
+    Returns:
+        np.ndarray: Array of bin indices.
+        list: List of centroids for each bin.
+    """
+
     density, lon_grid, lat_grid = spatial_kde(
         dfy["x"].to_numpy(), dfy["y"].to_numpy(), sample_weights
     )
@@ -548,8 +574,9 @@ def do_kde_binning(n_bins, verbose, dfy, sample_weights):
 def merge_single_sample_bins(
     single_sample_bins, distance_matrix, bin_indices, verbose=0
 ):
-    """
-    Merge single-sample bins with the nearest bin.
+    """Merge single-sample bins with the nearest bin.
+
+    This method merges single-sample bins with the nearest neighboring bin based on the distance matrix between centroids.
 
     Args:
         single_sample_bins (np.ndarray): Array of single-sample bin indices.
@@ -573,8 +600,7 @@ def merge_single_sample_bins(
 
 
 def identify_small_bins(bin_indices, num_bins, min_smote_neighbors=5):
-    """
-    Identify bins with a count less than or equal to smote_neighbors.
+    """Identify bins with a count less than or equal to smote_neighbors.
 
     Args:
         bin_indices (np.ndarray): Array of bin indices for each sample.
@@ -591,8 +617,7 @@ def identify_small_bins(bin_indices, num_bins, min_smote_neighbors=5):
 
 
 def merge_small_bins(small_bins, distance_matrix, bin_indices):
-    """
-    Merge small bins with the closest neighboring bin.
+    """Merge small bins with the closest neighboring bin.
 
     Args:
         small_bins (np.ndarray): Indices of small bins.
@@ -613,8 +638,7 @@ def merge_small_bins(small_bins, distance_matrix, bin_indices):
 
 
 def calculate_centroid_distances(centroids):
-    """
-    Calculate geographical distances between centroids.
+    """Calculate geographical distances between centroids.
 
     Args:
         centroids (list): List of centroids (longitude, latitude).
@@ -631,8 +655,7 @@ def calculate_centroid_distances(centroids):
 
 
 def define_jenks_thresholds(density, num_classes):
-    """
-    Define thresholds using Jenks Natural Breaks for binning.
+    """Define thresholds using Jenks Natural Breaks for binning.
 
     Args:
         density (np.ndarray): Density values from KDE.
@@ -650,8 +673,7 @@ def define_jenks_thresholds(density, num_classes):
 
 
 def calculate_bin_centers(density_grid, lon_grid, lat_grid, thresholds):
-    """
-    Calculate the centers (centroids) of bins.
+    """Calculate the centers (centroids) of bins.
 
     Args:
         density_grid (np.ndarray): Grid of density values from KDE.
@@ -679,8 +701,7 @@ def calculate_bin_centers(density_grid, lon_grid, lat_grid, thresholds):
 
 
 def assign_samples_to_bins(samples, density_grid, lon_grid, lat_grid, thresholds):
-    """
-    Assign samples to bins based on density thresholds.
+    """Assign samples to bins based on density thresholds.
 
     Args:
         samples (np.ndarray): Array of samples (longitude, latitude).
@@ -707,8 +728,7 @@ def assign_samples_to_bins(samples, density_grid, lon_grid, lat_grid, thresholds
 
 
 def spatial_kde(longitudes, latitudes, sample_weights):
-    """
-    Perform spatial KDE on longitude and latitude data in decimal degrees.
+    """Perform spatial KDE on longitude and latitude data in decimal degrees.
 
     Args:
         longitudes (np.ndarray): Array of longitudes in decimal degrees.
@@ -737,8 +757,7 @@ def spatial_kde(longitudes, latitudes, sample_weights):
 
 
 def define_density_thresholds(density, num_bins):
-    """
-    Define density thresholds for binning.
+    """Define density thresholds for binning.
 
     Args:
         density (np.ndarray): Density values from KDE.
@@ -752,8 +771,7 @@ def define_density_thresholds(density, num_bins):
 
 
 def get_kde_bins(n_bins, dfy, bandwidth=0.04):
-    """
-    Calculate the 1D centroids of bins for each dimension in 2D data.
+    """Calculate the 1D centroids of bins for each dimension in 2D data.
 
     Args:
         n_bins (int): Number of bins to divide each dimension.
@@ -783,6 +801,17 @@ def get_kde_bins(n_bins, dfy, bandwidth=0.04):
 
 
 def get_centroids(centroids, y_filtered, bins_filtered, unique_bins):
+    """Get centroids for each bin.
+
+    Args:
+        centroids (np.ndarray): Array of centroids.
+        y_filtered (np.ndarray): Filtered labels.
+        bins_filtered (np.ndarray): Filtered bins.
+        unique_bins (np.ndarray): Unique bins.
+
+    Returns:
+        dict: Dictionary of centroids for each bin.
+    """
     if centroids is None:
         centroids = {
             bin: y_filtered[bins_filtered == bin].mean(axis=0)
@@ -805,8 +834,9 @@ def run_binned_smote(
     method,
     labels,
 ):
-    """
-    Runs SMOTEENN, and adjusts the number of neighbors for SMOTE based on the minimum number of samples in the least populous bin.
+    """Runs SMOTEENN, and adjusts the number of neighbors for SMOTE based on the minimum number of samples in the least populous bin.
+
+    This method first calculates the number of occurrences for each bin and then finds the count of the least populous bin. It then adjusts the number of neighbors for SMOTE to be at most one less than the count in the least populous bin. The function ensures that the number of neighbors is not less than 1. It then performs SMOTEENN resampling on the scaled feature array and labels. If the method is "kerneldensity", the function uses all bins. The function then inversely transforms the resampled features and labels and drops the "x" and "y" columns. If the "sample_weights" column is present, the function converts it to a tensor and drops it from the features DataFrame. The function then converts the DataFrames to tensors and returns the resampled features, labels, sample weights, centroids, and bins.
 
     Args:
         args (argparse.Namespace): All user-supplied and default arguments.
