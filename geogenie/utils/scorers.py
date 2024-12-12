@@ -5,7 +5,7 @@ import numba
 import numpy as np
 import scipy.stats as stats
 from sklearn.manifold import LocallyLinearEmbedding
-from sklearn.metrics import mean_squared_error
+from sklearn.metrics import root_mean_squared_error
 
 from geogenie.utils.spatial_data_processors import SpatialDataProcessor
 
@@ -14,6 +14,7 @@ processor = SpatialDataProcessor(output_dir=None, logger=logger)
 
 
 def kstest(y_true, y_pred, sample_weight=None):
+    """Perform the Kolmogorov-Smirnov test on the Haversine errors."""
     # Calculate Haversine error for each pair of points
     haversine_errors = processor.haversine_distance(y_true, y_pred)
     errors = haversine_errors.copy()
@@ -36,6 +37,8 @@ def kstest(y_true, y_pred, sample_weight=None):
 
 
 class LocallyLinearEmbeddingWrapper(LocallyLinearEmbedding):
+    """Wrapper class for LocallyLinearEmbedding to allow for prediction."""
+
     def predict(self, X):
         return self.transform(X)
 
@@ -57,8 +60,7 @@ class LocallyLinearEmbeddingWrapper(LocallyLinearEmbedding):
 
 
 def calculate_r2_knn(predicted_data, actual_data):
-    """
-    Calculate the coefficient of determination (R^2) for predictions.
+    """Calculate the coefficient of determination (R^2) for predictions.
 
     Args:
         predicted_data (np.array): Predicted data from KNN.
@@ -74,15 +76,12 @@ def calculate_r2_knn(predicted_data, actual_data):
 
 def calculate_rmse(preds, targets):
     haversine_errors = processor.haversine_distance(targets, preds)
-    return mean_squared_error(
-        np.zeros_like(haversine_errors), haversine_errors, squared=False
-    )
+    return root_mean_squared_error(np.zeros_like(haversine_errors), haversine_errors)
 
 
 @numba.njit(fastmath=True)
 def haversine_distance(coord1, coord2):
-    """
-    Calculate the Haversine distance between two geographic coordinate points.
+    """Calculate the Haversine distance between two geographic coordinate points.
 
     Args:
         coord1, coord2 (tuple): Latitude and longitude for each point.
