@@ -46,54 +46,69 @@ def parse_arguments():
     return parser.parse_args()
 
 
-def make_all_plots(plotting, df, dataset, df_known=None, seed=None):
-    results = []
-    results_known = []
-    haversine_errs = []
+def make_all_plots(plotting, df, dataset, df_known=None, seed=None, gray_counties=None):
 
-    gdf = plotting.processor.to_geopandas(df)
+    df = df.copy()
+    df_known = df_known.copy()
 
     print("Generating per-sample contour plots...")
 
-    for i, (group, sample_id, dfk, resd) in enumerate(
-        plotting.processor.calculate_statistics(gdf, seed=seed, known_coords=df_known)
-    ):
+    # Aggregate predictions per sample for both GeoGenIE and Locator
+    gdf = plotting.processor.to_geopandas(df)
 
-        dfk2 = df_known[df_known["sampleID"] == sample_id]
-        gdfk2 = plotting.processor.to_geopandas(dfk2)
-        dfk2 = plotting.processor.to_pandas(gdfk2)
+    for sample_id in gdf["sampleID"].unique():
+        sample = gdf[gdf["sampleID"] == sample_id]
+        sample = sample.reset_index(drop=True)
+        dfk = df_known[df_known["sampleID"] == sample_id]
+        dfk = dfk.reset_index(drop=True)
 
-        dfk2.columns = ["sampleID", "x", "y"]
-
-        results.append(resd)
-
-        df_known_res = dfk2.copy()
-
-        mean_lon = group.dissolve().centroid.x
-        mean_lat = group.dissolve().centroid.y
-
-        haversine_error = plotting.processor.haversine_distance(
-            np.array([[mean_lat, mean_lon]]),
-            np.array([[df_known_res["y"].iloc[0], df_known_res["x"].iloc[0]]]),
+        plotting.plot_sample_with_density(
+            sample[["sampleID", "x", "y"]],
+            sample_id,
+            df_known=dfk[["sampleID", "x", "y"]],
+            dataset=dataset,
+            gray_counties=gray_counties,
         )
 
-        haversine_errs.append(haversine_error)
+    grp = gdf.dissolve(
+        by="sampleID", aggfunc={"x": [np.mean, np.median], "y": [np.mean, np.median]}
+    ).reset_index()
 
-        dfk3 = pd.DataFrame(df_known_res.to_numpy().tolist())
-        results_known.append(dfk3)
+    # Flatten MultiIndex columns
+    grp.columns = [
+        "_".join(col) if isinstance(col, tuple) else col for col in grp.columns
+    ]
+
+    # Merge aggregated predictions with true coordinates
+    grp_merged = pd.merge(grp, df_known, on="sampleID", how="inner")
+
+    grp_merged = grp_merged.rename(columns={"x": "x_true", "y": "y_true"})
+
+    # Compute Haversine errors between matched pairs
+    haversine_errs = plotting.processor.haversine_distance(
+        grp_merged[["x_median", "y_median"]].to_numpy(),
+        grp_merged[["x_true", "y_true"]].to_numpy(),
+    )
+
+    grp = grp_merged.copy()
+    grp["haversine_error"] = haversine_errs
+
+    # Prepare data for plotting
+    gdf = grp[["sampleID", "x_median", "y_median", "haversine_error"]]
+    gdf_known = grp[["sampleID", "x_true", "y_true"]]
+    gdf = gdf.rename(columns={"x_median": "x", "y_median": "y"})
+    gdf_known = gdf_known.rename(columns={"x_true": "x", "y_true": "y"})
 
     dferrs = np.array(np.squeeze(haversine_errs))
-    df_known_res = pd.concat(results_known)
-    dfres = pd.DataFrame(results)
-    df_known_res.columns = ["sampleID", "x", "y"]
+    dfres = plotting.processor.to_pandas(gdf)
+    df_known = plotting.processor.to_pandas(gdf_known)
 
     if df_known is not None and not dfres.empty and not df_known.empty:
-
         print("Generating all plots...")
 
         plotting.plot_geographic_error_distribution(
-            df_known_res[["x", "y"]].to_numpy(),
-            dfres[["x_mean", "y_mean"]].to_numpy(),
+            df_known[["x", "y"]].to_numpy(),
+            dfres[["x", "y"]].to_numpy(),
             dataset,
             buffer=0.1,
             marker_scale_factor=2,
@@ -103,8 +118,8 @@ def make_all_plots(plotting, df, dataset, df_known=None, seed=None):
         )
 
         plotting.polynomial_regression_plot(
-            df_known_res[["x", "y"]].to_numpy(),
-            dfres[["x_mean", "y_mean"]].to_numpy(),
+            df_known[["x", "y"]].to_numpy(),
+            dfres[["x", "y"]].to_numpy(),
             dataset,
             max_ylim=300,
             max_xlim=2.0,
@@ -148,15 +163,17 @@ def read_and_combine_csv_data(directories, suffix="*_test_predictions.csv"):
     Returns:
         pd.DataFrame: Combined DataFrame with all the runtime data.
     """
-    sep = "," if suffix.endswith(".csv") else "\t"
-
     dataset_dfs = []
     for directory in directories:
         all_data = []
         pth = Path(directory)
-        if pth.name in {"test", "val", "unknown"}:
+        if (
+            "test" in pth.name.lower()
+            or "val" in pth.name.lower()
+            or "unknown" in pth.name.lower()
+        ):
             dataset = pth.name
-            print(f"Loading {dataset} dataset.")
+            print(f"Loading {dataset} dataset...")
         else:
             print(
                 "Path does not contain dataset name. Assuming this is the 'test' dataset."
@@ -167,6 +184,12 @@ def read_and_combine_csv_data(directories, suffix="*_test_predictions.csv"):
             raise NotADirectoryError(
                 f"Directory {directory} either not found or it is not a directory."
             )
+
+        if pth.name.endswith("bootFULL_predlocs.txt") or pth.name.endswith(
+            "bootFULL_testlocs.txt"
+        ):
+            print(f"Skipping directory: {pth.name}")
+            continue
 
         for csv_path in Path(directory).glob(suffix):
             temp_df = read_csv_with_dynamic_sep(csv_path)
@@ -180,7 +203,7 @@ def read_and_combine_csv_data(directories, suffix="*_test_predictions.csv"):
                 )
 
             for col in temp_df.columns:
-                if col not in {"sampleID", "x", "y"}:
+                if col not in {"sampleID", "x", "y", "x_mean", "y_mean"}:
                     raise ValueError(
                         f"Invalid columns present in bootstrap prediction files. Supported columns include only: 'sampleID', 'x', 'y', but got: {col}"
                     )
@@ -197,70 +220,137 @@ def read_and_combine_csv_data(directories, suffix="*_test_predictions.csv"):
     return all_datasets_df
 
 
-def preprocess_known(true_df, d, df, plotting):
-    df = df.copy()
-    true_df = true_df.copy()
-    gdf_known = plotting.processor.to_geopandas(true_df)
-    df_known = plotting.processor.to_pandas(gdf_known)
+def setup_output_directories(output_dir):
+    """Sets up output directories for storing plots and shapefiles."""
+    outdir = Path(output_dir)
+    Path(outdir, "plots", "shapefile").mkdir(exist_ok=True, parents=True)
+    return outdir
 
-    uniq_samples = df["sampleID"].unique()
 
-    df_known = df_known[df_known["sampleID"].isin(uniq_samples)]
-    dfk = None if d == "unknown" or df_known.empty else df_known.copy()
-    if dfk is not None:
-        dfk = dfk.dropna(subset=["x", "y"], how="any")
-        dfk = None if dfk.empty else dfk.sort_values(by="sampleID")
-    return dfk
+def process_known_data(coords_file):
+    """Reads and processes the known coordinates file."""
+    df_known = read_csv_with_dynamic_sep(coords_file)
+    df_known = df_known.dropna(axis=0, how="any").sort_values(by="sampleID")
+    return df_known
+
+
+def process_software_data(directory, suffix, dataset_name):
+    """Reads and processes software-specific data."""
+    data_dir = Path(directory)
+    df = read_and_combine_csv_data([data_dir], suffix=suffix)
+
+    if df.empty:
+        raise ValueError(f"No data found in directory: {data_dir}")
+
+    if dataset_name.lower() == "geogenie":
+        dataset_name = "GeoGenIE (Best Model)"
+    elif dataset_name.lower() == "locator":
+        dataset_name = "Locator"
+    else:
+        raise ValueError(f"Unknown dataset name: {dataset_name}")
+
+    df["dataset"] = dataset_name
+    return df.sort_values(by="sampleID")
+
+
+def synchronize_sampleIDs(df_known, dfgg, dfloc):
+    """
+    Synchronize df_known with dfgg and dfloc by retaining only sampleIDs
+    present in both dfgg and dfloc. Includes validation for missing sampleIDs.
+
+    Args:
+        df_known (pd.DataFrame): Known data with unique sampleIDs.
+        dfgg (pd.DataFrame): GeoGenIE bootstrap replicate data.
+        dfloc (pd.DataFrame): Locator bootstrap replicate data.
+
+    Returns:
+        Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]: Synchronized DataFrames.
+    """
+    # Extract unique sampleIDs from dfgg and dfloc
+    gg_sampleIDs = set(dfgg["sampleID"].unique())
+    loc_sampleIDs = set(dfloc["sampleID"].unique())
+
+    # Find common sampleIDs in both dfgg and dfloc
+    common_sampleIDs = gg_sampleIDs & loc_sampleIDs
+
+    # Validate for missing sampleIDs in df_known
+    missing_in_known = common_sampleIDs - set(df_known["sampleID"].unique())
+    if missing_in_known:
+        print(
+            f"Warning: The following sampleIDs are in dfgg/dfloc but missing in df_known: {missing_in_known}"
+        )
+
+    # Filter df_known to retain only common sampleIDs
+    df_known = df_known[df_known["sampleID"].isin(common_sampleIDs)]
+
+    # Filter dfgg and dfloc to retain rows with sampleIDs in df_known
+    dfgg = dfgg[dfgg["sampleID"].isin(df_known["sampleID"])]
+    dfloc = dfloc[dfloc["sampleID"].isin(df_known["sampleID"])]
+
+    # Ensure columns are in the same order
+    dfloc = dfloc[dfgg.columns]
+
+    return df_known, dfgg, dfloc
+
+
+def plot_data(outdir, software, df, df_known, gray_counties):
+    """Handles plotting for each dataset."""
+    dataset_dir = outdir / software / "test"
+    shpdir = dataset_dir / "plots" / "shapefile"
+    Path(shpdir).mkdir(exist_ok=True, parents=True)
+
+    print(f"Saving {software} test set plots to: {dataset_dir}")
+
+    plotting = PlotGenIE(
+        device="cpu",
+        output_dir=dataset_dir,
+        prefix=f"{software}_bootstrap",
+        basemap_fips="05",
+        show_plots=False,
+        basemap_highlights=gray_counties,
+        url="https://www2.census.gov/geo/tiger/GENZ2018/shp/cb_2018_us_county_500k.zip",
+        filetype="pdf",
+        dpi=300,
+        fontsize=24,
+        remove_splines=True,
+    )
+
+    # Ensure correct CRS.
+    gdf = plotting.processor.to_geopandas(df)
+    df = plotting.processor.to_pandas(gdf)
+    gdfk = plotting.processor.to_geopandas(plotting.processor.to_geopandas(df_known))
+    dfk = plotting.processor.to_pandas(gdfk)
+
+    make_all_plots(plotting, df, "test", df_known=dfk, gray_counties=gray_counties)
+    print(f"Done with plotting for dataset: {software}!")
 
 
 def main(args):
+    # Setup directories
+    outdir = setup_output_directories(args.output_dir)
 
-    # Define and create output directory
-    outdir = Path(args.output_dir)
-    Path(outdir, "plots", "shapefile").mkdir(exist_ok=True, parents=True)
-
+    # Define counties for highlighting
     gray_counties = "Benton,Washington,Scott,Crawford,Washington,Sebastian,Yell,Logan,Franklin,Madison,Carroll,Boone,Newton,Johnson,Pope,Van Buren,Searcy,Marion,Baxter,Stone,Independence,Jackson,Randolph,Bradley,Union,Ashley"
 
-    coords_df = read_csv_with_dynamic_sep(args.coords_file)
+    ggdir = Path(args.geogenie_dir) / "bootstrap_predictions" / "test"
 
-    gg_dir = Path(args.geogenie_dir) / "bootstrap_predictions" / "test"
-    dfgg = read_and_combine_csv_data([gg_dir], suffix="*_test_predictions.csv")
+    # Process data
+    df_known = process_known_data(args.coords_file)
+    dfgg = process_software_data(
+        ggdir,
+        "*_test_predictions.csv",
+        "geogenie",
+    )
+    dfloc = process_software_data(args.locator_dir, "*locs.txt", "locator")
 
-    loc_dir = Path(args.locator_dir) / "test"
-    dfloc = read_and_combine_csv_data([loc_dir], suffix="*_test_predlocs.txt")
-    dfgg["dataset"] = "test"
-    dfgg = dfgg.sort_values(by="sampleID")
+    # Synchronize sampleIDs across DataFrames
+    df_known, dfgg, dfloc = synchronize_sampleIDs(df_known, dfgg, dfloc)
 
-    for software, df in zip(["geogenie", "locator"], [dfgg, dfloc]):
-        dataset_dir = outdir / software / "test"
-        shpdir = dataset_dir / "plots" / "shapefile"
-        Path(shpdir).mkdir(exist_ok=True, parents=True)
+    print(df_known.shape, dfgg.shape, dfloc.shape)
 
-        print(f"Saving {software} test set plots to: {dataset_dir}")
-
-        plotting = PlotGenIE(
-            device="cpu",
-            output_dir=dataset_dir,
-            prefix=f"{software}_test",
-            basemap_fips="05",
-            show_plots=False,
-            basemap_highlights=gray_counties,
-            url="https://www2.census.gov/geo/tiger/GENZ2018/shp/cb_2018_us_county_500k.zip",
-            filetype="pdf",
-            dpi=300,
-            fontsize=24,
-            remove_splines=True,
-        )
-
-        # Ensure correct CRS.
-        gdf = plotting.processor.to_geopandas(df)
-        df = plotting.processor.to_pandas(gdf)
-
-        df_known = coords_df.copy()
-        df_known = df_known.dropna(axis=0, how="any")
-
-        make_all_plots(plotting, df, "test", df_known=df_known)
-        print(f"Done with plotting iteration for dataset: test.")
+    # Plot data for each software
+    for software, df in [("ggtest", dfgg), ("locator", dfloc)]:
+        plot_data(outdir, software, df, df_known, gray_counties)
 
 
 if __name__ == "__main__":
