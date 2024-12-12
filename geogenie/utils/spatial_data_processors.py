@@ -14,9 +14,29 @@ warnings.simplefilter(action="ignore", category=FutureWarning)
 
 
 class SpatialDataProcessor:
+    """Spatial data processing class.
+
+    This class provides a set of tools for processing spatial data, including calculating statistics, distances, and clustering.
+
+    Attributes:
+        tmpdir (Path): Temporary directory for shapefiles.
+        output_dir (Path): Output directory for shapefiles.
+        basemap_fips (str): FIPS code for the base map.
+        crs (str): Coordinate reference system.
+        logger (logging.Logger): Logger object.
+    """
+
     def __init__(
         self, output_dir=None, basemap_fips=None, crs="EPSG:4326", logger=None
     ):
+        """Instantiate the SpatialDataProcessor class.
+
+        Args:
+            output_dir (str, optional): Output directory for shapefiles. Defaults to None.
+            basemap_fips (str, optional): FIPS code for the base map. Defaults to None.
+            crs (str, optional): Coordinate reference system. Defaults to "EPSG:4326".
+            logger (logging.Logger, optional): Logger object. Defaults to None.
+        """
         self.tmpdir = None
         if output_dir is None:
             self.tmpdir = Path("./tmp_shapefiles")
@@ -30,7 +50,17 @@ class SpatialDataProcessor:
         self.logger = logger
 
     def extract_basemap_path_url(self, url):
-        """Extract base map from provided URL or file path."""
+        """Extract base map from provided URL or file path.
+
+        Args:
+            url (str): URL or file path to extract base map from.
+
+        Returns:
+            str: Extracted base map path or URL.
+
+        Raises:
+            ValueError: If the base map FIPS code is not provided.
+        """
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
         fn = url.split("/")[-1]
@@ -118,6 +148,17 @@ class SpatialDataProcessor:
         return gdf
 
     def _ensure_is_pandas(self, df):
+        """Ensure the data is a Pandas DataFrame.
+
+        Args:
+            df (pandas.DataFrame): Data to validate.
+
+        Returns:
+            pandas.DataFrame: Validated DataFrame.
+
+        Raises:
+            TypeError: If the data is not a valid format.
+        """
         if isinstance(df, pd.DataFrame):
             if "x" in df.columns and "y" in df.columns:
                 return df.copy()
@@ -135,6 +176,17 @@ class SpatialDataProcessor:
             raise TypeError(msg)
 
     def _ensure_is_numpy(self, X):
+        """Ensure the data is a NumPy array.
+
+        Args:
+            X (np.ndarray): Data to validate.
+
+        Returns:
+            np.ndarray: Validated NumPy array.
+
+        Raises:
+            TypeError: If the data is not a valid format.
+        """
         if isinstance(X, gpd.GeoDataFrame):
             return self.to_numpy(X)
         elif isinstance(X, pd.DataFrame):
@@ -147,6 +199,17 @@ class SpatialDataProcessor:
             raise TypeError(msg)
 
     def _ensure_is_gdf(self, gdf):
+        """Ensure the data is a GeoPandas GeoDataFrame.
+
+        Args:
+            gdf (geopandas.GeoDataFrame): GeoDataFrame to validate.
+
+        Returns:
+            geopandas.GeoDataFrame: Validated GeoDataFrame.
+
+        Raises:
+            TypeError: If the data is not a valid format.
+        """
         if not isinstance(gdf, gpd.GeoDataFrame):
             if isinstance(gdf, np.ndarray) and gdf.shape == 2:
                 return self.to_geopandas(pd.DataFrame(gdf, columns=["x", "y"]))
@@ -163,7 +226,15 @@ class SpatialDataProcessor:
         return gdf
 
     def haversine_distance(self, coords1, coords2):
-        """Calculate haversine distance between two sets of points."""
+        """Calculate haversine distance between two sets of points.
+
+        Args:
+            coords1 (np.ndarray): First set of coordinates.
+            coords2 (np.ndarray): Second set of coordinates.
+
+        Returns:
+            np.ndarray: Haversine distance between coords1 and coords2.
+        """
 
         c1 = self._ensure_is_numpy(coords1)
         c2 = self._ensure_is_numpy(coords2)
@@ -199,10 +270,17 @@ class SpatialDataProcessor:
             mean_lon = group.dissolve().centroid.x
             mean_lat = group.dissolve().centroid.y
 
+            median_lon = group.dissolve(aggfunc={"x": "median"}).centroid.x
+            median_lat = group.dissolve(aggfunc={"y": "median"}).centroid.y
+
             if isinstance(mean_lat, pd.Series):
                 mean_lat = mean_lat.iloc[0]
             if isinstance(mean_lon, pd.Series):
                 mean_lon = mean_lon.iloc[0]
+            if isinstance(median_lat, pd.Series):
+                median_lat = median_lat.iloc[0]
+            if isinstance(median_lon, pd.Series):
+                median_lon = median_lon.iloc[0]
 
             std_dev_x, std_dev_y = group.geometry.x.std(), group.geometry.y.std()
 
@@ -222,6 +300,8 @@ class SpatialDataProcessor:
                 "sampleID": sample_id,
                 "x_mean": mean_lon,
                 "y_mean": mean_lat,
+                "x_median": median_lon,
+                "y_median": median_lat,
                 "std_dev_x": std_dev_x,
                 "std_dev_y": std_dev_y,
                 "ci_95_x": ci_95_x,
