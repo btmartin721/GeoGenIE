@@ -3,8 +3,7 @@ import torch.nn as nn
 
 
 class WeightedDRMSLoss(nn.Module):
-    """
-    Custom loss class to compute the Distance Root Mean Square (DRMS) for
+    """Custom loss class to compute the Distance Root Mean Square (DRMS) for
     longitude and latitude coordinates.
 
     Attributes:
@@ -63,6 +62,8 @@ class WeightedDRMSLoss(nn.Module):
 def weighted_rmse_loss(y_true, y_pred, sample_weight=None):
     """Custom PyTorch weighted RMSE loss function.
 
+    This method computes the weighted RMSE loss between the ground truth and predictions.
+
     Args:
         y_true (torch.Tensor): Ground truth values.
         y_pred (torch.Tensor): Predictions.
@@ -79,12 +80,26 @@ def weighted_rmse_loss(y_true, y_pred, sample_weight=None):
 
 
 class WeightedHuberLoss(nn.Module):
+    """Custom loss class to compute the Weighted Huber Loss.
+
+    Attributes:
+        delta (float): The threshold for the Huber loss. Default is 1.0.
+        smoothing_factor (float): The smoothing factor for the target. Default is 0.1.
+    """
+
     def __init__(self, delta=1.0, smoothing_factor=0.1):
+        """Instantiate the WeightedHuberLoss class.
+
+        Args:
+            delta (float, optional): _description_. Defaults to 1.0.
+            smoothing_factor (float, optional): _description_. Defaults to 0.1.
+        """
         super(WeightedHuberLoss, self).__init__()
         self.delta = delta
         self.smoothing_factor = smoothing_factor
 
     def forward(self, input, target, sample_weight=None):
+        """Forward pass to compute the Weighted Huber Loss."""
         assert (
             input.shape == target.shape
         ), f"Shape mismatch: {input.shape} vs {target.shape}"
