@@ -1,11 +1,9 @@
-import json
+# Standard library imports
 import logging
-import os
-import tempfile
 import warnings
-import zipfile
 from pathlib import Path
 
+# Third-party imports
 import geopandas as gpd
 import matplotlib as mpl
 
@@ -22,16 +20,15 @@ import torch
 from kneed import KneeLocator
 from optuna import exceptions as optuna_exceptions
 from optuna import visualization
+from pykrige.ok import OrdinaryKriging
 from scipy.stats import gamma
 from sklearn.exceptions import ConvergenceWarning
-from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import RBF, WhiteKernel
 from sklearn.linear_model import LinearRegression
-from sklearn.metrics import ConfusionMatrixDisplay
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import PolynomialFeatures
 
-from geogenie.samplers.samplers import GeographicDensitySampler, custom_gpr_optimizer
+# Local application imports
+from geogenie.samplers.samplers import GeographicDensitySampler
 from geogenie.utils.exceptions import TimeoutException
 from geogenie.utils.spatial_data_processors import SpatialDataProcessor
 from geogenie.utils.utils import time_limit
@@ -42,6 +39,21 @@ warnings.filterwarnings(action="ignore", category=optuna_exceptions.Experimental
 
 
 class PlotGenIE:
+    """A class dedicated to generating and managing plots for data visualization.
+
+    This class is designed to generate a variety of plots for visualizing data, including geographical data, model training times, and model performance metrics. It provides methods for creating plots, saving them to disk, and displaying them inline.
+
+    Attributes:
+        device (str): The device used for plotting, typically 'cpu' or 'cuda'.
+        output_dir (str): The directory where plots will be saved.
+        prefix (str): A prefix added to the names of saved plot files.
+        basemap_fips (str): FIPS code for base map.
+        basemap_highlights (list): List of counties to highlight gray on base map.
+        show_plots (bool): Flag to determine if plots should be displayed inline. Defaults to False.
+        fontsize (int): Font size used in plots. Defaults to 18.
+        filetype (str): File type/format
+    """
+
     def __init__(
         self,
         device,
@@ -56,8 +68,9 @@ class PlotGenIE:
         dpi=300,
         remove_splines=False,
     ):
-        """
-        A class dedicated to generating and managing plots for data visualization, particularly in the context of geographical and statistical data analysis. It provides functionalities to customize plot appearance and supports saving plots to specified output directories.
+        """A class dedicated to generating and managing plots for data visualization.
+
+        This class is designed to generate a variety of plots for visualizing data, including geographical data, model training times, and model performance metrics. It provides methods for creating plots, saving them to disk, and displaying them inline.
 
         Args:
             device (str): The device used for plotting, typically 'cpu' or 'cuda'.
@@ -128,8 +141,6 @@ class PlotGenIE:
 
         self.basemap = self.basemap[self.basemap["STATEFP"] == self.basemap_fips]
 
-        keep_spines = False if remove_splines else True
-
         # Adjust matplotlib settings globally.
         sizes = {
             "axes.labelsize": self.fontsize,
@@ -156,7 +167,19 @@ class PlotGenIE:
         mpl.rcParams.update(sizes)
 
     def plot_times(self, rolling_avgs, rolling_stds, filename):
-        """Plot model training times."""
+        """Plot model training times.
+
+        This method generates a plot showing the rolling average of model training times over bootstrap replicates. It also includes the standard deviation of training times to provide insight into the variability of training durations.
+
+        Args:
+            rolling_avgs (list): List of rolling average training times.
+            rolling_stds (list): List of rolling standard deviations of training times.
+            filename (str): Name of the file to save the plot.
+
+        Notes:
+            - This method visualizes the time taken to train models over bootstrap replicates.
+            - It uses a line plot to show the rolling average of training times and includes a shaded region to represent the standard deviation of training times.
+        """
         plt.figure(figsize=(10, 5))
         plt.plot(rolling_avgs, label="Rolling Average (Bootstrap Time)")
         plt.fill_between(
@@ -185,8 +208,9 @@ class PlotGenIE:
         plt.close()
 
     def plot_smote_bins(self, df, bins, df_orig, bins_orig):
-        """
-        Plots scatter plots before and after SMOTE (Synthetic Minority Over-sampling Technique) to visualize the effect of oversampling on the data distribution. The method creates a subplot with two scatter plots: one showing the original data and the other showing the data after SMOTE has been applied.
+        """Plots scatter plots before and after oversampling.
+
+        This method visualizes the effect of oversampling on the data distribution. It creates a subplot with two scatter plots: one showing the original data and the other showing the data after SMOTE has been applied.
 
         Args:
             df (pandas DataFrame): DataFrame containing the data after SMOTE oversampling.
@@ -221,6 +245,16 @@ class PlotGenIE:
         plt.close()
 
     def _remove_spines(self, ax):
+        """Remove spines from a plot.
+
+        This method removes spines from a plot, ensuring that only the top and right spines are included.
+
+        Args:
+            ax (matplotlib.axes.Axes): The matplotlib Axes object where the plot will be drawn.
+
+        Returns:
+            matplotlib.axes.Axes: The Axes object with spines removed.
+        """
         if self.remove_splines:
             try:
                 ax.spines["bottom"].set_visible(False)
@@ -237,8 +271,7 @@ class PlotGenIE:
         return ax
 
     def _plot_smote_scatter(self, df, bins, ax, title, loc):
-        """
-        Creates a scatter plot for visualizing data points with their associated bin labels.
+        """Creates a scatter plot for visualizing data points with their associated bin labels.
 
         This method is used internally by `plot_smote_bins` to generate individual scatter plots.
 
@@ -302,7 +335,9 @@ class PlotGenIE:
         return ax
 
     def plot_history(self, train_loss, val_loss):
-        """Automatically plot training and validation loss with appropriate scaling.
+        """Automatically plot training and validation loss with scaling.
+
+        This method generates a plot showing the training and validation loss over epochs. It automatically scales the y-axis to ensure that the plot is visually appealing.
 
         Args:
             train_loss (list): List of training loss values.
@@ -328,11 +363,16 @@ class PlotGenIE:
     def make_optuna_plots(self, study):
         """Visualize Optuna search using built-in Optuna plotting methods.
 
+        This method generates a series of plots to visualize the results of an Optuna hyperparameter search.
+
         Args:
             study (optuna.study): Optuna study to plot.
+
+        Raises:
+            Exception: If an error occurs during the plot generation process.
         """
         if not visualization.is_available():
-            self.logger.warn(
+            self.logger.warning(
                 "Could not make plots because plotly and kaleido are not installed."
             )
             return
@@ -400,216 +440,14 @@ class PlotGenIE:
             self.logger.error(f"Could not create Optuna plot: {e}")
             raise
 
-    def _read_json_files(self, directory):
-        """
-        Reads all JSON files in the specified directory that match the pattern '*_test_metrics.json'
-        and aggregates their contents into a pandas DataFrame, focusing only on selected metrics.
-        """
-        data = []
-        for f in os.listdir(directory):
-            if f.endswith("_metrics.json"):
-                with open(Path(directory, f), "r") as f:
-                    json_data = json.load(f)
-                    json_data["config"] = str(f).split("/")[-1].split(".")[0]
-                    data.append(json_data)
-        return pd.DataFrame(data)
-
-    def create_metrics_facet_grid(self):
-        """
-        Creates a facet grid of histograms for each selected metric in the DataFrame.
-        """
-
-        metric_dir = Path(self.output_dir, "bootstrap")
-
-        df = self._read_json_files(metric_dir)
-
-        plt.figure(figsize=(32, 48))
-
-        df.drop(
-            [
-                "rho_p",
-                "spearman_pvalue_longitude",
-                "spearman_pvalue_latitude",
-                "spearman_pvalue_longitude",
-                "spearman_pvalue_latitude",
-                "pearson_pvalue_latitude",
-                "pearson_pvalue_longitude",
-            ],
-            axis=1,
-            inplace=True,
-        )
-
-        df = df.loc[
-            :,
-            df.columns.isin(
-                [
-                    "mean_dist",
-                    "median_dist",
-                    "stdev_dist",
-                    "percent_within_20km",
-                    "percent_within_50km",
-                    "percent_within_75km",
-                    "percentile_25",
-                    "percentile_50",
-                    "percentile_75",
-                    "percentiles_75",
-                    "mad_haversine",
-                    "coeffecient_of_variation",
-                    "pearson_corr_longitude",
-                    "pearson_corr_latitude",
-                    "spearman_corr_longitude",
-                    "spearman_corr_latitude",
-                    "skewness",
-                    "config",
-                ]
-            ),
-        ]
-
-        # Melting the DataFrame for FacetGrid compatibility
-        df_melted = df.melt(var_name="Metric", value_name="Value", id_vars=["config"])
-
-        df_melted = self.update_metric_labels(df_melted)
-
-        df_melted.sort_values(by=["Metric", "config"], ascending=False, inplace=True)
-
-        df_melted["config"] = df_melted["config"].str.split("_").str[:-2].str.join("_")
-
-        col_order = [
-            "Mean Error",
-            "Median Error",
-            "Median Absolute Deviation",
-            "StdDev of Error",
-            "25th Percentile of Error",
-            "50th Percentile of Error",
-            "75th Percentile of Error",
-            "Coefficient of Variation",
-            "Skewness",
-            "% Samples within 20 km",
-            "% Samples within 50 km",
-            "% Samples within 75 km",
-            "$R^2$ (Longitude)",
-            "$R^2$ (Latitude)",
-            "Rho (Longitude)",
-            "Rho (Latitude)",
-        ]
-
-        df_melted = df_melted[df_melted["Metric"].isin(col_order)]
-        df_melted["Metric"] = pd.Categorical(
-            df_melted["Metric"], categories=col_order, ordered=True
-        )
-        df_melted.sort_values("Metric", inplace=True)
-
-        df_melted, labels = self.update_config_labels(df_melted)
-
-        col_wrap = 4
-
-        metrics_requiring_reverse_palette = [
-            "$R^2$ (Longitude)",
-            "$R^2$ (Latitude)",
-            "Rho (Longitude)",
-            "Rho (Latitude)",
-            "Skewness",
-            "% Samples within 20 km",
-            "% Samples within 50 km",
-            "% Samples within 75 km",
-        ]
-
-        # Predefined y-axis order
-        y_axis_order = [
-            "Locator",
-            "GeoGenie Base (Unoptimized)",
-            "GeoGenie Base",
-            "GeoGenie + Loss",
-            "GeoGenie + Sampler",
-            "GeoGenie + Loss + Sampler",
-            "GeoGenie Base + Interpolation",
-            "GeoGenie Loss + Interpolation",
-            "GeoGenie Sampler + Interpolation",
-            "GeoGenie Loss + Sampler + Interpolation",
-        ]
-
-        def map_palette(
-            data, metric, ax, y_axis_order, metrics_requiring_reverse_palette
-        ):
-            """
-            Maps the appropriate color palette to the data for a given metric.
-
-            Args:
-                data (pd.DataFrame): The DataFrame containing the data for the current metric.
-                metric (str): The name of the metric.
-                ax (matplotlib.axes.Axes): The Axes object to plot on.
-                y_axis_order (list): The order of categories on the y-axis.
-                metrics_requiring_reverse_palette (list): Metrics that require a reversed color palette.
-            """
-            is_reverse_metric = metric in metrics_requiring_reverse_palette
-
-            min_val, max_val = data["Value"].min(), data["Value"].max()
-            normalized_values = (
-                (data["Value"] - min_val) / (max_val - min_val)
-                if max_val != min_val
-                else np.zeros(len(data["Value"]))
-            )
-
-            # Choose the appropriate palette
-            palette = sns.color_palette(
-                "viridis" if is_reverse_metric else "viridis_r",
-                as_cmap=True,
-            )
-
-            # Map normalized values to colors in the palette
-            unique_configs = data["config"].unique()
-            color_map = {
-                config: palette(norm_val)
-                for config, norm_val in zip(unique_configs, normalized_values)
-            }
-
-            # Create a barplot with the mapped colors
-            sns.barplot(
-                x="Value",
-                y="config",
-                hue="config",
-                data=data,
-                ax=ax,
-                palette=color_map,
-                order=y_axis_order,
-            )
-
-        # Initialize the FacetGrid object
-        g = sns.FacetGrid(
-            data=df_melted,
-            col="Metric",
-            col_wrap=col_wrap,
-            sharex=False,
-            col_order=col_order,
-        )
-
-        # Iterate over each subplot and apply the custom map_palette function
-        for ax, (metric, metric_data) in zip(
-            g.axes.flat, df_melted.groupby("Metric", observed=False)
-        ):
-            map_palette(
-                metric_data, metric, ax, y_axis_order, metrics_requiring_reverse_palette
-            )
-            ax.set_title(metric, fontsize=17)
-            ax.set_ylabel("Configuration", fontsize=17)
-            ax.set_xlabel("Metric Value", fontsize=17)
-            ax.tick_params(axis="both", which="major", labelsize=15)
-
-        plt.subplots_adjust(hspace=0.5, wspace=0.5)
-
-        fn = f"{self.prefix}_summary_stats_selected_metrics.{self.filetype}"
-        outfile = self.outbasepath.with_name(fn)
-
-        if self.show_plots:
-            plt.show()
-
-        # Save the plot
-        plt.savefig(outfile, facecolor="white", bbox_inches="tight", dpi=300)
-        plt.close()
-        self.logger.info(f"Facet grid plot saved to {outfile}")
-
     def plot_bootstrap_aggregates(self, df):
-        """Make KDE and bar plots with bootstrap distributions and CIs."""
+        """Make KDE and bar plots with bootstrap distributions and CIs.
+
+        This method creates two plots: one with kernel density estimates (KDEs) of the bootstrap distributions for each metric, and another with box plots showing the distribution of bootstrap samples for each metric.
+
+        Args:
+            df (pd.DataFrame): The DataFrame containing the bootstrap samples for each metric.
+        """
 
         fig, ax = plt.subplots(2, 1, figsize=(8, 16))
 
@@ -742,8 +580,9 @@ class PlotGenIE:
         plt.close()
 
     def update_metric_labels(self, df):
-        """
-        Update metric labels in the dataframe based on specified mappings.
+        """Update metric labels in the dataframe based on specified mappings.
+
+        This method updates the metric labels in the dataframe based on the mappings provided in the method.
 
         Args:
             df (pd.DataFrame): The dataframe to be updated.
@@ -776,8 +615,9 @@ class PlotGenIE:
         return df
 
     def update_config_labels(self, df):
-        """
-        Update config labels in the dataframe based on the file list patterns.
+        """Update config labels in the dataframe based on the file patterns.
+
+        This method updates the configuration labels in the dataframe based on the file patterns used to generate the data.
 
         Args:
             df (pd.DataFrame): The dataframe to be updated.
@@ -804,14 +644,19 @@ class PlotGenIE:
 
         return df, list(config_map.values())
 
-    def plot_scatter_samples_map(self, y_true_train, y_true, dataset):
-        """
-        Plots geographical scatter plots of training and test/validation sample densities. This method creates a subplot with two scatter plots, one showing the density of training samples and the other for test or validation samples.
+    def plot_scatter_samples_map(
+        self, y_true_train, y_true, dataset, hue1=None, hue2=None
+    ):
+        """Plots geographical scatter plots of training and test/validation sample densities.
+
+        This method creates a subplot with two scatter plots, one showing the density of training samples and the other for test or validation samples.
 
         Args:
             y_true_train (np.array): Array of actual geographical coordinates for the training dataset.
             y_true (np.array): Array of actual geographical coordinates for the test or validation dataset.
             dataset (str): Specifies whether the dataset is 'test' or 'validation'.
+            hue1 (np.array, optional): Array of hue values for the training dataset. Defaults to None.
+            hue2 (np.array, optional): Array of hue values for the test or validation dataset. Defaults to None.
 
         Notes:
             - The method visualizes the geographical distribution of training and test/validation samples.
@@ -824,11 +669,20 @@ class PlotGenIE:
         fig, ax = plt.subplots(1, 2, figsize=(12, 12))
 
         # Plot KDE as contour on the maps
-        for i, title, gdf_y in zip(
+        for i, title, gdf_y, sizes in zip(
             range(2),
             ["Training Sample Density", f"{dataset.capitalize()} Sample Density"],
             [gdf_actual_train, gdf_actual_val_test],
+            [hue1, hue2],
         ):
+            sns.despine(
+                fig=fig,
+                ax=ax[i],
+                top=True,
+                right=True,
+                left=True,
+                bottom=True,
+            )
             # Plot the basemap
             ax[i] = self.basemap.plot(
                 ax=ax[i],
@@ -838,25 +692,45 @@ class PlotGenIE:
                 facecolor="none",
                 label="State/ County Lines",
             )
-            ax[i] = sns.scatterplot(
-                x=gdf_y.geometry.x,
-                y=gdf_y.geometry.y,
-                s=plt.rcParams["lines.markersize"] ** 2 * 4,
-                c="darkorchid",
-                alpha=0.6,
-                ax=ax[i],
-            )
-
-            ax[i] = self._remove_spines(ax[i])
 
             gray_gdf = self._highlight_counties(
                 self.basemap_highlights, self.basemap, ax=ax[i]
             )
 
+            if sizes is None:
+                ax[i] = sns.scatterplot(
+                    x=gdf_y.geometry.x,
+                    y=gdf_y.geometry.y,
+                    s=plt.rcParams["lines.markersize"] ** 2 * 4,
+                    c="darkorchid",
+                    alpha=0.6,
+                    ax=ax[i],
+                )
+            else:
+                ax[i] = sns.scatterplot(
+                    x=gdf_y.geometry.x,
+                    y=gdf_y.geometry.y,
+                    s=plt.rcParams["lines.markersize"] ** 2 * 15,
+                    hue=sizes,
+                    size=sizes,
+                    ax=ax[i],
+                    palette="coolwarm",
+                )
+
+            ax[i] = self._remove_spines(ax[i])
             ax[i].set_title(title)
             ax[i].set_xlabel("Longitude")
             ax[i].set_ylabel("Latitude")
             ax[i].set_aspect("equal", "box")
+            ax[i].legend(
+                title="Sample Weights (Color and Size)",
+                loc="upper center",
+                bbox_to_anchor=(0.5, -0.15),
+                fancybox=True,
+                shadow=True,
+                ncol=2,
+                fontsize=18,
+            )
 
         if self.show_plots:
             plt.show()
@@ -878,8 +752,9 @@ class PlotGenIE:
         n_contour_levels=20,
         centroids=None,
     ):
-        """
-        Plots the geographic distribution of prediction errors and their uncertainties. This function calculates the Haversine error between actual and predicted coordinates and uses Gaussian Process Regression (GPR) to estimate error and uncertainty across a geographical area.
+        """Plots the geographic distribution of prediction errors and uncertainties.
+
+        This function calculates the Haversine error between actual and predicted coordinates and uses Gaussian Process Regression (GPR) to estimate error and uncertainty across a geographical area.
 
         Args:
             actual_coords (np.array): Array of actual geographical coordinates.
@@ -887,7 +762,7 @@ class PlotGenIE:
             url (str): URL for the shapefile to plot geographical data.
             dataset (str): Name of the dataset being used.
             buffer (float, optional): Buffer distance for geographical plotting. Defaults to 0.1.
-            marker_scale_factor (int, optional): Scale factor for marker size in plots. Defaults to 3.
+            marker_scale_factor (int, optional): Scale factor for marker size in plots. Defaults to 2.
             min_colorscale (int, optional): Minimum value for the color scale. Defaults to 0.
             max_colorscale (int, optional): Maximum value for the color scale. Defaults to 300.
             n_contour_levels (int, optional): Number of contour levels in the plot. Defaults to 20.
@@ -910,26 +785,17 @@ class PlotGenIE:
             actual_coords, predicted_coords
         )
 
-        # Introduce a little random noise into the coordinates.
-        sigma = 0.005
-        for i in range(2):
-            actual_coords[:, i] = np.random.normal(actual_coords[:, i], sigma)
-
-        # Run Gaussian Process Regression with RBF kernel
-        gp = self._run_gpr(actual_coords, haversine_errors, n_restarts_optimizer=50)
-
-        # Create a grid over the area of interest
-        grid_x, grid_y = np.meshgrid(
-            np.linspace(xmin - buffer, xmax + buffer, 1000),
-            np.linspace(ymin - buffer, ymax + buffer, 1000),
+        # Perform Kriging
+        grid_x, grid_y, error_predictions, error_std = self._run_kriging(
+            actual_coords, haversine_errors, xmin, ymin, xmax, ymax, buffer
         )
 
-        # Predict error and uncertainty for each point in the grid
-        error_predictions, error_std = gp.predict(
-            np.vstack((grid_x.ravel(), grid_y.ravel())).T, return_std=True
-        )
-        error_predictions = error_predictions.reshape(grid_x.shape)
-        error_std = error_std.reshape(grid_x.shape)
+        if error_predictions.shape != grid_x.shape:
+            error_predictions = error_predictions.reshape(
+                (grid_x.shape[0], grid_y.shape[0])
+            )
+        if error_std.shape != grid_x.shape:
+            error_std = error_std.reshape((grid_x.shape[0], grid_y.shape[0]))
 
         fig, axs = plt.subplots(1, 2, figsize=(16, 12))
 
@@ -1020,28 +886,6 @@ class PlotGenIE:
             uncert_contour,
         )
 
-        # TODO: Figure out how to make these quiver arrows look better.
-        # Error Vector Visualization (Quiver plot)
-        # Calculate error vectors
-        # error_vectors = predicted_coords - actual_coords
-
-        # # Calculate the lengths and angles of the error vectors
-        # lengths = np.linalg.norm(error_vectors, axis=1)
-        # angles = np.arctan2(error_vectors[:, 1], error_vectors[:, 0])
-
-        # ax.quiver(
-        #     gdf_actual.x.to_numpy(),
-        #     gdf_actual.y.to_numpy(),
-        #     error_vectors[:, 0],
-        #     error_vectors[:, 1],
-        #     angles,
-        #     angles="xy",
-        #     scale_units="xy",
-        #     scale=1,
-        #     color="red",
-        #     label="Prediction Error",
-        # )
-
         for i, a in enumerate([ax, ax2]):
             # Plot the basemap
             a = self.basemap.plot(
@@ -1098,38 +942,55 @@ class PlotGenIE:
         fig.savefig(outfile, facecolor="white", bbox_inches="tight")
         plt.close()
 
-    def _run_gpr(self, actual_coords, haversine_errors, n_restarts_optimizer=50):
-        """
-        Runs Gaussian Process Regression (GPR) on actual coordinates against Haversine errors to model the spatial distribution of prediction errors.
+    def _run_kriging(
+        self, actual_coords, haversine_errors, xmin, ymin, xmax, ymax, buffer
+    ):
+        """Performs Ordinary Kriging on prediction errors to estimate error and uncertainty across a geographical area.
+
+        This method uses Ordinary Kriging to interpolate prediction errors across a geographical area. It generates a grid of coordinates for interpolation and returns the interpolated error predictions and uncertainties.
 
         Args:
             actual_coords (np.array): Array of actual geographical coordinates.
-            haversine_errors (np.array): Array of Haversine errors between actual and predicted coordinates.
-            n_restarts_optimizer (int, optional): Number of restarts for the optimizer in GPR. Defaults to 25.
+            haversine_errors (np.array): Array of prediction errors.
+            xmin (float): Minimum longitude value.
+            ymin (float): Minimum latitude value.
+            xmax (float): Maximum longitude value.
+            ymax (float): Maximum latitude value.
+            buffer (float): Buffer distance for geographical plotting.
 
         Returns:
-            GaussianProcessRegressor: The fitted Gaussian Process Regressor model.
+            np.array: Array of grid x-coordinates.
+            np.array: Array of grid y-coordinates.
+            np.array: Array of error predictions.
+            np.array: Array of error standard deviations.
 
         Notes:
-            - The method defines and fits a GPR model with a specific kernel to capture the spatial variability of errors.
+            - This method uses Ordinary Kriging to interpolate prediction errors across a geographical area.
+            - It generates a grid of coordinates for interpolation and returns the interpolated error predictions and uncertainties.
         """
-        # Define the kernel with parameter ranges
-        # Fit Gaussian Process Regressor with a larger initial length scale and
-        # no upper bound
-        kernel = 1 * RBF(
-            length_scale=1.0, length_scale_bounds=(1e-2, 1e6)
-        ) + WhiteKernel(noise_level=0.5, noise_level_bounds=(1e-10, 1e6))
-        gp = GaussianProcessRegressor(
-            kernel=kernel,
-            optimizer=custom_gpr_optimizer,
-            n_restarts_optimizer=n_restarts_optimizer,
+        lon, lat = actual_coords[:, 0], actual_coords[:, 1]
+
+        # Create a grid for interpolation
+        grid_x = np.linspace(xmin - buffer, xmax + buffer, 100)
+        grid_y = np.linspace(ymin - buffer, ymax + buffer, 100)
+
+        # Perform Ordinary Kriging
+        OK = OrdinaryKriging(
+            lon,
+            lat,
+            haversine_errors,
+            variogram_model="gaussian",
+            verbose=False,
+            enable_plotting=False,
+            coordinates_type="geographic",
+            pseudo_inv=True,
         )
-        gp.fit(actual_coords, haversine_errors)
-        return gp
+        z, ss = OK.execute("grid", grid_x, grid_y)
+
+        return grid_x, grid_y, z, ss
 
     def _set_cbar_fontsize(self, cbar):
-        """
-        Sets the font size for the colorbar labels.
+        """Sets the font size for the colorbar labels.
 
         Args:
             cbar (matplotlib.colorbar.Colorbar): The colorbar object whose font size is to be set.
@@ -1155,8 +1016,7 @@ class PlotGenIE:
         alpha=0.5,
         color="blue",
     ):
-        """
-        Plots a scatter map of coordinates, with the size of each point representing a certain attribute (e.g., sample weight).
+        """Plots a scatter map of coordinates, with the size of each point representing a certain attribute (e.g., sample weight).
 
         Args:
             dataset (str): Name of the dataset being used.
@@ -1187,8 +1047,9 @@ class PlotGenIE:
     def _make_colorbar(
         self, min_colorscale, max_colorscale, n_contour_levels, ax, contour
     ):
-        """
-        Creates and configures a colorbar for contour plots.
+        """Creates and configures a colorbar for contour plots.
+
+        This method generates a colorbar for contour plots with specified min and max values, and a defined number of levels.
 
         Args:
             min_colorscale (int): Minimum value for the color scale.
@@ -1226,8 +1087,9 @@ class PlotGenIE:
         return cbar
 
     def plot_cumulative_error_distribution(self, data, fn, percentiles, median, mean):
-        """
-        Generate an ECDF plot for the given data.
+        """Generate an ECDF plot for the given data.
+
+        This method generates an Empirical Cumulative Distribution Function (ECDF) plot for the given data, with gradient fill based on the data values.
 
         Args:
             data (array-like): The dataset for which the ECDF is to be plotted. Should be a 1-D array of prediction errors.
@@ -1318,7 +1180,10 @@ class PlotGenIE:
             cmap (matplotlib.colors.cmap): Matplotlib colormap to use.
             norm (matplotlob.colors.Normalize): Normalizer for color gradient.
             ax (matplotlib.pyplot.Axes or None): Matplotlib axis to use. If ydata is None, then ax must be provided. Defaults to None.
-            ydata (np.ndarray): Y-axis values to plot. If None, then gets the y-axis values from the provided `ax` object. Defaults to None.)
+            ydata (np.ndarray): Y-axis values to plot. If None, then gets the y-axis values from the provided `ax` object. Defaults to None.
+
+        Raises:
+            TypeError: If ydata is None and ax is not provided.
         """
         if ydata is None and ax is None:
             self.logger.error("ax must be defined if ydata is None.")
@@ -1341,6 +1206,8 @@ class PlotGenIE:
 
     def plot_zscores(self, z, fn):
         """Plot Z-score histogram for prediction errors.
+
+        This method plots a histogram of Z-scores for prediction errors, with a gradient fill based on the Z-score values.
 
         Args:
             z (np.ndarray): Array of Z-scores.
@@ -1398,15 +1265,11 @@ class PlotGenIE:
         plt.savefig(outfile, facecolor="white", bbox_inches="tight")
 
     def plot_error_distribution(self, errors, outfile):
-        """
-        Plot the distribution of errors using a histogram, box plot, and Q-Q plot.
+        """Plot the distribution of errors using a histogram, box plot, and Q-Q plot.
 
         Args:
             errors (np.array): An array of prediction errors.
             outfile (str): Output file path.
-
-        Returns:
-            None: Plots the error distribution.
         """
         plt.figure(figsize=(18, 6))
 
@@ -1483,8 +1346,7 @@ class PlotGenIE:
         max_xlim=None,
         n_xticks=5,
     ):
-        """
-        Creates a polynomial regression plot with the specified degree.
+        """Creates a polynomial regression plot with the specified degree.
 
         Args:
             actual_coords (np.array): Array of actual geographical coordinates.
@@ -1492,9 +1354,9 @@ class PlotGenIE:
             dataset (str): Specifies the dataset being used, should be either 'test' or 'validation'.
             degree (int): Polynomial degree to fit. Defaults to 3.
             dtype (torch.dtype): PyTorch data type to use. Defaults to torch.float32.
-            max_ylim (int): Maximum y-axis (prediction error) value to plot. Defaults to None (don't adjust y-axis limits).
-            max_xlim (float): Maximum X-axis (sample density) value to plot. Defaults to None (don't adjust x-axis limits).
-            n_xticks (int): Number of major X-axis ticks to use. Only applied if max_xlim is not None. Defaults to 4.
+            max_ylim (int): Maximum y-axis (prediction error) value to plot. Defaults to None (don't adjust y-axis limits). Defaults to None.
+            max_xlim (float): Maximum X-axis (sample density) value to plot. Defaults to None (don't adjust x-axis limits). Defaults to None.
+            n_xticks (int): Number of major X-axis ticks to use. Only applied if max_xlim is not None. Defaults to 5.
 
         Raises:
             ValueError: If the dataset parameter is not 'test' or does not start with 'val'.
@@ -1686,8 +1548,7 @@ class PlotGenIE:
         plt.close()
 
     def plot_mca_curve(self, explained_inertia, optimal_n):
-        """
-        Plots the cumulative explained inertia as a function of the number of components in Multiple Correspondence Analysis (MCA).
+        """Plots the cumulative explained inertia as a function of the number of components in Multiple Correspondence Analysis (MCA).
 
         This plot is useful for determining the optimal number of components to retain in MCA.
 
@@ -1722,8 +1583,7 @@ class PlotGenIE:
         plt.close()
 
     def plot_nmf_error(self, errors, opt_n_components):
-        """
-        Plots the reconstruction error as a function of the number of components in Non-negative Matrix Factorization (NMF).
+        """Plots the reconstruction error as a function of the number of components in Non-negative Matrix Factorization (NMF).
 
         This plot can be used to select the optimal number of components for NMF by identifying the point where additional components do not significantly decrease the error.
 
@@ -1755,8 +1615,7 @@ class PlotGenIE:
         plt.close()
 
     def plot_pca_curve(self, x, vr, knee):
-        """
-        Plots the cumulative explained variance as a function of the number of principal components in Principal Component Analysis (PCA).
+        """Plots the cumulative explained variance as a function of the number of principal components in Principal Component Analysis (PCA).
 
         This plot is helpful for determining the number of components to retain in PCA.
 
@@ -1790,207 +1649,10 @@ class PlotGenIE:
         plt.savefig(outfile, facecolor="white", bbox_inches="tight")
         plt.close()
 
-    def plot_dbscan_clusters(self, Xy, dataset, labels):
-        """
-        Plots the clusters formed by DBSCAN algorithm on geographical data. Each cluster is visualized with a different color, and outliers are marked distinctly.
-
-        Args:
-            Xy (np.array): Array containing the data with pre-transformed 'x' and 'y' coordinates.
-            dataset (str): Name of the dataset being used.
-            labels (np.array): Cluster labels assigned by DBSCAN to each data point.
-
-        Notes:
-            - The function converts the data to a GeoDataFrame for geographical plotting.
-            - Different clusters are visualized in different colors, with outliers typically in red.
-        """
-        # Convert to GeoDataFrame for plotting
-        gdf = self.processor.to_geopandas(Xy)
-        gdf["cluster"] = labels
-
-        # Plotting
-        fig, ax = plt.subplots(figsize=(10, 8))
-
-        # Plot the basemap
-        ax = self.basemap.plot(
-            ax=ax,
-            color="none",
-            edgecolor="k",
-            linewidth=3,
-            facecolor="none",
-            label="State/ County Lines",
-        )
-
-        # Plot each cluster with different color
-        unique_labels = set(labels)
-        for label in unique_labels:
-            cluster_gdf = gdf[gdf["cluster"] == label]
-            color = (
-                "red"
-                if label == -1
-                else np.random.rand(
-                    3,
-                )
-            )  # Outliers in red
-            cluster_gdf.plot(ax=ax, color=color)
-
-        if self.show_plots:
-            plt.show()
-
-        fn = (f"{self.prefix}_outlier_clustering_{dataset}.{self.filetype}",)
-        outfile = self.outbasepath.with_name(fn)
-        fig.savefig(outfile, facecolor="white", bbox_inches="tight")
-        plt.close()
-
-    def plot_geographical_heatmap(self, data, weights, title="Sampling Weight Heatmap"):
-        """
-        Plots a geographical heatmap representing the sampling weights of data points. The heatmap provides a visual representation of the density or weight of data points in geographical space.
-
-        Args:
-            data (pandas DataFrame): DataFrame containing 'longitude' and 'latitude' columns for geographical data points.
-            weights (np.ndarray): Array of weights corresponding to each data point in the DataFrame.
-            title (str, optional): Title for the heatmap plot. Defaults to "Sampling Weight Heatmap".
-
-        Notes:
-            - The function creates a GeoDataFrame from the provided data and weights for plotting.
-            - The heatmap uses color intensity to represent the density or weight of data points in different geographical locations.
-        """
-
-        gdf = self.processor.to_geopandas(data)
-        gdf["weights"] = weights
-
-        # Create the plot
-        fig, ax = plt.subplots(1, 1, figsize=(10, 6))
-
-        # Plot the basemap
-        ax = self.basemap.plot(
-            ax=ax,
-            color="none",
-            edgecolor="k",
-            linewidth=3,
-            facecolor="none",
-            label="State/ County Lines",
-        )
-
-        gdf.plot(
-            column="weights",
-            ax=ax,
-            legend=True,
-            cmap="viridis",
-            markersize=20,
-        )
-
-        gray_gdf = self._highlight_counties(
-            self.basemap_highlights, self.basemap, ax=ax
-        )
-
-        ax = self._remove_spines(ax)
-
-        ax.set_title(title)
-        ax.set_xlabel("Longitude")
-        ax.set_ylabel("Latitude")
-
-        if self.show_plots:
-            plt.show()
-
-        fn = f"{self.prefix}_train_sample_density_heatmap.{self.filetype}"
-        outfile = self.outbasepath.with_name(fn)
-        fig.savefig(outfile, facecolor="white", bbox_inches="tight")
-        plt.close()
-
-    def plot_weight_distribution(self, weights, title="Weight Distribution"):
-        """
-        Plots the distribution of sampling weights as a histogram. This visualization helps in understanding the distribution and range of weights assigned to the samples.
-
-        Args:
-            weights (np.ndarray): Array of weights.
-            title (str, optional): Title for the histogram plot. Defaults to "Weight Distribution".
-
-        Notes:
-            - The histogram displays the frequency of different weight values among the samples.
-        """
-        plt.figure(figsize=(8, 5))
-        plt.hist(weights, bins=30, alpha=0.7)
-        plt.title(title)
-        plt.xlabel("Weight")
-        plt.ylabel("Frequency")
-
-        if self.show_plots:
-            plt.show()
-
-        fn = f"{self.prefix}_sample_weight_distribution.{self.filetype}"
-        outfile = self.outbasepath.with_name(fn)
-        plt.savefig(outfile, facecolor="white", bbox_inches="tight")
-        plt.close()
-
-    def plot_weighted_scatter(
-        self, data, weights, marker_scale_factor=3, title="Geographic Scatter Plot"
-    ):
-        """
-        Plots a geographic scatter plot where each data point is sized according to its weight. This plot visually represents the relative importance or weight of each data point in a geographical context.
-
-        Args:
-            data (pandas DataFrame): DataFrame containing 'longitude' and 'latitude' columns.
-            weights (np.ndarray): Array of weights corresponding to each data point.
-            url (str): URL for the shapefile to plot geographical data.
-            buffer (float, optional): Buffer distance for geographical plotting. Defaults to 0.1.
-            marker_scale_factor (int, optional): Factor to scale the size of markers in the scatter plot. Defaults to 3.
-            title (str, optional): Title for the scatter plot. Defaults to "Geographic Scatter Plot".
-
-        Notes:
-            - The size of each marker in the scatter plot is proportional to the corresponding weight of the data point.
-        """
-
-        # Ensure correct CRS.
-        gdf = self.processor.to_geopandas(data)
-
-        fig, ax = plt.subplots(1, 1, figsize=(10, 6))
-
-        # Plot the basemap
-        ax = self.basemap.plot(
-            ax=ax,
-            color="none",
-            edgecolor="k",
-            linewidth=3,
-            facecolor="none",
-            label="State/ County Lines",
-        )
-
-        ax = sns.scatterplot(
-            x=gdf.geometry.x,
-            y=gdf.geometry.y,
-            size=weights,
-            sizes=(
-                plt.rcParams["lines.markersize"] ** marker_scale_factor * 4,
-                plt.rcParams["lines.markersize"] ** marker_scale_factor * 16,
-            ),
-            alpha=0.5,
-            c="darkorchid",
-            ax=ax,
-        )
-
-        ax = self._remove_spines(ax)
-
-        gray_gdf = self._highlight_counties(
-            self.basemap_highlights, self.basemap, ax=ax
-        )
-
-        ax.set_title(title)
-        ax.set_xlabel("Longitude")
-        ax.set_ylabel("Latitude")
-        ax.legend(loc="upper left", bbox_to_anchor=(1.04, 1.0))
-
-        if self.show_plots:
-            plt.show()
-
-        fn = f"{self.prefix}_sample_weight_scatterplot.{self.filetype}"
-        outfile = self.outbasepath.with_name(fn)
-        fig.savefig(outfile, facecolor="white", bbox_inches="tight")
-        plt.close()
-
     def plot_outliers(self, mask, y_true):
-        """
-        Plots a scatter plot to visualize the identified outliers in the dataset. Outliers are marked distinctly to
-        differentiate them from the regular data points.
+        """Plots a scatter plot to visualize identified outliers.
+
+        This method plots the geographical coordinates of the data points, highlighting the outliers in a different color and size.
 
         Args:
             mask (np.array): A boolean array where 'True' indicates an outlier.
@@ -2063,111 +1725,10 @@ class PlotGenIE:
         fig.savefig(outfile, facecolor="white", bbox_inches="tight")
         plt.close()
 
-    def plot_outliers_with_traces(
-        self,
-        genetic_data,
-        geographic_data,
-        genetic_outliers,
-        geographic_outliers,
-        correct_centroids_gen,
-        correct_centroids_geo,
-    ):
-        """
-        Plots geographic data with traces to centroids for outliers only if they are in the wrong cluster.
-
-        Args:
-            geographic_data (numpy.ndarray): The geographic data of the samples.
-            genetic_outliers (set): Indices of genetic outliers.
-            geographic_outliers (set): Indices of geographic outliers.
-            cluster_centroids_gen (dict): Genetic cluster centroids.
-            cluster_centroids_geo (dict): Geographic cluster centroids.
-            current_cluster_assignments (numpy.ndarray): Current cluster assignments for each sample.
-        """
-        fig, axs = plt.subplots(1, 2, figsize=(10, 10))
-
-        for ax, data_type in zip(axs, ["geographic", "genetic"]):
-            data = genetic_data if data_type == "genetic" else geographic_data
-            if data_type == "geographic":
-                # Plot the basemap
-                ax = self.basemap.plot(
-                    ax=ax,
-                    color="none",
-                    edgecolor="k",
-                    linewidth=3,
-                    facecolor="none",
-                    label="State/ County Lines",
-                )
-            # Ensure correct CRS.
-            gdf = self.processor.to_geopandas(data)
-            data = self.processor.to_numpy(gdf)
-
-            # Plot all samples
-            ax.scatter(data[:, 0], data[:, 1], alpha=0.5)
-
-            # Function to draw a line from sample to the correct cluster
-            # centroid
-            def draw_line_to_correct_centroid(idx, centroid, color):
-                ax.plot(
-                    [data[idx][0], centroid[0]],
-                    [data[idx][1], centroid[1]],
-                    color=color,
-                    alpha=0.5,
-                )
-
-            # Draw lines for misclustered samples
-            for idx in geographic_outliers:
-                if idx in correct_centroids_geo:
-                    draw_line_to_correct_centroid(
-                        idx,
-                        correct_centroids_geo[idx],
-                        "red",
-                    )
-
-            for idx in genetic_outliers:
-                if idx in correct_centroids_gen:
-                    draw_line_to_correct_centroid(
-                        idx,
-                        correct_centroids_gen[idx],
-                        "blue",
-                    )
-
-            if data_type == "geographic":
-                xlab = "Longitude"
-                ylab = "Latutude"
-            else:
-                xlab = "Principal Component 1"
-                ylab = "Principal Component 2"
-            ax.set_xlabel(xlab)
-            ax.set_ylabel(ylab)
-
-        if self.show_plots:
-            plt.show()
-
-        fn = f"{self.prefix}_outliers.png"
-        outfile = self.outbasepath.with_name(fn)
-        fig.savefig(outfile, facecolor="white", bbox_inches="tight")
-        plt.close()
-
-    def plot_confusion_matrix(self, y_true, y_pred, dtype):
-        fig, ax = plt.subplots(1, 1, figsize=(10, 10))
-
-        ConfusionMatrixDisplay.from_predictions(
-            y_true=y_true,
-            y_pred=y_pred,
-            ax=ax,
-        )
-
-        if self.show_plots:
-            plt.show()
-
-        fn = f"{self.prefix}_outlier_{dtype}_confusion_matrix.{self.filetype}"
-        outfile = self.outbasepath.with_name(fn)
-        fig.savefig(outfile, facecolor="white")
-        plt.close()
-
     def plot_gamma_distribution(self, shape, scale, Dg, sig_level, filename, plot_main):
-        """
-        Plot the gamma distribution.
+        """Plot the gamma distribution.
+
+        This method plots the gamma distribution with the given shape and scale parameters and highlights the critical value for the given significance level.
 
         Args:
             shape (float): Shape parameter of the gamma distribution.
@@ -2207,42 +1768,23 @@ class PlotGenIE:
         plt.savefig(outfile, facecolor="white", bbox_inches="tight")
         plt.close()
 
-    def _calculate_centroid(self, gdf):
-        """
-        Calculate the centroid of a set of geographic points.
-
-        Args:
-            gdf (gpd.GeoDataFrame): GeoDataFrame containing point geometries.
-
-        Returns:
-            gpd.GeoSeries: Centroids.
-        """
-        return gdf.geometry.unary_union.centroid
-
-    def _extract_shapefile(self, zip_path):
-        """
-        Extract a zipped shapefile.
-
-        Args:
-            zip_path (str): Path to the zipped shapefile.
-
-        Returns:
-            str: Path to the extracted shapefile directory, which will be a temporary directory, or if the directory was already unzipped then just returns the original file path.
-        """
-        if zip_path.endswith(".zip"):
-            # Create a temporary directory
-            temp_dir = tempfile.mkdtemp()
-
-            # Extract the zip file
-            with zipfile.ZipFile(zip_path, "r") as zip_ref:
-                zip_ref.extractall(temp_dir)
-
-            return temp_dir
-        return zip_path
-
     def plot_sample_with_density(
         self, df, sample_id, df_known=None, dataset=None, gray_counties=None
     ):
+        """Method to plot a sample with density contours.
+
+        This method calculates the density contours using KDE and plots them on a map.
+
+        Args:
+            df (pd.DataFrame): DataFrame containing the sample data.
+            sample_id (str): Sample ID.
+            df_known (pd.DataFrame, optional): DataFrame containing known data. Defaults to None.
+            dataset (str, optional): Name of the dataset. Defaults to None.
+            gray_counties (list, optional): List of counties to highlight in gray. Defaults to
+
+        Raises:
+            TypeError: If the dataset argument is NoneType.
+        """
         if dataset is None:
             msg = "dataset argument cannot be NoneType."
             self.logger.error(msg)
@@ -2390,6 +1932,19 @@ class PlotGenIE:
         plt.close()
 
     def _highlight_counties(self, gray_counties, gdf, ax=None):
+        """Highlight specific counties in the basemap.
+
+        Args:
+            gray_counties (list): List of counties to highlight.
+            gdf (geopandas.GeoDataFrame): GeoDataFrame of the basemap.
+            ax (matplotlib.pyplot.Axes): Matplotlib axis to use. Defaults to None.
+
+        Returns:
+            geopandas.GeoDataFrame: GeoDataFrame of the highlighted counties.
+
+        Notes:
+            - This method highlights specific counties in the basemap by coloring them gray.
+        """
         if gray_counties is not None:
 
             if isinstance(gray_counties, str):
@@ -2406,12 +1961,13 @@ class PlotGenIE:
         return gdf
 
     def visualize_oversample_clusters(self, arr, cluster_labels, sample_origin_list):
-        """
-        Visualize the genotypes and their clusters in a 2D scatter plot.
+        """Visualize the genotypes and their clusters in a 2D scatter plot.
+
+        This method plots the genotypes and their clusters in a 2D scatter plot, coloring the points by cluster and shape by sample origin.
 
         Args:
             arr (np.ndarray): Array to use for clustering.
-            cluster_labels (np.ndarray: Cluster labels to use.
+            cluster_labels (np.ndarray): Cluster labels to use.
             sample_origin_list: (list): List of sample origins (synthetic versus original).
         """
         fig, ax = plt.subplots(1, 1, figsize=(10, 8))
@@ -2481,6 +2037,22 @@ class PlotGenIE:
         plt.close()
 
     def plot_data_distributions(self, train, val, test, is_target=False):
+        """Plot the distributions of the train, validation, and test datasets.
+
+        Args:
+            train (np.ndarray): Training dataset.
+            val (np.ndarray): Validation dataset.
+            test (np.ndarray): Test dataset.
+            is_target (bool, optional): Whether the data is a target. Defaults to False.
+
+        Raises:
+            ValueError: If the data is not a target and the shape of the arrays is not the same.
+
+        Notes:
+            - This method plots the distributions of the train, validation, and test datasets.
+            - If the data is a target, the method plots the distributions of the longitude and latitude values.
+            - If the data is not a target, the method plots the distributions of the genotypes.
+        """
 
         if is_target:
             fig, axs = plt.subplots(1, 2, figsize=(15, 5))
@@ -2572,24 +2144,30 @@ class PlotGenIE:
 
     @property
     def pfx(self):
+        """Get the prefix for the output files."""
         return self.prefix
 
     @pfx.setter
     def pfx(self, value):
+        """Set the prefix for the output files."""
         self.prefix = value
 
     @property
     def outdir(self):
+        """Get the output directory for the files."""
         return self.prefix
 
     @outdir.setter
     def outdir(self, value):
+        """Set the output directory for the files."""
         self.output_dir = value
 
     @property
     def obp(self):
+        """Get the output base path for the files."""
         return self.outbasepath
 
     @obp.setter
     def obp(self, value):
+        """Set the output base path for the files."""
         self.outbasepath = value
