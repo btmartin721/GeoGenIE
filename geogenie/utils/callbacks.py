@@ -6,7 +6,24 @@ import torch
 
 
 class EarlyStopping:
-    """Early stopping PyTorch callback."""
+    """Early stopping PyTorch callback.
+
+    This class defines an early stopping callback for PyTorch models.
+
+    Attributes:
+        patience (int): Number of epochs to wait for improvement before stopping.
+        verbose (int): Verbosity mode.
+        delta (float): Minimum change to qualify as an improvement.
+        output_dir (str): Directory to save the outputs.
+        prefix (str): Prefix for the saved files.
+        counter (int): Counter for the number of epochs since last improvement.
+        early_stop (bool): Flag to indicate if early stopping is triggered.
+        best_score (float): Best score for the monitored quantity.
+        val_loss_min (float): Minimum validation loss.
+        boot (int): Boot object or identifier.
+        trial (int): Trial number for hyperparameter optimization.
+        logger (logging.Logger): Logger object for the class.
+    """
 
     def __init__(
         self,
@@ -18,8 +35,7 @@ class EarlyStopping:
         trial=None,
         boot=None,
     ):
-        """
-        Initialize the EarlyStopping callback.
+        """Initialize the EarlyStopping callback.
 
         Args:
             output_dir (str): Directory to save checkpoints.
@@ -55,8 +71,7 @@ class EarlyStopping:
             raise ValueError(msg)
 
     def __call__(self, val_loss, model):
-        """
-        Call method to check if early stopping condition is met.
+        """Call method to check if early stopping condition is met.
 
         Args:
             val_loss (float): Current validation loss.
@@ -82,8 +97,7 @@ class EarlyStopping:
             self.counter = 0
 
     def save_checkpoint(self, val_loss, model):
-        """
-        Save the model when validation loss decreases.
+        """Save the model when validation loss decreases.
 
         Args:
             val_loss (float): Current validation loss.
@@ -110,8 +124,7 @@ class EarlyStopping:
         self.val_loss_min = val_loss
 
     def load_best_model(self, model):
-        """
-        Load the best model from the checkpoint file.
+        """Load the best model from the checkpoint file.
 
         Args:
             model (torch.nn.Module): The model to load the checkpoint into.
@@ -141,8 +154,7 @@ class EarlyStopping:
 
 
 def callback_init(optimizer, args, trial=None, boot=None):
-    """
-    Initialize early stopping and learning rate scheduler callbacks.
+    """Initialize early stopping and learning rate scheduler callbacks.
 
         EarlyStopping Arguments:
         output_dir (str): Directory to save the outputs.
