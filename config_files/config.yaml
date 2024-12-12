@@ -1,5 +1,3 @@
-# config.yaml
-
 # ==============================================================
 # GeoGenIE Configuration File
 # ==============================================================
@@ -12,225 +10,108 @@
 # Data Input and Preprocessing
 # ==============================================================
 
-# Path to the VCF file with SNPs. Can be compressed with bgzip or uncompressed.
-vcf: "data/sorted_merged_gtseq_radseq.vcf.gz"  # Important. Format: filename.vcf or filename.vcf.gz
-
-# Path to the coordinates file.
-sample_data: "data/wtd_fy23_samples_known_sorted.txt"  # Important. Tab-delimited file with 'sampleID', 'x', 'y'.
-
-# Path to the known coordinates file.
-known_sample_data: "data/wtd_fy23_samples_known_sorted.txt"  # Same as sample_data. For now, it is a bit redundant, and will be folded into sample_data in a future version. Default: None.
-
-# Proportion of samples to set to 'unknown' for the prediction dataset. This is useful for testing the model's ability to predict unknown samples.
-prop_unknowns: 0.1  # Default: 0.1.
-
-# Minimum minor allele count (MAC) to retain SNPs.
-min_mac: 2  # Important. Default: 2.
-
-# Maximum number of SNPs to randomly subset.
-max_SNPs: null  # Default: null (use all SNPs).
+vcf: "filename.vcf.gz"  # Important. Path to the VCF file with SNPs.
+sample_data: "data/coords.csv"  # Important. Path to the coordinates file.
+known_sample_data: "data/coords.csv"  # Same as sample_data; used in plots.
+prop_unknowns: 0.1  # Proportion of samples set to "unknown".
+min_mac: 2  # Important. Minimum minor allele count (MAC).
+max_SNPs: null  # Maximum number of SNPs to subset. Null = use all SNPs.
 
 # ==============================================================
 # Model Configuration
 # ==============================================================
 
-# Number of hidden layers in the neural network.
-nlayers: 10  # Important. Default: 10.
-
-# Number of neurons per layer.
-width: 256  # Important. Default: 256.
-
-# Dropout rate to prevent overfitting.
-dropout_prop: 0.25  # Default: 0.25.
-
-# Model loss criterion. Supported options: 'rmse', 'huber', 'drms'.
-criterion: "rmse"  # Default: 'rmse'.
-
-# Specify filename to load best parameters from previous Optuna search.
-load_best_params: null  # Default: null (do not load best parameters).
-
-# PyTorch data type to use. Supported options: 'float32', 'float64'. If using a GPU, only 'float32' is supported by PyTorch.
-dtype: "float32"  # Default: 'float32'.
+nlayers: 10  # Important. Number of hidden layers in the network.
+width: 256  # Important. Number of neurons per layer.
+dropout_prop: 0.25  # Dropout rate to prevent overfitting.
+criterion: "rmse"  # Loss criterion. Options: rmse, huber, drms.
+dtype: "float32"  # PyTorch data type. Options: float32, float64.
 
 # ==============================================================
 # Training Parameters
 # ==============================================================
 
-# Training batch size.
-batch_size: 32  # Important. Default: 32.
-
-# Max training epochs.
-max_epochs: 5000  # Important. Default: 5000.
-
-# Learning rate for optimizer.
-learning_rate: 0.001  # Important. Default: 0.001.
-
-# L2 regularization weight to reduce overfitting.
-l2_reg: 0.0  # Default: 0.0 (none).
-
-# Epochs to wait after no improvement before activating early stopping.
-early_stop_patience: 48  # Default: 48.
-
-# Training data proportion. Training data will be additionally partitioned by train_split - ('val_split' / 2).
-train_split: 0.7  # Default: 0.8.
-
-# Validation data proportion. Actual proportion will be 'val_split' / 2. The remaining half will be split into a 'test', or 'hold-out' dataset to obtain more realistic predictions on data unseen during training.
-val_split: 0.3  # Default: 0.2.
-
-# Enable bootstrap replicates.
-do_bootstrap: true  # Default: false.
-
-# Number of bootstrap replicates.
-nboots: 100  # Default: 50.
-
-# Proportion of features to use for bootstrapping.
-feature_prop: 1.0  # Default: 0.8.
-
-# Proportion of most important features (i.e., loci) to ensure get used for each bootstrap replicate
-important_feature_prop: 1.0  # Default: 0.2.
-
-# Number of RandomForestRegressor estimators to obtain feature importances.
-n_importance_estimators: 100  # Default: 100.
-
-# Perform Optuna parameter search for optimization.
-do_gridsearch: false  # Default: false.
-
-# Iterations for parameter optimization using Optuna. Optuna recommends from 100 to 1000 iterations.
-n_iter: 100  # Default: 100.
-
-# Learning rate scheduler patience.
-lr_scheduler_patience: 16  # Default: 16.
-
-# Factor to reduce learning rate when scheduler is triggered.
-lr_scheduler_factor: 0.5  # Default: 0.5.
-
-# Factor to scale neural network widths with each successive hidden layer. If left default (1.0), then hidden layer widths will not be reduced.
-factor: 1.0  # Default: 1.0.
-
-# Enable gradient clipping. Can help with the exploding gradient differentiation problem, if needed.
-grad_clip: false  # Default: false.
+batch_size: 32  # Important. Training batch size.
+max_epochs: 5000  # Important. Max number of training epochs.
+learning_rate: 0.001  # Important. Optimizer learning rate.
+l2_reg: 0.0  # L2 regularization weight.
+early_stop_patience: 48  # Patience for early stopping.
+train_split: 0.8  # Default: 0.8. Training data proportion.
+val_split: 0.2  # Default: 0.2. Validation data proportion.
+do_bootstrap: false  # Enable bootstrap replicates.
+nboots: 100  # Number of bootstrap replicates.
+do_gridsearch: false  # Perform Optuna parameter search.
+n_iter: 100  # Iterations for parameter optimization.
+lr_scheduler_patience: 16  # Patience for learning rate scheduler.
+lr_scheduler_factor: 0.5  # Factor for reducing learning rate.
+factor: 1.0  # Scaling factor for network widths in successive layers.
+grad_clip: false  # Enable gradient clipping.
 
 # ==============================================================
 # Geographic Density Sampler
 # ==============================================================
 
-# Use inverse-weighted probability sampling during model training. Supported options: 'loss' or 'none'.
-use_weighted: "loss"  # Default: 'none' (no sample weighting)
-
-# Synthetic oversampling method. Creates synthetic samples to balance sampling densities. Supported options: 'kmeans' or 'none'.
-oversample_method: "kmeans"  # Default: 'none' (no oversampling).
-
-# Number of nearest neighbors to use for oversampling. Has no effect if 'oversample_method' is 'none'.
-oversample_neighbors: 5  # Default: 5.
-
-# Number of bins for synthetic resampling. This is used for KMeans clustering to determine which individuals are spatially clustered. 'n_bins' determines how many clusters (i.e., K) to use.
-n_bins: 5  # Default: 8.
-
-# Use KMeans clustering to obtain sample weights.
-use_kmeans: true  # Default: true.
-
-# Exponential power to scale inverse density weighting. Set to a higher value if sample weights are not different enough. 
-w_power: 1.0  # Default: 1.0.
-
-# Maximum number of clusters for KMeans. Used for calculating sample weights.
-max_clusters: 10  # Default: 10.
-
-# Geographic regions of interest for sampling density weights.
-focus_regions: null  # Format: [(lon_min1, lon_max1, lat_min1, lat_max1), ...]. Default: null.
-
-# Normalize density-based sample weights from 0 to 1.
-normalize_sample_weights: false  # Default: false.
+use_weighted: "none"  # Weighting. Options: none, loss, both.
+oversample_method: "none"  # Oversampling. Options: none, kmeans.
+oversample_neighbors: 5  # Nearest neighbors for oversampling.
+n_bins: 8  # Bins for KMeans resampling.
+use_kmeans: false  # Use KMeans clustering for weights.
+use_kde: false  # Use Kernel Density Estimation for weights.
+use_dbscan: false  # Use DBSCAN clustering (experimental).
+w_power: 1.0  # Power scaling for inverse density weighting.
+max_clusters: 10  # Maximum clusters for KMeans.
+focus_regions: null  # Geographic regions for density weighting.
+normalize_sample_weights: false  # Normalize density-based weights.
 
 # ==============================================================
 # Outlier Detection
 # ==============================================================
 
-# Perform outlier detection to remove geographic and genetic outliers.
-detect_outliers: true  # Default: false.
-
-# Minimum distance between nearest neighbors for outlier detection. Units in meters. This can help to exclude overlapping neighbors in close proximity to each other.
-min_nn_dist: 1000  # Default: 1000 (meters).
-
-# Factor to scale geographic distance by for outlier detection.
-scale_factor: 100  # Default: 100.
-
-# Significance level for p-values to determine outliers with Maximum Likelihood Estimation (MLE) and gamma distribution.
-significance_level: 0.05  # Default: 0.05.
-
-# Maximum number of nearest neighbors for outlier detection. Optimal value will be tested from K = 2 to K = 'maxk'.
-maxk: 50  # Default: 50.
+detect_outliers: false  # Enable outlier detection.
+min_nn_dist: 1000  # Minimum nearest neighbor distance (meters).
+scale_factor: 100  # Geographic distance scaling factor.
+significance_level: 0.05  # Significance level for outliers.
+maxk: 50  # Maximum nearest neighbors for outlier detection.
 
 # ==============================================================
 # Plot Settings
 # ==============================================================
 
-# The following plot settings are simply for visualization purposes. They do not affect model training or the predictions.
+show_plots: false  # Show inline plots.
+fontsize: 24  # Font size for plots.
+filetype: "png"  # File type for plots.
+plot_dpi: 300  # DPI for raster format plots.
+remove_splines: false  # Remove axis splines from plots.
+shapefile: "https://www2.census.gov/geo/tiger/GENZ2018/shp/cb_2018_us_county_500k.zip"  # Shapefile URL or path.
+basemap_fips: null  # FIPS code for basemap (state zoom).
+highlight_basemap_counties: null  # Highlight specific counties on map.
+samples_to_plot: null  # Sample IDs to plot.
+n_contour_levels: 20  # Number of contour levels for Kriging plots.
+min_colorscale: 0  # Minimum color scale value for plots.
+max_colorscale: 300  # Maximum color scale value for plots.
+sample_point_scale: 2  # Scale factor for sample point size.
+bbox_buffer: 0.1  # Buffer for bounding box on visualizations.
 
-# Show in-line plots. Useful for Jupyter notebooks.
-show_plots: false  # Default: false.
+# ==============================================================
+# Embedding Settings
+# ==============================================================
 
-# Font size for plot labels, ticks, and titles.
-fontsize: 24  # Default: 24.
-
-# File type for saving plots. Supported options: 'png', 'pdf', 'jpg'. Other matlplotlib options, such as 'svg' or 'bmp' might work, but are currently untested here. Use 'pdf' for high-quality vector format, or 'png' or 'jpg' for image (raster) format.
-filetype: "pdf"  # Default: 'pdf'.
-
-# DPI for image (raster) formatted plots (e.g., 'png', 'jpg'). Has no effect on 'pdf' filetype.
-plot_dpi: 300  # Default: 300.
-
-# Remove all axis splines from map plots, including bottom and left splines.
-remove_splines: true  # Default: false.
-
-# URL or file path for shapefile used in plotting. County lines will be drawn if using the default basemap. However, the default basemap is only for the continental United States, so if you need to use a different basemap, then you can provide a URL or path to a shapefile here.
-shapefile: "https://www2.census.gov/geo/tiger/GENZ2018/shp/cb_2018_us_county_500k.zip"  # Default: Continental USA County Lines basemap.
-
-# FIPS code for basemap. Should by string format. The basemap will be subset to just the state encoded by the FIPS code provided here. If null, then the whole continental U.S. will be plotted as the basemap.
-# For example, the Arkansas FIPS code is '05'.
-basemap_fips: "05"  # Default: null.
-
-# Highlight specified counties on the base map in gray.
-highlight_basemap_counties: "Benton,Washington,Scott,Crawford,Washington,Sebastian,Yell,Logan,Franklin,Madison,Carroll,Boone,Newton,Johnson,Pope,Van Buren,Searcy,Marion,Baxter,Stone,Independence,Jackson,Randolph,Bradley,Union,Ashley"  # Comma-separated string of county names. Default: null (no gray highlighting).
-
-# Comma-delimited sample IDs to plot when bootstrapping is enabled. Will make individual plots with contours around the specified sample's bootstrap predictions. If left null, then one plot for each sample will be plotted.
-samples_to_plot: null  # Comma-separated sample IDs. Default: null (plot all samples).
-
-# Number of contour levels for the '<prefix>_geographic_error_distribution.<filetype>' Kriging plot.
-n_contour_levels: 20  # Default: 20.
-
-# Minimum colorbar value for the '<prefix>_geographic_error_distribution.<filetype>' Kriging plot.
-min_colorscale: 0  # Default: 0.
-
-# Maximum colorbar value for the '<prefix>_geographic_error_distribution.<filetype>' Kriging plot.
-max_colorscale: 300  # Default: 300.
-
-# Scale factor for sample point sizes to use on plots.
-sample_point_scale: 2  # Default: 2.
-
-# Buffer for the sampling bounding box on map visualizations. Adds plot area surrounding the sampling area. Make larger if you want more area to be plotted surrounding the sample area.
-bbox_buffer: 0.1  # Default: 0.1.
-
+embedding_type: "none"  # Type of embedding to use. Options: 'pca', 'kernelpca', 'nmf', 'lle', 'mca', 'mds', 'polynomial', 'tsne', and 'none' (no embedding). Default: 'none' (no embedding)."
+n_components: null  # Number of components for PCA or tSNE.
+embedding_sensitivity: 1.0  # Sensitivity for optimal component selection.
+tsne_perplexity: 30  # Perplexity setting for t-SNE embedding.
+polynomial_degree: 2  # Degree for polynomial embedding.
+n_init: 4  # Initialization runs for MDS embedding.
 
 # ==============================================================
 # Output and Miscellaneous
 # ==============================================================
 
-# Output file prefix.
-prefix: "fpr_best_model12_8_predfix"  # Default: 'output'.
-
-# SQLite3 database directory to use with Optuna parameter optimization. If provided, then the Optuna paramter optimization can be resumed following a completed GeoGenIE run. Otherwise, the parameter optimization is done all in-memory and is not resumeable.
-sqldb: null  # Default: null.
-
-# Directory to store all output files. Includes predictions, plots, metrics, etc.
-output_dir: "./analyses/fpr_best_model12_8_predfix"  # Default: './output'.
-
-# Random seed for reproducibility. Used for various purposes, including splitting the training, validation, and test datasets.
-seed: 42  # Default: null.
-
-# GPU number for computation. Should be an integer. Default: null (CPU usage).
-gpu_number: null  # Default: null.
-
-# Number of CPU threads to use.
-n_jobs: 8  # Default: -1 (use all CPUs).
-
-# Verbosity level for logging. 0 (most silent) to 2 (most verbose).
-verbose: 1  # Default: 1.
+prefix: "output"  # Output file prefix.
+sqldb: null  # SQLite3 database directory for Optuna.
+output_dir: "./output"  # Directory for output files.
+seed: null  # Random seed for reproducibility.
+gpu_number: null  # GPU number for computation.
+n_jobs: -1  # Number of CPU jobs. Default: -1 (use all CPUs).
+verbose: 1  # Verbosity level. 0 (silent) to 3 (most verbose).
+debug: false  # Enable debugging mode.
