@@ -15,7 +15,26 @@ from geogenie.utils.utils import geo_coords_is_valid
 
 
 class GeoGeneticOutlierDetector:
-    """A class to detect outliers based on genomic SNPs and geographic coordinates."""
+    """A class to detect outliers based on genomic SNPs and geographic coordinates.
+
+    This class uses a K-nearest neighbors (KNN) approach to detect outliers based on the difference between predicted and actual data.
+
+    Attributes:
+        args (argparse.Namespace): Command line arguments.
+        genetic_data (pd.DataFrame): The SNP data as a DataFrame.
+        geographic_data (np.array): geographic coordinates as 2D array.
+        output_dir (str): Output directory.
+        prefix (str): Prefix for output files.
+        n_jobs (int): Number of parallel jobs to run.
+        seed (int): Random seed to use.
+        url (str): url to download base map for plots.
+        buffer (float): Buffer to put around sampling area on base map when plotting.
+        show_plots (bool): Whether to show plots in-line.
+        debug (bool): If True, writes genetic_data and geographic_data to file.
+        verbose (int): Verbosity setting (0-2), least to most verbose.
+        logger (logging.Logger): Logger object.
+        plotting (PlotGenIE): Plotting object.
+    """
 
     def __init__(
         self,
@@ -33,6 +52,8 @@ class GeoGeneticOutlierDetector:
         verbose=0,
     ):
         """Initialize GeoGeneticOutlierDetector.
+
+        This class uses a K-nearest neighbors (KNN) approach to detect outliers based on the difference between predicted and actual data.
 
         Args:
             genetic_data (pd.DataFrame): The SNP data as a DataFrame.
@@ -95,6 +116,8 @@ class GeoGeneticOutlierDetector:
     def calculate_dgeo(self, pred_geo_coords, geo_coords, scalar):
         """Calculate the Dgeo statistic for geographic coordinates.
 
+        This method calculates the geographic distance between predicted and actual geographic coordinates.
+
         Args:
             pred_geo_coords (np.array): Predicted geographic coordinates.
             geo_coords (np.array): Actual geographic coordinates.
@@ -132,6 +155,8 @@ class GeoGeneticOutlierDetector:
     ):
         """Calculate the Dg or Dgeo statistic based on the difference between predicted and actual data.
 
+        This method calculates the Dg or Dgeo statistic based on the mean squared error or geographic distance between predicted and actual data.
+
         Args:
             predicted_data (np.array): Predicted data from KNN.
             actual_data (np.array): Actual data.
@@ -166,8 +191,9 @@ class GeoGeneticOutlierDetector:
         return d, min_nn_dist, scale_factor, pred_r2
 
     def rescale_statistic(self, Dgeo, s, orig_min_nn_dist, max_threshold=20):
-        """
-        Rescales the Dgeo array to avoid large values that might cause errors in maximum likelihood estimation.
+        """Rescales the Dgeo array to avoid large values that might cause errors in maximum likelihood estimation.
+
+        This method rescales the Dgeo array to avoid large values that might cause errors in maximum likelihood estimation.
 
         Args:
             Dgeo (np.ndarray): An array representing geographic distances or differences.
@@ -196,6 +222,8 @@ class GeoGeneticOutlierDetector:
     def find_gen_knn(self, coords, k, scale_factor):
         """Find K-nearest neighbors for genetic data using PyNNDescent.
 
+        This method finds the K-nearest neighbors for genetic data using PyNNDescent.
+
         Args:
             dist_matrix (np.array): Distance matrix.
             k (int): Number of neighbors.
@@ -217,6 +245,8 @@ class GeoGeneticOutlierDetector:
 
     def find_geo_knn(self, coords, k, min_nn_dist):
         """Find K-nearest neighbors for geographic data considering minimum neighbor distance using PyNNDescent.
+
+        This method finds the K-nearest neighbors for geographic data using PyNNDescent.
 
         Args:
             dist_matrix (np.array): Distance matrix.
@@ -259,6 +289,8 @@ class GeoGeneticOutlierDetector:
         scale_factor,
     ):
         """Find optimal number of nearest neighbors for KNN.
+
+        This method finds the optimal number of nearest neighbors for KNN based on the Dg or Dgeo statistic.
 
         Args:
             geo_coords (np.array): Geographic coordinates.
@@ -327,6 +359,8 @@ class GeoGeneticOutlierDetector:
     def predict_coords_knn(self, coords, knn_distances, knn_indices, w_power):
         """Predict coordinates data using weighted KNN.
 
+        This method predicts coordinates data using weighted KNN based on the distances to the K-nearest neighbors.
+
         Args:
             coords (np.array): Array of genetic or geographic coordinates.
             knn_distances (np.array): Distances to K-nearest neighbors.
@@ -356,6 +390,8 @@ class GeoGeneticOutlierDetector:
     def fit_gamma_mle(self, D_statistic, sig_level):
         """Detect outliers using a Gamma distribution fitted to the Dg or Dgeo statistic.
 
+        This method detects outliers using a Gamma distribution fitted to the Dg or Dgeo statistic.
+
         Args:
             D_statistic (np.array): Dg or Dgeo statistic for each sample.
             Dgeo (np.array): For determining initial_shape and initial_rate.
@@ -382,8 +418,9 @@ class GeoGeneticOutlierDetector:
         return outliers, p_values, gamma_params
 
     def gamma_neg_log_likelihood(self, params, data):
-        """
-        Negative log likelihood for gamma distribution.
+        """Negative log likelihood for gamma distribution.
+
+        This method calculates the negative log likelihood value for the gamma distribution.
 
         Args:
             params (tuple): Contains the shape and rate parameters for the gamma distribution.
@@ -407,7 +444,23 @@ class GeoGeneticOutlierDetector:
         min_nn_dist=1000,
         scale_factor=100,
     ):
-        """Iterative Outlier Detection via KNN for genetic and geographic data."""
+        """Iterative Outlier Detection via KNN for genetic and geographic data.
+
+        This method performs iterative outlier detection using KNN for genetic and geographic data.
+
+        Args:
+            geo_coords (np.array): Array of geographic coordinates.
+            gen_coords (np.array): Array of genetic data coordinates.
+            analysis_type (str): Type of analysis to perform (genetic, geographic, composite).
+            sig_level (float): Significance level for detecting outliers.
+            maxk (int): Maximum number of nearest neighbors to consider.
+            w_power (float): Power of distance weight in KNN prediction.
+            min_nn_dist (int): Minimum distance required to consider points.
+            scale_factor (int): Scaling factor for geo coordinates.
+
+        Returns:
+            tuple: Indices of detected outliers for geographic and genetic data.
+        """
 
         if len(geo_coords) != len(gen_coords):
             msg = f"geographic and genetic coordinates must have the same number of samples: {len(geo_coords)}, {len(gen_coords)}"
@@ -506,6 +559,23 @@ class GeoGeneticOutlierDetector:
         at,
         time_duration,
     ):
+        """Perform outlier detection analysis for genetic or geographic data.
+
+        This method performs outlier detection analysis for genetic or geographic data.
+
+        Args:
+            geo_coords (np.array): Array of geographic coordinates.
+            gen_coords (np.array): Array of genetic data coordinates.
+            analysis_type (str): Type of analysis to perform (genetic, geographic, composite).
+            sig_level (float): Significance level for detecting outliers.
+            min_nn_dist (int): Minimum distance required to consider points.
+            scale_factor (int): Scaling factor for geo coordinates.
+            max_iter (int): Maximum number of iterations.
+            opt_ks (dict): Optimal K values for genetic and geographic data.
+            res (dict): Dictionary to store results.
+            at (str): Analysis type (genetic, geographic).
+            time_duration (dict): Dictionary to store run times for each method.
+        """
         (
             time_duration,
             outlier_flags,
@@ -564,6 +634,25 @@ class GeoGeneticOutlierDetector:
         analysis_type,
         time_durations,
     ):
+        """Run multi-stage outlier detection using KNN.
+
+        This method runs multi-stage outlier detection using KNN for genetic and geographic data.
+
+        Args:
+            geo_coords (np.array): Array of geographic coordinates.
+            gen_coords (np.array): Array of genetic data coordinates.
+            sig_level (float): Significance level for detecting outliers.
+            min_nn_dist (int): Minimum distance required to consider points.
+            scale_factor (int): Scaling factor for geo coordinates.
+            max_iter (int): Maximum number of iterations.
+            optk (int): Optimal K value for nearest neighbors.
+            analysis_type (str): Type of analysis to perform (genetic, geographic, composite).
+            time_durations (dict): Dictionary to store run times for each method.
+
+        Returns:
+            tuple: Time durations, outlier flags, D statistics, p-values, r-squared values, and gamma parameters
+        """
+
         outlier_flags = np.zeros(len(gen_coords), dtype=bool)
         allow = True
         break_msg = "No new outliers detected. Terminating iteration."
@@ -649,6 +738,24 @@ class GeoGeneticOutlierDetector:
         time_durations,
         analysis_type,
     ):
+        """Filter outliers and detect new outliers using KNN.
+
+        This method filters outliers and detects new outliers using KNN for genetic and geographic data.
+
+        Args:
+            geo_coords (np.array): Array of geographic coordinates.
+            gen_coords (np.array): Array of genetic data coordinates.
+            sig_level (float): Significance level for detecting outliers.
+            min_nn_dist (int): Minimum distance required to consider points.
+            scale_factor (int): Scaling factor for geo coordinates.
+            optk (int): Optimal K value for nearest neighbors.
+            outlier_flags (np.array): Array of outlier flags.
+            time_durations (dict): Dictionary to store run times for each method.
+            analysis_type (str): Type of analysis to perform (genetic, geographic, composite).
+
+        Returns:
+            tuple: Time durations, outlier flags, D statistics, p-values, r-squared values, gamma parameters, and filtered indices
+        """
         non_outlier_mask = ~outlier_flags
 
         # Keep track of original indices
@@ -698,6 +805,22 @@ class GeoGeneticOutlierDetector:
         scale_factor,
         analysis_type,
     ):
+        """Search for optimal K for nearest neighbors.
+
+        This method searches for the optimal K for nearest neighbors based on the Dg or Dgeo statistic.
+
+        Args:
+            geo_coords (np.array): Array of geographic coordinates.
+            gen_coords (np.array): Array of genetic data coordinates.
+            maxk (int): Maximum number of nearest neighbors to consider.
+            w_power (float): Power of distance weight in KNN prediction.
+            min_nn_dist (int): Minimum distance required to consider points.
+            scale_factor (int): Scaling factor for geo coordinates.
+            analysis_type (str): Type of analysis to perform (genetic, geographic, composite).
+
+        Returns:
+            tuple: Time durations, optimal K for genetic data, and optimal K for geographic data.
+        """
         time_durations = {}
 
         optk_gen = None
@@ -735,6 +858,16 @@ class GeoGeneticOutlierDetector:
         return time_durations, optk_gen, optk_geo
 
     def plot_gamma_dist(self, sig_level, d_stats, gamma_params, dtype):
+        """Plot the gamma distribution for detected outliers.
+
+        This method plots the gamma distribution for detected outliers based on the Dg or Dgeo statistic.
+
+        Args:
+            sig_level (float): Significance level for detecting outliers.
+            d_stats (np.array): Dg or Dgeo statistic for each sample.
+            gamma_params (tuple): Parameters for the gamma distribution.
+            dtype (str): Type of data (genetic, geographic
+        """
         outdir = path.join(self.output_dir, "plots")
         fn = path.join(outdir, f"{self.prefix}_gamma_{dtype}.png")
         self.plotting.plot_gamma_distribution(
@@ -758,8 +891,9 @@ class GeoGeneticOutlierDetector:
         scale_factor=100,
         analysis_type="genetic",
     ):
-        """
-        Detect outliers based on composite data using the KNN approach.
+        """Detect outliers based on composite data using the KNN approach.
+
+        This method detects outliers based on composite data using the KNN approach.
 
         Args:
             geo_coords (np.array): Array of geographic coordinates.
@@ -862,6 +996,20 @@ class GeoGeneticOutlierDetector:
     def composite_outlier_detection(
         self, sig_level=0.05, maxk=50, min_nn_dist=1000, scale_factor=100, w_power=2
     ):
+        """Perform composite outlier detection using the KNN approach.
+
+        This method performs composite outlier detection using the KNN approach.
+
+        Args:
+            sig_level (float): Significance level for detecting outliers.
+            maxk (int): Maximum number of nearest neighbors to consider.
+            min_nn_dist (int): Minimum distance required to consider points.
+            scale_factor (int): Scaling factor for geo coordinates.
+            w_power (float): Power of distance weight in KNN prediction.
+
+        Returns:
+            dict: Detected outliers for geographic and genetic data.
+        """
         if self.verbose >= 1:
             self.logger.info("Starting composite outlier detection...")
 
