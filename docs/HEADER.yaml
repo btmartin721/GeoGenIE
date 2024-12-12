@@ -33,9 +33,12 @@ documenttype: article
 standalone: true
 output:
   pdf:
-    pdf-engine: pdflatex
+    pdf-engine: xelatex
     output: GeoGenIE_UserManual.pdf
     from: markdown
 colorlinks: true
 toc-own-page: true
 bibliography: docs/references.bib
+header-includes:
+- \usepackage{pdflscape}
+
