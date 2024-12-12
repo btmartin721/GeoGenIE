@@ -292,7 +292,7 @@ def setup_parser(test_mode=False):
     model_group.add_argument(
         "--use_gradient_boosting",
         action="store_true",
-        help="Whether to use Gradient Boosting model instead of deep learning model. Default: False (use deep learning model).",
+        help="Whether to use Gradient Boosting model instead of deep learning model. This method is deprecated and may be removed in a future version. Non-functional. Default: False (use deep learning model).",
     )
     model_group.add_argument(
         "--dtype",
@@ -360,24 +360,6 @@ def setup_parser(test_mode=False):
         help="`--nboots`: Number of bootstrap replicates. Has no effect if `--do_bootstrap` is disabled. Default: 100.",
     )
     training_group.add_argument(
-        "--feature_prop",
-        type=validate_positive_float,
-        default=0.8,
-        help="Prooprtion of features (i.e., loci) to use for bootstrapping. Default: 0.8.",
-    )
-    training_group.add_argument(
-        "--important_feature_prop",
-        type=validate_positive_float,
-        default=0.2,
-        help="Proportion of most important features (i.e., loci) to ensure in all bootstrap replicates. Default: 0.2.",
-    )
-    training_group.add_argument(
-        "--n_importance_estimators",
-        type=validate_positive_int,
-        default=100,
-        help="Number of RandomForestRegressor estimators to use for estimating feature (i.e., loci) importances when bootstrapping. Default: 100.",
-    )
-    training_group.add_argument(
         "--do_gridsearch",
         action="store_true",
         default=False,
@@ -410,7 +392,7 @@ def setup_parser(test_mode=False):
     training_group.add_argument(
         "--grad_clip",
         action="store_true",
-        help="Enable gradient clipping, which can reduce the effect of explosive gradients.",
+        help="Enable gradient clipping, which can reduce the effect of explosive gradients. Default: False.",
     )
 
     # Geographic Density Sampler Arguments
@@ -419,7 +401,7 @@ def setup_parser(test_mode=False):
         "--use_weighted",
         type=validate_lower_str,
         default="none",
-        help="Use inverse-weighted probability sampling to calculate sample weights based on sampling density; use the sample weights in the loss function, or both. Valid options include: 'sampler', 'loss', 'both', or 'none'. Default: 'none'.",
+        help="Use inverse-weighted probability sampling to calculate sample weights based on sampling density; use the sample weights in the loss function, or both. Valid options include: 'loss' or 'none'. Default: 'none'.",
     )
     geo_sampler_group.add_argument(
         "--oversample_method",
@@ -441,15 +423,21 @@ def setup_parser(test_mode=False):
     )
     geo_sampler_group.add_argument(
         "--use_kmeans",
-        action="store_false",
-        default=True,
-        help="Use KMeans clustering to calculate sample weights. Default: True",
+        action="store_true",
+        default=False,
+        help="Use KMeans clustering to calculate sample weights. Default: False",
     )
     geo_sampler_group.add_argument(
         "--use_kde",
         action="store_true",
         default=False,
         help="Use Kernel Density Estimation (KDE) in to calculate sample weights. Default: False.",
+    )
+    geo_sampler_group.add_argument(
+        "--use_dbscan",
+        action="store_true",
+        default=False,
+        help="Use DBSCAN clustering to calculate sample weights. This method is still experimental. Use with caution. Default: False.",
     )
     geo_sampler_group.add_argument(
         "--w_power",
@@ -467,7 +455,7 @@ def setup_parser(test_mode=False):
         "--max_neighbors",
         type=validate_positive_int,
         default=50,
-        help="Maximum number of nearest neighbors for adaptive bandwidth when doing geographic density sampling. Default: 50",
+        help="Maximum number of nearest neighbors for adaptive bandwidth when doing geographic density sampling. Argument is deprecated nad will be removed in a future version. Default: 50",
     )
     geo_sampler_group.add_argument(
         "--focus_regions",
@@ -487,6 +475,7 @@ def setup_parser(test_mode=False):
     outlier_detection_group.add_argument(
         "--detect_outliers",
         action="store_true",
+        default=False,
         help="Enable outlier detection to remove geographic and/ or genetic outliers. Default: False.",
     )
 
@@ -529,7 +518,7 @@ def setup_parser(test_mode=False):
         "--sqldb",
         type=str,
         default=None,
-        help="SQLite3 database directory to use with Optuna parameeter optimization. Default: None (no database, with Optuna non-resumeable).",
+        help="SQLite3 database directory to use with Optuna parameeter optimization. Allows parameter tuning to be resumed. Default: None (no database, with Optuna non-resumeable).",
     )
     output_group.add_argument(
         "--output_dir",
@@ -610,14 +599,12 @@ def setup_parser(test_mode=False):
         default="https://www2.census.gov/geo/tiger/GENZ2018/shp/cb_2018_us_county_500k.zip",
         help=f"URL or file path for shapefile used when plotting prediction error. The default is a map of the continental USA, so if you need a different base map, you can supply your own URL or zipped shapefile here. Note that if '--basemap_fips_code is not provided, then the map will be zoomed to the bounding box of the samples. plus '--bbox_buffer. Default: Continental USA basemap, downloaded from census.gov URL.",
     )
-
     plotting_group.add_argument(
         "--basemap_fips",
         type=str,
         default=None,
         help="FIPS code for basemap. If provided, the bsae map will be of the US state for the provided FIPS code. If no FIPS code is provided, then the base map will be zoomed to the sampling bounding box, plus '--bbox_buffer'. Default: Do not use FIPS code.",
     )
-
     plotting_group.add_argument(
         "--highlight_basemap_counties",
         type=str,
@@ -662,112 +649,19 @@ def setup_parser(test_mode=False):
         default=0.1,
         help="Buffer to add to the sampling bounding box on map visualizations. Adjust to your liking. Default: 0.1.",
     )
-    gb_group = parser.add_argument_group(
-        title="Gradient Boosting Argument Group",
-        description="Specify parameters for doing XGBoost predictions.",
-    )
-    gb_group.add_argument(
-        "--gb_learning_rate",
-        type=validate_positive_float,
-        default=0.3,
-        help="Step size shrinkage used in update to prevent overfitting. This parameter usually requires tuning. Default: 0.1.",
-    )
-    gb_group.add_argument(
-        "--gb_n_estimators",
-        type=validate_positive_int,
-        default=100,
-        help="Number of boosting stages to perform. Gradient boosting is fairly robust to over-fitting so a large number usually results in better perforamnce. Values must be in the range [1, inf). Default: 100.",
-    )
-    gb_group.add_argument(
-        "--gb_subsample",
-        type=validate_positive_float,
-        default=1.0,
-        help="Subsample ratio of the training instances. Setting it to 0.5 means that XGBoost would randomly sample half of the training data prior to growing trees. and this will prevent overfitting. Subsampling will occur once in every boosting iteration. Range: (0.0, 1.0]. Default: 1.0",
-    )
-    gb_group.add_argument(
-        "--gb_colsample_bytree",
-        type=validate_positive_float,
-        default=1.0,
-        help="colsample_bytree is the subsample ratio of columns when constructing each tree. Subsampling occurs once for every tree constructed. Range: (0.0, 1.0]. Default: 1.0",
-    )
-
-    gb_group.add_argument(
-        "--gb_min_child_weight",
-        default=1,
-        help="Minimum sum of instance weight (hessian) needed in a child. If the tree partition step results in a leaf node with the sum of instance weight less than min_child_weight, then the building process will give up further partitioning. In linear regression task, this simply corresponds to minimum number of instances needed to be in each node. The larger min_child_weight is, the more conservative the algorithm will be. Default: 1",
-    )
-    gb_group.add_argument(
-        "--gb_max_delta_step",
-        default=0,
-        type=int,
-        help="Maximum delta step we allow each leaf output to be. If the value is set to 0, it means there is no constraint. If it is set to a positive value, it can help making the update step more conservative. Usually this parameter is not needed, but it might help in logistic regression when class is extremely imbalanced. Set it to value of 1-10 might help control the update. Default: 0 (no maximum delta step).",
-    )
-    gb_group.add_argument(
-        "--gb_max_leaves",
-        default=0,
-        help="The maximum number of leaves allowed at a leaf node. Tuning this may have the effect of smoothing the model. Default: 0 (no maximum).",
-    )
-    gb_group.add_argument(
-        "--gb_max_depth",
-        default=6,
-        help="Maximum depth of a tree. Increasing this value will make the model more complex and more likely to overfit. 0 indicates no limit on depth. Beware that XGBoost aggressively consumes memory when training a deep tree.",
-    )
-    gb_group.add_argument(
-        "--gb_reg_alpha",
-        type=float,
-        default=0,
-        help="L1 regularization for Gradient Boosting model. Tuning this can mitigate overfitting. Range: [0, inf). Default: 0 (no L1 regularization).",
-    )
-    gb_group.add_argument(
-        "--gb_reg_lambda",
-        type=float,
-        default=1,
-        help="L2 regularization for Gradient Boosting model. Tuning this can mitigate overfitting. Range: [0, inf). Defaul: 0 (no L1 regularization).",
-    )
-    gb_group.add_argument(
-        "--gb_gamma",
-        type=float,
-        default=0,
-        help="Minimum loss reduction required to make a further partition on a leaf node of the tree. The larger gamma is, the more conservative the algorithm will be. Range: [0, inf). Default: 0.0.",
-    )
-    gb_group.add_argument(
-        "--gb_multi_strategy",
-        type=str,
-        default="one_output_per_tree",
-        help="The strategy used for training multi-target models, including multi-target regression and multi-class classification. See Multiple Outputs for more information. Supported options: 'one_output_per_tree': Train a separate model for each target. 'multi_output_tree': Use multi-target trees. Default: 'one_target_per_node'.",
-    )
-    gb_group.add_argument(
-        "--gb_objective",
-        type=str,
-        default="reg:squarederror",
-        help="Loss objective to use for scoring with the gradient boosting model. Supported options: 'reg:squarederror', 'reg:quantileerror', 'reg:absoluteerror', 'reg:gamma', and 'reg:tweedie'. See XGBoost documentation for more information on each. Default: 'reg:squarederror'.",
-    )
-    gb_group.add_argument(
-        "--gb_eval_metric",
-        type=str,
-        default="rmse",
-        help="Evaluation metrics for validation data, a default metric will be assigned according to objective (rmse for regression. Supported options include: 'rmse' (root mean squared error), 'mae' (mean absolute error), 'mape' (mean absolute percentage error), 'gamma-nloglik' (negative log-likelihood for gamma regression), 'tweedie-nloglik' (negative log-likelihood for Tweedie regression). Default: 'rmse'.",
-    )
-    gb_group.add_argument(
-        "--gb_early_stopping_rounds",
-        type=validate_positive_int,
-        default=10,
-        help="Number of rounds to go before terminating training via early stopping criteria. Will revert the model to the best model. Default: 10.",
-    )
-    gb_group.add_argument(
-        "--gb_use_lr_scheduler",
-        action="store_true",
-        help="Whether to use learning rate scheduler to gradually reduce the learning rate. Default: False (off).",
-    )
-
     args = parser.parse_args()
+
+    if args.use_gradient_boosting:
+        msg = "Gradient Boosting is currently not supported. Please use the deep learning model. This feature may be removed in a future version."
+        logger.error(msg)
+        parser.error(msg)
 
     # Load and apply configuration file if provided
     validate_inputs(parser, args, test_mode=test_mode)
     validate_significance_levels(parser, args)
     validate_max_neighbors(parser, args)
     validate_embeddings(parser, args)
-    validate_seed(args)
+    validate_seed(args.seed)
     args = validate_weighted_opts(parser, args)
     validate_colorscale(parser, args)
     validate_smote(parser, args)
@@ -832,17 +726,11 @@ def validate_gb_params(parser, args):
 
 
 def validate_weighted_opts(parser, args):
-    if args.use_weighted not in ["loss", "none"]:
+    if args.use_weighted not in {"loss", "none"}:
         msg = f"Invalid option passed to 'use_weighted': {args.use_weighted}"
         logger.error(msg)
         parser.error(msg)
 
-    if args.use_weighted in {"loss"}:
-        if not args.use_kmeans:
-            args.use_kmeans = True
-        logger.warning(
-            "use_weighted was set to 'loss', but 'use_kmeans' was False. Setting 'use_kmeans' to True."
-        )
     return args
 
 
@@ -867,13 +755,6 @@ def validate_smote(parser, args):
         msg = f"'--oversample_method' value must be one of 'kmeans', 'kerneldensity', or 'none', but got: {args.oversample_method}'"
         logger.error(msg)
         parser.error(msg)
-
-
-def validate_seed(args):
-    if args.seed is not None and args.embedding_type == "polynomial":
-        logger.warning(
-            "'polynomial' embedding does not support a random seed, but a random seed was supplied to the 'seed' argument."
-        )
 
 
 def validate_embeddings(parser, args):
