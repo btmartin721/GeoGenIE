@@ -18,6 +18,33 @@ from geogenie.utils.data import CustomDataset
 
 
 class GenotypeInterpolator:
+    """Class to interpolate genotypes and geographic coordinates among nearest neighbors.
+
+    This class interpolates genotypes and geographic coordinates among nearest neighbors to perform synthetic over-sampling.
+
+    Attributes:
+        X (np.ndarray): 2D array of genotypes.
+        y (np.ndarray): 2D array of normalized geographic coordinates.
+        sample_weights (np.ndarray): 1D array of sample weights.
+        args (argparse.Namespace): User-supplied (or default) arguments.
+        embedded (bool): Indicates if the genotypes are embedded (dimensionality reduced).
+        use_kde_densities (bool): Flag to use KernelDensity for density estimation in clustering.
+        n_bins (int or None): Number of clusters to use with KMeans clustsering.
+        verbose (int): Verbosity setting (0-3).
+        fontsize (int): Font size for plots.
+        dpi (int): Dots per inch for plots.
+        plot_type (str): File type for plots.
+        logger (logging.Logger): Logger object.
+        n_neighbors (int): Number of neighbors to consider for each sample.
+        kde (KernelDensity): KernelDensity estimator for density estimation.
+        bandwidth (float): Optimal bandwidth for KernelDensity.
+        threshold (float): Optimal threshold for KernelDensity.
+        cluster_labels (np.ndarray): Cluster labels for each sample.
+        original_cluster_labels (np.ndarray): Original cluster labels for each sample.
+        neighbor_indices (np.ndarray): Indices of the nearest neighbors for each sample.
+        plotting (PlotGenIE): PlotGenIE object for visualization
+    """
+
     def __init__(
         self,
         X,
@@ -33,8 +60,9 @@ class GenotypeInterpolator:
         dpi=300,
         plot_type="png",
     ):
-        """
-        Initialize the GenotypeInterpolator with genotype data and geographic coordinates.
+        """Initialize the GenotypeInterpolator with genotype data and geographic coordinates.
+
+        This class interpolates genotypes and geographic coordinates among nearest neighbors to perform synthetic over-sampling.
 
         Args:
             X (np.ndarray): 2D array of genotypes.
@@ -124,11 +152,16 @@ class GenotypeInterpolator:
         )
 
     def _determine_optimal_neighbors(self, n_neighbors):
-        """
-        Determine an optimal number of neighbors based on the dataset.
+        """Determine an optimal number of neighbors based on the dataset.
+
+        Args:
+            n_neighbors (int or str): Number of neighbors to consider for each sample.
 
         Returns:
             int: Estimated optimal number of neighbors.
+
+        Raises:
+            TypeError: If an invalid type is provided for n_neighbors.
         """
         if isinstance(n_neighbors, str):
             method = np.sqrt if n_neighbors == "sqrt" else np.log2
@@ -142,8 +175,7 @@ class GenotypeInterpolator:
         return optimal_n
 
     def _find_nearest_neighbors(self):
-        """
-        Find the nearest neighbors or centroids for each sample based on geographic coordinates.
+        """Find the nearest neighbors or centroids for each sample based on geographic coordinates.
 
         Returns:
             np.ndarray: Indices of the nearest neighbors for each sample.
@@ -162,8 +194,9 @@ class GenotypeInterpolator:
         return indices
 
     def interpolate_genotypes(self):
-        """
-        Perform synthetic over-sampling of the data by interpolating genotypes and geographic coordinates among nearest neighbors.
+        """Perform synthetic over-sampling of the data by interpolating genotypes and geographic coordinates among nearest neighbors.
+
+        This method performs synthetic over-sampling of the data by interpolating genotypes and geographic coordinates among nearest neighbors.
 
         Returns:
             np.ndarray: Synthetically over-sampled genotype array and corresponding geographic coordinates.
@@ -255,6 +288,16 @@ class GenotypeInterpolator:
         return over_sampled_X, over_sampled_y, over_sampled_S
 
     def _shuffle_over_sampled(self, over_sampled_X, over_sampled_y, over_sampled_S):
+        """Shuffle the over-sampled data.
+
+        Args:
+            over_sampled_X (np.ndarray): Over-sampled genotype array.
+            over_sampled_y (np.ndarray): Over-sampled geographic coordinates.
+            over_sampled_S (np.ndarray): Over-sampled sample weights.
+
+        Returns:
+            tuple: A tuple containing the shuffled over-sampled genotype array, geographic coordinates, and sample weights.
+        """
         oversamp_indices = np.arange(over_sampled_X.shape[0])
         shuffled = np.random.shuffle(oversamp_indices)
         over_sampled_X = over_sampled_X[shuffled]
@@ -271,8 +314,9 @@ class GenotypeInterpolator:
         return (over_sampled_X, over_sampled_y, over_sampled_S)
 
     def _estimate_allele_frequencies(self, genotypes):
-        """
-        Estimate allele frequencies from a genotype array.
+        """Estimate allele frequencies from a genotype array.
+
+        This method estimates allele frequencies from a genotype array.
 
         Args:
             genotypes (np.ndarray): A numpy array of genotypes (0, 1, 2).
@@ -297,8 +341,7 @@ class GenotypeInterpolator:
         sampling_strategy="mendelian",
         prob_distributions=None,
     ):
-        """
-        Vectorized method to sample hybrid genotype based on two parent genotypes with configurable probabilities.
+        """Vectorized method to sample hybrid genotype based on two parent genotypes with configurable probabilities.
 
         Args:
             genotype1 (np.ndarray): The first genotype array.
@@ -308,6 +351,10 @@ class GenotypeInterpolator:
 
         Returns:
             np.ndarray: Hybrid genotype array.
+
+        Raises:
+            AssertionError: If the genotype arrays are not of the same length.
+            ValueError: If an invalid sampling strategy is provided.
         """
         # Ensure that the genotype arrays are of the same length
         if len(genotype1) != len(genotype2):
@@ -380,31 +427,21 @@ class GenotypeInterpolator:
 
         return interp_genotype
 
-    def _perform_hdbscan_clustering(self):
-        """
-        Perform HDBSCAN clustering on the embedded genotypes.
-
-        Returns:
-            np.ndarray: Cluster labels for each sample.
-        """
-        hdb = HDBSCAN(
-            min_cluster_size=8,
-            max_cluster_size=80,
-            min_samples=5,
-            metric="haversine",
-            store_centers="medoid",
-            cluster_selection_epsilon=0.01,
-            n_jobs=-1,
-        )
-        hdb.fit(self.y)
-
-        self._visualizes_proba(hdb.probabilities_, hdb.labels_)
-
-        return hdb.labels_, hdb.medoids_
-
     def _assign_labels_to_synthetic_samples(
         self, original_labels, over_sampled_y, original_y
     ):
+        """Assign cluster labels to synthetic samples based on the nearest original samples.
+
+        This method assigns cluster labels to synthetic samples based on the nearest original samples.
+
+        Args:
+            original_labels (np.ndarray): Cluster labels for the original samples.
+            over_sampled_y (np.ndarray): Over-sampled geographic coordinates.
+            original_y (np.ndarray): Original geographic coordinates.
+
+        Returns:
+            np.ndarray: Cluster labels for the synthetic samples.
+        """
         # Fit NearestNeighbors on the original data points
         nbrs = NearestNeighbors(n_neighbors=1).fit(original_y)
 
@@ -417,8 +454,9 @@ class GenotypeInterpolator:
         return synthetic_labels
 
     def _perform_kmeans_clustering(self):
-        """
-        Perform KMeans clustering on the embedded genotypes.
+        """Perform KMeans clustering on the embedded genotypes.
+
+        This method performs KMeans clustering on the embedded genotypes.
 
         Returns:
             np.ndarray: Cluster labels for each sample.
@@ -444,26 +482,8 @@ class GenotypeInterpolator:
 
         return km.labels_, km.cluster_centers_
 
-    def _visualizes_proba(self, probs, labels):
-        plt.figure(figsize=(12, 12))
-        sns.kdeplot(
-            x=probs,
-            hue=labels,
-            fill=True,
-            palette="Set2",
-        )
-
-        plt.xlabel("Cluster Assignment Probability", fontsize=self.fontsize)
-        plt.ylabel("Density", fontsize=self.fontsize)
-        plt.legend(fontsize=self.fontsize, loc="best", fancybox=True, shadow=True)
-
-        outdir = Path(self.args.output_dir / "plots")
-        fn = outdir / f"cluster_probabilities.{self.plot_type}"
-        plt.savefig(fn, facecolor="white", bbox_inches="tight", dpi=self.dpi)
-
     def _calculate_centroids(self):
-        """
-        Calculate centroids of the embedded genotypes using the median of the clusters.
+        """Calculate centroids of the embedded genotypes using the median of the clusters.
 
         Returns:
             np.ndarray: Centroids of the genotypes.
@@ -479,8 +499,9 @@ class GenotypeInterpolator:
         return centroids
 
     def _calculate_centroid_genotype(self, centroid_index):
-        """
-        Calculate the genotype of a given centroid index.
+        """Calculate the genotype of a given centroid index.
+
+        This method calculates the genotype of a given centroid index.
 
         Args:
             centroid_index (int): Index of the centroid.
@@ -497,8 +518,7 @@ class GenotypeInterpolator:
         return centroid_genotype
 
     def _calculate_optimal_bandwidth(self):
-        """
-        Calculate the optimal bandwidth for KernelDensity using grid search.
+        """Calculate the optimal bandwidth for KernelDensity using grid search.
 
         Returns:
             float: The optimal bandwidth.
@@ -518,8 +538,7 @@ class GenotypeInterpolator:
         return grid.best_params_["bandwidth"]
 
     def _perform_density_estimation(self):
-        """
-        Perform density estimation using the pre-fitted KernelDensity estimator.
+        """Perform density estimation using the pre-fitted KernelDensity estimator.
 
         Returns:
             np.ndarray: Cluster labels for each sample based on KernelDensity estimation.
@@ -540,114 +559,11 @@ class GenotypeInterpolator:
 
         return cluster_labels
 
-    def _refine_cluster_labels(self, min_cluster_size=10, max_cluster_size=50):
-        """
-        Refine cluster labels by merging small clusters and splitting large clusters.
-
-        Args:
-            min_cluster_size (int): Minimum size to consider a cluster as 'small'.
-            max_cluster_size (int): Maximum size to consider before splitting a large cluster.
-
-        Returns:
-            np.ndarray: Refined cluster labels.
-        """
-        unique_clusters = np.unique(self.cluster_labels)
-        refined_labels = np.copy(self.cluster_labels)
-        centroids = self._calculate_cluster_centroids()
-
-        for cluster in unique_clusters:
-            if cluster == -1:  # Skip noise if it's already labeled as -1
-                continue
-
-            cluster_indices = np.where(self.cluster_labels == cluster)[0]
-            cluster_size = len(cluster_indices)
-
-            # Merging small clusters
-            if cluster_size < min_cluster_size:
-                nearest_larger_cluster = self._find_nearest_larger_cluster(
-                    cluster, centroids, min_cluster_size
-                )
-                if nearest_larger_cluster is not None:
-                    refined_labels[cluster_indices] = nearest_larger_cluster
-
-            # Splitting large clusters
-            elif cluster_size > max_cluster_size:
-                # Logic to split large clusters
-                # One approach is to use hierarchical clustering within the cluster
-                sub_clusterer = AgglomerativeClustering(
-                    n_clusters=2
-                )  # Example: split into two
-                sub_labels = sub_clusterer.fit_predict(self.y[cluster_indices])
-                refined_labels[cluster_indices] = (
-                    sub_labels + refined_labels.max() + 1
-                )  # Assign new labels
-
-        return refined_labels
-
-    def evaluate_clustering(self):
-        """
-        Calculate and return clustering evaluation metrics.
-        """
-        silhouette = silhouette_score(self.y, self.cluster_labels)
-        davies_bouldin = davies_bouldin_score(self.y, self.cluster_labels)
-        return silhouette, davies_bouldin
-
-    def _calculate_cluster_centroids(self):
-        """
-        Calculate the centroids of all clusters.
-
-        Returns:
-            dict: A dictionary with cluster labels as keys and centroids as values.
-        """
-        centroids = {}
-        unique_clusters = np.unique(self.cluster_labels)
-        for cluster in unique_clusters:
-            if cluster == -1:
-                continue
-            cluster_points = self.y[self.cluster_labels == cluster]
-            centroid = np.mean(cluster_points, axis=0)
-            centroids[cluster] = centroid
-        return centroids
-
-    def _find_nearest_larger_cluster(
-        self, small_cluster_label, centroids, min_cluster_size
-    ):
-        """
-        Find the nearest larger cluster to a given small cluster.
-
-        Args:
-            small_cluster_label (int): Label of the small cluster.
-            centroids (dict): Dictionary of cluster centroids.
-            min_cluster_size (int): Minimum size to consider a cluster as 'large'.
-
-        Returns:
-            int: Label of the nearest larger cluster.
-        """
-        small_cluster_centroid = centroids[small_cluster_label]
-        min_distance = np.inf
-        nearest_cluster = None
-
-        for cluster_label, centroid in centroids.items():
-            if cluster_label == small_cluster_label or cluster_label == -1:
-                continue
-
-            cluster_size = len(np.where(self.cluster_labels == cluster_label)[0])
-            if cluster_size < min_cluster_size:
-                continue
-
-            distance = np.linalg.norm(small_cluster_centroid - centroid)
-            if distance < min_distance:
-                min_distance = distance
-                nearest_cluster = cluster_label
-
-        return nearest_cluster
-
     def _automated_parameter_tuning(self, metric=silhouette_score):
-        """
-        Automatically tune parameters for the Kerneldensity bandwidth and density threshold.
+        """Automatically tune parameters for the Kerneldensity bandwidth and density threshold.
 
         Args:
-            metric (callable): Clustering evaluation metric function.
+            metric (callable): Clustering evaluation metric function. Defaults to ``silhouette_score``.
 
         Returns:
             tuple: The best bandwidth and threshold value combination.
@@ -682,72 +598,25 @@ class GenotypeInterpolator:
 
         return best_params
 
-    def _identify_low_density_regions(self):
-        """
-        Identify low-density regions based on KernelDensity estimates or cluster sizes.
-
-        Returns:
-            np.ndarray: Indices of samples in low-density regions.
-        """
-        if self.use_kde_densities:
-            # Use KernelDensity estimates
-            kde = KernelDensity(bandwidth=self.bandwidth, kernel="gaussian")
-            kde.fit(self.y)
-            log_densities = kde.score_samples(self.y)
-            densities = np.exp(log_densities)
-
-            # Calculate densities for each cluster
-            unique_clusters = np.unique(self.cluster_labels)
-            cluster_densities = {
-                cluster: np.mean(densities[self.cluster_labels == cluster])
-                for cluster in unique_clusters
-            }
-
-            # Identify the cluster with the maximum density
-            max_density_cluster = max(cluster_densities, key=cluster_densities.get)
-
-            # All clusters except the one with the max density are considered low-density
-            low_density_clusters = [
-                cluster for cluster in unique_clusters if cluster != max_density_cluster
-            ]
-
-            low_density_regions = np.hstack(
-                [
-                    np.where(self.cluster_labels == cluster)[0]
-                    for cluster in low_density_clusters
-                ]
-            )
-
-        else:
-            # Use cluster sizes
-            mask = self.cluster_labels == -1
-
-            unique_clusters = np.unique(self.cluster_labels[~mask])
-            cluster_sizes = {
-                cluster: np.sum(self.cluster_labels == cluster)
-                for cluster in unique_clusters
-            }
-            max_cluster_size = max(cluster_sizes.values())
-            low_density_clusters = [
-                cluster
-                for cluster, size in cluster_sizes.items()
-                if size < max_cluster_size
-            ]
-
-            low_density_regions = np.hstack(
-                [
-                    np.where(self.cluster_labels[~mask] == cluster)[0]
-                    for cluster in low_density_clusters
-                ]
-            )
-
-        return low_density_regions
-
 
 logger = logging.getLogger(__name__)
 
 
 def run_genotype_interpolator(train_loader, args, ds, dtype, plotting):
+    """Interpolate genotypes and geographic coordinates among nearest neighbors.
+
+    This method interpolates genotypes and geographic coordinates among nearest neighbors to perform synthetic over-sampling.
+
+    Args:
+        train_loader (torch.utils.data.DataLoader): The training data loader.
+        args (argparse.Namespace): User-supplied (or default) arguments.
+        ds (geogenie.data.dataset.Dataset): The dataset object.
+        dtype (torch.dtype): The data type of the model.
+        plotting (geogenie.plotting.plotting.PlotGenIE): PlotGenIE object for visualization.
+
+    Returns:
+        tuple: A tuple containing the training data loader, centroids, features, labels, and sample weights.
+    """
     (centroids, gi, features, labels, sample_weights, indices) = resample_interp(
         train_loader, args, ds
     )
@@ -771,6 +640,23 @@ def run_genotype_interpolator(train_loader, args, ds, dtype, plotting):
 def process_interp(
     train_loader, features, labels, sample_weights, indices, args, ds, dtype
 ):
+    """Process the interpolated data for training.
+
+    This method processes the interpolated data for training.
+
+    Args:
+        train_loader (torch.utils.data.DataLoader): The training data loader.
+        features (np.ndarray): The interpolated features.
+        labels (np.ndarray): The interpolated labels.
+        sample_weights (np.ndarray): The sample weights.
+        indices (np.ndarray): The indices of the samples.
+        args (argparse.Namespace): User-supplied (or default) arguments.
+        ds (geogenie.data.dataset.Dataset): The dataset object.
+        dtype (torch.dtype): The data type of the model.
+
+    Returns:
+        tuple: A tuple containing the training data loader, features, labels, and sample weights.
+    """
     if not isinstance(features, torch.Tensor):
         features = torch.tensor(features, dtype=dtype)
     if not isinstance(labels, torch.Tensor):
@@ -804,6 +690,18 @@ def process_interp(
 
 
 def resample_interp(train_loader, args, ds):
+    """Resample and interpolate genotypes and geographic coordinates among nearest neighbors.
+
+    This method resamples and interpolates genotypes and geographic coordinates among nearest neighbors to perform synthetic over-sampling.
+
+    Args:
+        train_loader (torch.utils.data.DataLoader): The training data loader.
+        args (argparse.Namespace): User-supplied (or default) arguments.
+        ds (geogenie.data.dataset.Dataset): The dataset object.
+
+    Returns:
+        tuple: A tuple containing the centroids, GenotypeInterpolator object, features, labels, sample weights, and indices.
+    """
     kdtree = False if args.oversample_method == "kmeans" else True
 
     gi = GenotypeInterpolator(
@@ -830,6 +728,20 @@ def resample_interp(train_loader, args, ds):
 
 
 def reset_weighted_sampler(sample_weights, kwargs, indices, ds):
+    """Reset the weighted sampler for the training data loader.
+
+    This method resets the weighted sampler for the training data loader.
+
+    Args:
+        sample_weights (np.ndarray): The sample weights.
+        kwargs (dict): The keyword arguments for the training data loader.
+        indices (np.ndarray): The indices of the samples.
+        ds (geogenie.data.dataset.Dataset): The dataset object.
+
+    Returns:
+        dict: The updated keyword arguments for the training data loader.
+    """
+
     weighted_sampler = deepcopy(ds.weighted_sampler)
     weighted_sampler.indices = indices
 
