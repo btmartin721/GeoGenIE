@@ -26,8 +26,7 @@ from geogenie.utils.loss import WeightedDRMSLoss, WeightedHuberLoss, weighted_rm
 
 
 class Optimize:
-    """
-    A class designed to handle the optimization of machine learning models.
+    """A class designed to handle the optimization of machine learning models.
 
     This class facilitates the process of training, validating, and testing machine learning models. It manages data loaders for different datasets, sample weights, and various parameters for model training and optimization. Additionally, it integrates functionalities for plotting  and logging the progress and results of the optimization process.
 
@@ -36,7 +35,6 @@ class Optimize:
         val_loader (DataLoader): DataLoader for the validation dataset.
         test_loader (DataLoader): DataLoader for the testing dataset.
         sample_weights (numpy.ndarray): Array of sample weights.
-        weighted_sampler (Sampler): Sampler that applies sample weights.
         device (str): The device (e.g., 'cpu', 'cuda') used for training.
         max_epochs (int): Maximum number of epochs for training.
         patience (int): Patience for early stopping.
@@ -52,18 +50,6 @@ class Optimize:
         logger (Logger): Logger for logging information.
         plotting (PlotGenIE): Plotting utility for generating plots.
         cv_results (DataFrame): DataFrame to store cross-validation results.
-
-    Args:
-        train_loader (DataLoader): DataLoader for the training dataset.
-        val_loader (DataLoader): DataLoader for the validation dataset.
-        test_loader (DataLoader): DataLoader for the testing dataset.
-        sample_weights (numpy.ndarray): Array of sample weights.
-        weighted_sampler (Sampler): Sampler that applies sample weights.
-        device (str): The device (e.g., 'cpu', 'cuda') used for training.
-        args (Namespace): Arguments provided for model configurations.
-        show_progress_bar (bool, optional): Flag to show or hide the progress bar. Defaults to False.
-        n_startup_trials (int, optional): Number of initial trials. Defaults to 10.
-        dtype (torch.dtype): PyTorch data type to use. Defaults to torch.float32.
     """
 
     def __init__(
@@ -72,8 +58,6 @@ class Optimize:
         val_loader,
         test_loader,
         sample_weights,
-        densities,
-        weighted_sampler,
         device,
         args,
         ds,
@@ -81,12 +65,26 @@ class Optimize:
         n_startup_trials=10,
         dtype=torch.float32,
     ):
+        """Initialize the Optimize class.
+
+        This class is designed to handle the optimization of machine learning models. It manages data loaders for different datasets, sample weights, and various parameters for model training and optimization. Additionally, it integrates functionalities for plotting and logging the progress and results of the optimization process.
+
+        Args:
+            train_loader (DataLoader): DataLoader for the training dataset.
+            val_loader (DataLoader): DataLoader for the validation dataset.
+            test_loader (DataLoader): DataLoader for the testing dataset.
+            sample_weights (numpy.ndarray): Array of sample weights.
+            device (str): The device (e.g., 'cpu', 'cuda') used for training.
+            args (Namespace): Arguments provided for model configurations.
+            show_progress_bar (bool, optional): Flag to show or hide the progress bar. Defaults to False.
+            n_startup_trials (int, optional): Number of initial trials. Defaults to 10.
+            dtype (torch.dtype): PyTorch data type to use. Defaults to torch.float32.
+        """
+
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.test_loader = test_loader
         self.sample_weights = sample_weights
-        self.densities = densities
-        self.weighted_sampler = weighted_sampler
         self.device = device
         self.args = args
         self.ds = ds
@@ -121,8 +119,9 @@ class Optimize:
         )
 
     def map_sampler_indices(self, full_sampler_indices, subset_indices):
-        """
-        Map subset indices to the corresponding indices in the full dataset sampler.
+        """Map subset indices to the corresponding indices in the full dataset sampler.
+
+        This method maps the indices used in the full dataset sampler to the indices of the desired subset. It is used to ensure that the subset sampler uses the correct indices from the full dataset.
 
         Args:
             full_sampler_indices (list): The indices used in the full dataset sampler.
@@ -146,11 +145,19 @@ class Optimize:
     def objective_function(self, trial, ModelClass, train_func):
         """Optuna hyperparameter tuning.
 
+        This method defines the objective function for Optuna hyperparameter tuning. It trains the model using the provided hyperparameters and returns the loss value.
+
         Args:
             trial (optuna.Trial): Current Optuna trial.
+            ModelClass (MLPRegressor or XGBoost): Model class to use.
+            train_func (callable): Function to train model.
 
         Returns:
             float: Loss value.
+
+        Raises:
+            optuna.exceptions.TrialPruned: If the trial is pruned.
+            ValueError: If an invalid criterion is provided.
         """
         if ModelClass == "GB":
             self.model_type = "GB"
@@ -193,6 +200,16 @@ class Optimize:
         return loss
 
     def extract_features_labels(self, train_subset):
+        """Extract features and labels from a subset of the training dataset.
+
+        This method extracts features and labels from a subset of the training dataset.
+
+        Args:
+            train_subset (list): List of training data samples.
+
+        Returns:
+            tuple: Numpy arrays of features and labels.
+        """
         subset_features = []
         subset_labels = []
 
@@ -206,9 +223,32 @@ class Optimize:
         return subset_features, subset_labels
 
     def run_rf_training(self, trial, param_dict, train_func):
+        """Run random forest training.
+
+        Args:
+            trial (optuna.Trial): Current Optuna trial.
+            param_dict (dict): Dictionary of hyperparameters.
+            train_func (callable): Function to train model.
+
+        Returns:
+            tuple: Trained model and validation loss.
+        """
         return train_func(param_dict, objective_mode=True)
 
     def run_training(self, trial, ModelClass, train_func, param_dict):
+        """Run deep learning model training.
+
+        This method trains a deep learning model using the provided hyperparameters.
+
+        Args:
+            trial (optuna.Trial): Current Optuna trial.
+            ModelClass (MLPRegressor or XGBoost): Model class to use.
+            train_func (callable): Function to train model.
+            param_dict (dict): Dictionary of hyperparameters.
+
+        Returns:
+            ModelClass: Trained model.
+        """
         model = ModelClass(
             input_size=self.dataset.n_features,
             width=param_dict["width"],
@@ -228,7 +268,7 @@ class Optimize:
         early_stop, lr_scheduler = callback_init(optimizer, self.args, trial=trial)
 
         # Train model
-        trained_model = train_func(
+        trained_model, _ = train_func(
             self.train_loader,
             self.val_loader,
             model,
@@ -241,42 +281,15 @@ class Optimize:
 
         return trained_model
 
-    def reload_subsets(
-        self,
-        use_weighted,
-        kwargs,
-        val_subset,
-        subset_features,
-        subset_labels,
-        weighted_sampler,
-        subset_features_val=None,
-        subset_labels_val=None,
-    ):
-        train_subset_dataset = CustomDataset(
-            subset_features, subset_labels, weighted_sampler.weights
-        )
-
-        if self.model_type == "GB":
-            val_subset_dataset = CustomDataset(subset_features_val, subset_labels_val)
-
-        if use_weighted in ["sampler", "both"]:
-            kwargs["sampler"] = weighted_sampler
-        else:
-            kwargs["shuffle"] = True
-        train_loader = DataLoader(train_subset_dataset, **kwargs)
-
-        if self.model_type == "GB":
-            val_loader = DataLoader(
-                val_subset_dataset, batch_size=kwargs["batch_size"], shuffle=False
-            )
-        else:
-            val_loader = DataLoader(
-                val_subset, batch_size=kwargs["batch_size"], shuffle=False
-            )
-
-        return train_loader, val_loader
-
     def set_gb_param_grid(self, trial):
+        """Function to set the parameter grid for XGBoost.
+
+        Args:
+            trial (optuna.Trial): Current Optuna trial.
+
+        Returns:
+            dict: Dictionary of hyperparameters.
+        """
         learning_rate = trial.suggest_float("learning_rate", 1e-3, 0.5, log=True)
         subsample = trial.suggest_float("subsample", 0.5, 1.0, step=0.05)
         max_depth = trial.suggest_int("max_depth", 1, 6)
@@ -315,6 +328,14 @@ class Optimize:
         }
 
     def set_param_grid(self, trial):
+        """Function to set the parameter grid for deep learning models.
+
+        Args:
+            trial (optuna.Trial): Current Optuna trial.
+
+        Returns:
+            dict: Dictionary of hyperparameters.
+        """
         lr = trial.suggest_float("lr", 1e-4, 1e-1, log=True)
         l2_weight = trial.suggest_float("l2_weight", 1e-5, 1e-1, log=True)
         width = trial.suggest_int(
@@ -334,13 +355,26 @@ class Optimize:
         }
 
     def evaluate_model(self, test_loader, model, criterion):
+        """Evaluate the model using the test dataset.
+
+        This method evaluates the model using the test dataset and returns the loss value.
+
+        Args:
+            test_loader (DataLoader): DataLoader for the test dataset.
+            model (MLPRegressor or XGBoost): Trained model.
+            criterion (callable): Loss function.
+
+        Returns:
+            float: Loss value.
+        """
         if self.model_type == "DL":
             model.eval()
             total_loss = 0.0
-            total_haversine = 0.0
             with torch.no_grad():
                 for batch in test_loader:
-                    if len(batch) == 3:
+                    if len(batch) == 4:
+                        inputs, labels, sample_weights, _ = batch
+                    elif len(batch) == 3:
                         inputs, labels, sample_weights = batch
                     else:
                         inputs, labels = batch
@@ -357,17 +391,9 @@ class Optimize:
                     outputs = model(inputs)
                     loss = criterion(outputs, labels, sample_weights)
 
-                    y_true = self.ds.norm.inverse_transform(labels.cpu().numpy())
-                    y_pred = self.ds.norm.inverse_transform(outputs.cpu().numpy())
-
-                    haverror = np.mean(
-                        self.plotting.processor.haversine_distance(y_true, y_pred)
-                    )
-
                     total_loss += loss.item()
-                    total_haversine += haverror
 
-            return total_haversine / len(test_loader)
+            return total_loss / len(test_loader)
 
         else:
             X_true = test_loader.dataset.features.numpy()
@@ -380,8 +406,9 @@ class Optimize:
             return total_haversine
 
     def perform_optuna_optimization(self, ModelClass, train_func):
-        """
-        Perform parameter optimization using Optuna.
+        """Perform parameter optimization using Optuna.
+
+        This method performs parameter optimization using Optuna. It trains the model using the provided hyperparameters and returns the best trial and the Optuna study object.
 
         Args:
             ModelClass (MLPRegressor or XGBoost): Model class to use.
@@ -460,15 +487,13 @@ class Optimize:
         return study.best_trial, study
 
     def process_optuna_results(self, study, best_trial):
-        """
-        Process and save the results of the Optuna optimization study.
+        """Process and save the results of the Optuna optimization study.
+
+        This method processes the results of the Optuna optimization study and saves the best parameters to a file. It also generates and saves plots and output files.
 
         Args:
             study (optuna.Study): The Optuna study object containing the results of the hyperparameter optimization.
             best_trial (optuna.Trial): The best trial from the Optuna study.
-
-        Returns:
-            None
         """
         # Extract and print the best parameters
         best_params = best_trial.params
@@ -495,7 +520,13 @@ class Optimize:
         enable_default_handler()
 
     def write_optuna_study_details(self, study):
-        """Write Optuna study to file."""
+        """Write Optuna study to file.
+
+        This method writes the results of the Optuna study to files for further analysis.
+
+        Args:
+            study (optuna.Study): The Optuna study object containing the results of the hyperparameter optimization.
+        """
 
         if self.verbose >= 2 or self.args.debug:
             self.logger.info("Writing parameter optimizations to file...")
