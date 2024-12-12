@@ -20,3 +20,4 @@ statsmodels
 torch
 xgboost
 pyyaml
+pykrige
