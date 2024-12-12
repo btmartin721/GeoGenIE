@@ -1,72 +1,72 @@
 #!/bin/zsh
 
 # Define arrays for each parameter
-embedding_types=("none")
-use_kmeans=("true")
-use_kde=("false")
+kmeans="false"
+kde="true"
+crit="rmse"
 oversample_methods=("none" "kmeans")
-criterion=("rmse")
-train_splits=(0.7)
-lr_scheduler_factors=(0.5)
-factors=(1.0)
 use_weighteds=("loss" "none")
-n_bins=(5)
 detect_outliers=("true" "false")
-min_nn_dists=(1000)
-scale_factors=(100)
-batch_size=(64)
-w_power=(1.0)
-min_mac=(2)
+
+train_split=0.75
+val_split=0.25
+lr_factor=0.5
+factor=1.0
+bin=6
+batchsize=64
+vcf="/Users/btm002/Documents/research/GeoGenIE/data/wtd_N1149_N436.vcf.gz"
+sampledata="/Users/btm002/Documents/research/GeoGenIE/data/wtd_coords_N1149.csv"
+n_jobs=8
+counties="'Benton,Washington,Scott,Crawford,Washington,Sebastian,Yell,Logan,Franklin,Madison,Carroll,Boone,Newton,Johnson,Pope,Van Buren,Searcy,Marion,Baxter,Stone,Independence,Jackson,Randolph,Bradley,Union,Ashley'"
+
 
 # Directory to store outputs
-output_dir="/Users/btm002/Documents/wtd/GeoGenIE/analyses/wtd_gtseq_N1415_L436_sweep_18Jul24"
+output_dir="/Users/btm002/Documents/research/GeoGenIE/analyses/wtd_gtseq_N1149_L436_sweep_28Nov2024"
 mkdir -p $output_dir
 
 # Function to generate commands
 generate_commands() {
-    for embedding in $embedding_types; do
-        for kmeans in $use_kmeans; do
-            for kde in $use_kde; do
-                for method in $oversample_methods; do
-                    for train_split in $train_splits; do
-                        val_split=$(echo "scale=2; (1 - $train_split) / 2" | bc)
-                        for lr_factor in $lr_scheduler_factors; do
-                            for factor in $factors; do
-                                for weighted in $use_weighteds; do
-                                    for bin in $n_bins; do
-                                        for mac in $min_mac; do
-                                            for batchsize in $batch_size; do
-                                                for crit in $criterion; do
-                                                    for wp in $w_power; do
-                                                        for outlier in $detect_outliers; do
-                                                            for nn_dist in $min_nn_dists; do
-                                                                for scale_factor in $scale_factors; do
-                                                                    command="python scripts/run_geogenie.py --embedding_type $embedding --oversample_method $method --train_split $train_split --val_split $val_split --lr_scheduler_factor $lr_factor --factor $factor --use_weighted $weighted --n_bins $bin --min_nn_dist $nn_dist --scale_factor $scale_factor --do_bootstrap --nboots 100 --output_dir $output_dir --prefix emb_${embedding}_meth_${method}_tr_${train_split}_vr_${val_split}_lrf_${lr_factor}_fac_${factor}_wt_${weighted}_bins_${bin}_ndist_${nn_dist}_scl_${scale_factor}_km_${kmeans}_kd_${kde}_out_${outlier}_bs_${batchsize}_wp_${wp}_crit_${crit}_mac_${mac} --batch_size $batchsize --criterion $crit --w_power $wp --vcf /Users/btm002/Documents/wtd/GeoGenIE/data/final_analysis/with_outliers/wtd_gtseq_genotypes1415inds436snps.vcf.gz --sample_data /Users/btm002/Documents/wtd/GeoGenIE/data/wtd_coords_N1426.txt --n_jobs 8 --known_sample_data /Users/btm002/Documents/wtd/GeoGenIE/data/final_analysis/wtd_gtseq_coords1415inds.csv --basemap_fips 05 --bbox_buffer 0.1 --highlight_basemap_counties 'Benton,Washington,Scott,Crawford,Washington,Sebastian,Yell,Logan,Franklin,Madison,Carroll,Boone,Newton,Johnson,Pope,Van Buren,Searcy,Marion,Baxter,Stone,Independence,Jackson,Randolph,Bradley,Union,Ashley'"
 
-                                                                    [[ $kmeans == "true" ]] && command+=" --use_kmeans"
-                                                                    [[ $kde == "true" ]] && command+=" --use_kde"
-                                                                    [[ $outlier == "true" ]] && command+=" --detect_outliers"
-                                                                    echo $command
-                                                                    eval $command # Execute the generated command
-                                                                done
-                                                            done
-                                                        done
-                                                    done
-                                                done
-                                            done
-                                        done
-                                    done
-                                done
-                            done
-                        done
-                    done
-                done
-            done
-        done
-    done
+    # Initialize counter
+    counter=1
+
+    # Get the number of combinations
+    n_combos=8
+
+    for method in $oversample_methods; do
+    for weighted in $use_weighteds; do
+    for outlier in $detect_outliers; do
+        if [[ $counter -le 2 ]]; then
+            echo "Skipping command $counter / ${n_combos}..."
+            counter=$((counter+1))
+            continue
+        fi
+
+        prefix=oversample_${method}_weighted_${weighted}_outlier_${outlier}
+        command="geogenie --oversample_method $method --train_split $train_split --val_split $val_split --lr_scheduler_factor $lr_factor --factor $factor --use_weighted $weighted --n_bins $bin --do_gridsearch --n_iter 100 --do_bootstrap --nboots 100 --output_dir $output_dir --prefix $prefix --batch_size $batchsize --criterion $crit --vcf $vcf --sample_data $sampledata --known_sample_data $sampledata --n_jobs $n_jobs --basemap_fips 05 --bbox_buffer 0.1 --load_best_params /Users/btm002/Documents/research/GeoGenIE/analyses/wtd_gg_27Nov2024_best/optimize/wtd_gg_27Nov2024_best_N1149_L436_best_params.json --highlight_basemap_counties $counties --verbose 0 --seed 42 --normalize_sample_weights --filetype pdf --remove_splines --fontsize 24 --max_neighbors 3 --maxk 50 --max_clusters 20"
+
+        [[ $kmeans == "true" ]] && command+=" --use_kmeans"
+        [[ $kde == "true" ]] && command+=" --use_kde"
+        [[ $outlier == "true" ]] && command+=" --detect_outliers"
+
+        echo "---------------------------------------------"
+        echo "Running command: $prefix"
+        echo "Executing command $counter / ${n_combos}..."
+        echo "% Complete: $((counter * 100 / n_combos))%"
+        echo "---------------------------------------------"
+
+        # Execute the generated command
+        eval $command 
+
+        # Increment counter
+        counter=$((counter+1))
+
+    done;
+    done;
+    done;
 }
 
 # Run commands sequentially
 generate_commands
 
-echo "All training combinations have been executed."
+echo "All training combinations have been executed. Parameter sweep complete!"
