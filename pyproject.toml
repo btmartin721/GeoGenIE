@@ -1,0 +1,95 @@
+[build-system]
+requires = ["setuptools", "wheel", "numpy"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "GeoGenIE"
+version = "1.0.1"
+description = "Deep learning software package to predict geographic coordinates from genome-wide SNP data."
+readme = "README.md"
+authors = [{name = "Bradley T. Martin, Ph.D.", email = "evobio721@gmail.com"}, {name = "Tyler K. Chafin, Ph.D.", email = "tkchafin@gmail.com"}]
+license = {text = "GPL-3.0-only"}
+
+keywords = ["Bioinformatics", "AI", "Deep Learning", "GIS", "Population Genetics", "Landscape Genetics", "Coordinates"]
+
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Natural Language :: English",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Scientific/Engineering :: GIS",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+]
+requires-python = ">=3.11,<3.13"
+
+dependencies = [
+    "geopandas",
+    "geopy",
+    "imblearn",
+    "jenkspy",
+    "kaleido",
+    "kneed",
+    "matplotlib",
+    "numba",
+    "numpy",
+    "optuna",
+    "pandas",
+    "plotly",
+    "pykrige",
+    "pynndescent",
+    "pysam",
+    "pyyaml"
+    "requests",
+    "scikit-learn<=1.3.2",
+    "scipy",
+    "seaborn",
+    "statsmodels",
+    "torch",
+    "xgboost",
+]
+
+[project.scripts]
+geogenie = "geogenie.cli:main"
+
+[tool.setuptools.packages.find]
+exclude = [
+    "tests",
+    "*.tests",
+    "*.tests.*",
+    "tests.*",
+    "simulate_data.*",
+    "test_preprocessing.*",
+    "*.ipynb",
+    "test_outliers.*",
+]
+where = ["."]
+include = ["geogenie*"]
+
+[project.optional-dependencies]
+dev = [
+    "pdf2image",
+    "PyPDF2",
+    "pytest",
+    "snpio",
+    "sphinx",
+    "sphinx-rtd-theme",
+    "sphinxcontrib-napoleon",
+    "sphinx-autodoc-typehints",
+    "twine",
+    "wheel",
+]
+
+docs = [
+    "sphinx",
+    "sphinx-rtd-theme",
+    "sphinxcontrib-napoleon",
+    "sphinx-autodoc-typehints",
+]
+
+[project.urls]
+"Source Code" = "https://github.com/btmartin721/GeoGenIE"
+"Bug Tracker" = "https://github.com/btmartin721/GenGenIE/issues"
