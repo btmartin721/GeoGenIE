@@ -15,7 +15,7 @@ import torch.nn as nn
 import torch.optim as optim
 import xgboost as xgb
 from scipy.stats import pearsonr, spearmanr
-from sklearn.metrics import mean_squared_error
+from sklearn.metrics import root_mean_squared_error
 
 from geogenie.models.models import MLPRegressor
 from geogenie.optimize.bootstrap import Bootstrap
@@ -36,8 +36,7 @@ execution_times = []
 
 
 def timer(func):
-    """
-    Decorator that measures and stores the execution time of a function.
+    """Decorator that measures and stores the execution time of a function.
 
     Args:
         func (Callable): The function to be wrapped by the timer.
@@ -59,8 +58,7 @@ def timer(func):
 
 
 def save_execution_times(filename):
-    """
-    Appends the execution times to a CSV file. If the file doesn't exist, it creates one.
+    """Appends the execution times to a CSV file. If the file doesn't exist, it creates one.
 
     Args:
         filename (str): The name of the file where data will be saved.
@@ -76,30 +74,32 @@ def save_execution_times(filename):
 
 
 class GeoGenIE:
-    """
-    A class designed for predicting geographic localities from genomic SNP (Single Nucleotide Polymorphism) data using neural network and gradient boosting decision tree models.
+    """A class designed for predicting geographic localities from genomic SNP (Single Nucleotide Polymorphism) data using neural network and gradient boosting decision tree models.
 
     GeoGenIE facilitates the integration of genomic data analysis with geographic predictions, aiding in studies like population genetic and molecular ecology.
 
     Attributes:
-        args (argparse.Namespace): Command line arguments used for configuring various aspects of the class.
-        genotypes (np.array): Array to store genomic SNP data.
-        samples (list): List to store sample identifiers.
-        sample_data (pandas.DataFrame): DataFrame to store additional data related to samples.
-        locs (np.array): Array to store geographic location data associated with the samples.
-        logger (Logger): Logger for logging information and errors.
-        device (str): Computational device to be used ('cpu' or 'cuda').
-        plotting (PlotGenIE): Instance of the PlotGenIE class for handling data visualization.
-        dtype (torch.dtype): torch dtype to use with MLPRegressor.
+        args (argparse.Namespace): Command line arguments containing configurations for data processing, model training, and visualization.
+        genotypes (np.ndarray): Genomic SNP data.
+        samples (np.ndarray): Sample IDs.
+        sample_data (dict): Dictionary containing sample data.
+        locs (np.ndarray): Geographic coordinates of the samples.
+        dtype (torch.dtype): Data type for PyTorch tensors.
+        logger (logging.Logger): Logger object for logging messages.
+        device (str): Device to run the computations on (CPU or GPU).
+        plotting (PlotGenIE): PlotGenIE object for generating plots.
+        boot (Bootstrap): Bootstrap object for bootstrapping predictions.
 
     Notes:
         - This class is particularly useful in the fields of population genomics, evolutionary biology, and molecular ecology, where geographic predictions based on genomic data are crucial.
         - It requires genomic SNP data as input and utilizes neural network models for making geographic predictions.
+        - The class supports data preprocessing, model training, and visualization of the results.
+        - It also provides support for bootstrapping predictions and optimizing hyperparameters using Optuna.
+        - The class is designed to handle large-scale genomic datasets and perform geographic predictions efficiently.
     """
 
     def __init__(self, args):
-        """
-        Initializes the GeoGenIE class with the provided command line arguments and sets up the necessary environment for geographic predictions from genomic data.
+        """Initializes the GeoGenIE class with the provided command line arguments and sets up the necessary environment for geographic predictions from genomic data.
 
         Args:
             args (argparse.Namespace): Command line arguments containing configurations for data processing, model training, and visualization.
@@ -169,9 +169,7 @@ class GeoGenIE:
         self.boot = None
 
     def total_execution_time_decorator(self, func):
-        """
-        Decorator to time the execution of a function and print the duration in Hours:Minutes:Seconds format.
-        Logs the execution time using the class's logger.
+        """Decorator to time the execution of a function and print the duration in Hours:Minutes:Seconds format. Logs the execution time using the class's logger.
 
         Args:
             func (callable): The function to be timed.
@@ -349,7 +347,7 @@ class GeoGenIE:
         else:
             clf.fit(features, labels, sample_weight=sample_weights)
         y_pred = clf.predict(X_val)
-        rmse = mean_squared_error(y_val, y_pred, squared=False)
+        rmse = root_mean_squared_error(y_val, y_pred)
 
         if not objective_mode:
             self.ds.train_loader.dataset.features = features
@@ -364,8 +362,7 @@ class GeoGenIE:
     def visualize_oversampling(
         self, features, labels, sample_weights, df, bins_resampled
     ):
-        """
-        Visualizes the effect of SMOTE (Synthetic Minority Over-sampling Technique) on the dataset.
+        """Visualizes the effect of SMOTE (Synthetic Minority Over-sampling Technique) on the dataset.
 
         This method creates a visual comparison of the original and the oversampled datasets.
 
@@ -412,8 +409,7 @@ class GeoGenIE:
         early_stopping=None,
         lr_scheduler=None,
     ):
-        """
-        Trains a given model using specified parameters and data loaders.
+        """Trains a given model using specified parameters and data loaders.
 
         This method supports early stopping and learning rate scheduling, and evaluates the model's performance on the validation dataset.
 
@@ -448,8 +444,8 @@ class GeoGenIE:
             )
 
         # Calculate and log initial loss values
-        initial_train_loss = self.test_step(train_loader, model)
-        initial_val_loss = self.test_step(val_loader, model)
+        initial_train_loss, _ = self.test_step(train_loader, model)
+        initial_val_loss, _ = self.test_step(val_loader, model)
 
         train_losses, val_losses = [initial_train_loss], [initial_val_loss]
 
@@ -492,7 +488,7 @@ class GeoGenIE:
             train_losses.append(avg_train_loss)
 
             # Validation
-            avg_val_loss = self.test_step(val_loader, model)
+            avg_val_loss, sample_ids_val = self.test_step(val_loader, model)
             val_losses.append(avg_val_loss)
 
             # Early Stopping and LR Scheduler
@@ -509,7 +505,7 @@ class GeoGenIE:
                 raise optuna.exceptions.TrialPruned()
 
         if objective_mode or do_bootstrap:
-            return model
+            return model, sample_ids_val
 
         if self.args.oversample_method.lower() != "none":
             features = torch.tensor(features, dtype=self.dtype)
@@ -527,8 +523,7 @@ class GeoGenIE:
         return model, train_losses, val_losses, centroids
 
     def train_step(self, train_loader, model, optimizer, grad_clip, objective_mode):
-        """
-        Performs a single training step.
+        """Performs a single training step.
 
         Args:
             train_loader (torch.utils.data.DataLoader): DataLoader for training data.
@@ -545,7 +540,7 @@ class GeoGenIE:
         batch_losses = []
 
         for batch in train_loader:
-            data, targets, sample_weight = self._batch_init(model, batch)
+            data, targets, sample_weight, _ = self._batch_init(model, batch)
             optimizer.zero_grad()
 
             try:
@@ -570,8 +565,7 @@ class GeoGenIE:
         return avg_loss
 
     def test_step(self, val_loader, model):
-        """
-        Performs a single validation step.
+        """Performs a single validation step.
 
         Args:
             val_loader (torch.utils.data.DataLoader): DataLoader for validation data.
@@ -583,21 +577,22 @@ class GeoGenIE:
         model.eval()
         total_val_loss = 0
         batch_losses = []
+        sample_ids = []
         with torch.no_grad():
             for batch in val_loader:
-                data, targets, _ = self._batch_init(model, batch)
+                data, targets, _, sids = self._batch_init(model, batch)
                 outputs = model(data)
                 val_loss = self.criterion(outputs, targets)
                 batch_loss = val_loss.item()
                 batch_losses.append(batch_loss)
                 total_val_loss += batch_loss
+                sample_ids.append(sids)
 
         avg_val_loss = total_val_loss / len(val_loader)
-        return avg_val_loss
+        return avg_val_loss, sample_ids
 
     def _batch_init(self, model, batch):
-        """
-        Initializes the batch for training or validation.
+        """Initializes the batch for training or validation.
 
         Args:
             model (torch.nn.Module): The PyTorch model to train or validate.
@@ -606,7 +601,7 @@ class GeoGenIE:
         Returns:
             tuple: A tuple containing data, targets, and sample weights as tensors moved to the appropriate device.
         """
-        data, targets, sample_weight = batch
+        data, targets, sample_weight, sample_ids = batch
 
         if not isinstance(data, torch.Tensor):
             data = torch.tensor(data, dtype=self.dtype)
@@ -618,11 +613,11 @@ class GeoGenIE:
             data.to(model.device),
             targets.to(model.device),
             sample_weight.to(model.device),
+            sample_ids,
         )
 
     def compute_rolling_statistics(self, times, window_size):
-        """
-        Computes rolling average and standard deviation over a specified window size.
+        """Computes rolling average and standard deviation over a specified window size.
 
         Args:
             times (list or array-like): A sequence of numerical values (e.g., times or scores).
@@ -659,8 +654,7 @@ class GeoGenIE:
         dataset=None,
         is_val=True,
     ):
-        """
-        Predict locations using the trained model and evaluate predictions.
+        """Predict locations using the trained model and evaluate predictions.
 
         Args:
             model (torch.nn.Module): The trained model to use for predictions.
@@ -683,17 +677,19 @@ class GeoGenIE:
         model.eval()
         predictions = []
         ground_truth = []
+        samples = []
 
         with torch.no_grad():
             if is_val:
-                for data, target, _ in data_loader:
+                for data, target, _, sample_ids in data_loader:
                     data = torch.tensor(data, dtype=self.dtype).to(self.device)
                     target = torch.tensor(target, dtype=self.dtype).to(self.device)
                     output = model(data)
                     predictions.append(output.cpu().numpy())
                     ground_truth.append(target.cpu().numpy())
+                    samples.append(sample_ids)
             else:
-                for data in data_loader:
+                for data, sample_ids in data_loader:
                     data = torch.tensor(data, dtype=self.dtype).to(self.device)
                     output = model(data)
                     predictions.append(output.cpu().numpy())
@@ -714,6 +710,7 @@ class GeoGenIE:
         else:
             # Rescale predictions and ground truth to original scale
             ground_truth = np.concatenate(ground_truth, axis=0)
+            samples = np.concatenate(samples, axis=0)
 
             predictions, ground_truth, metrics = self.calculate_prediction_metrics(
                 outfile,
@@ -731,11 +728,11 @@ class GeoGenIE:
             )
 
         if return_truths and is_val:
-            return predictions, metrics, ground_truth
+            return predictions, metrics, ground_truth, samples
         elif not return_truths and is_val:
-            return predictions, metrics
+            return predictions, metrics, samples
         else:
-            return predictions
+            return predictions, samples
 
     def calculate_prediction_metrics(
         self,
@@ -747,8 +744,7 @@ class GeoGenIE:
         is_train=False,
         dataset=None,
     ):
-        """
-        Calculate metrics for the predictions and ground truth.
+        """Calculate metrics for the predictions and ground truth.
 
         Args:
             outfile (str): The path to the file where the metrics will be saved.
@@ -1175,14 +1171,14 @@ class GeoGenIE:
         optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=l2)
         return optimizer
 
-    def write_pred_locations(self, pred_locations, pred_indices, filename):
+    def write_pred_locations(self, pred_locations, filename, sample_ids):
         """
         Writes predicted locations to a file.
 
         Args:
-            pred_locations (np.ndarray): Array of predicted locations.
-            pred_indices (np.ndarray): Array of prediction indices.
+            pred_locations (np.ndarray): Array of predicted locations. Expects shape (n_samples, 2).
             filename (str): The path to the file where predictions will be saved.
+            sample_ids (np.ndarray): Array of sample IDs.
 
         Returns:
             pandas.DataFrame: DataFrame containing the predicted locations.
@@ -1190,9 +1186,23 @@ class GeoGenIE:
         if self.args.verbose >= 1:
             self.logger.info("Writing predicted coordinates to dataframe.")
 
-        pred_locations_df = pd.DataFrame(pred_locations, columns=["x", "y"])
-        pred_locations_df["sampleID"] = self.ds.all_samples[pred_indices]
-        pred_locations_df = pred_locations_df[["sampleID", "x", "y"]]
+        if not isinstance(pred_locations, (np.ndarray, pd.DataFrame)):
+            msg = f"Expected NumPy array or pandas.DataFrame for predicted locations, but got: {type(pred_locations)}"
+            self.logger.error(msg)
+            raise TypeError(msg)
+
+        if pred_locations.shape[1] not in {2, 3}:
+            msg = f"Expected 2 or 3 columns for predicted locations, but got: {pred_locations.shape[1]}"
+            self.logger.error(msg)
+            raise ValueError(msg)
+
+        if isinstance(sample_ids, np.ndarray):
+            pred_locations_df = pd.DataFrame(pred_locations, columns=["x", "y"])
+            pred_locations_df["sampleID"] = sample_ids
+            pred_locations_df = pred_locations_df[["sampleID", "x", "y"]]
+        else:
+            pred_locations_df = pred_locations
+
         pred_locations_df.to_csv(filename, header=True, index=False)
         return pred_locations_df
 
@@ -1248,8 +1258,6 @@ class GeoGenIE:
             self.ds.val_loader,
             self.ds.test_loader,
             self.ds.samples_weight,
-            self.ds.densities,
-            self.ds.weighted_sampler,
             self.device,
             self.args,
             self.ds,
@@ -1295,7 +1303,6 @@ class GeoGenIE:
             self.args,
             self.ds,
             best_params,
-            self.ds.weighted_sampler,
             self.device,
         )
 
@@ -1371,7 +1378,7 @@ class GeoGenIE:
         fn = f"{prefix}_{middir}_error_distributions.{self.args.filetype}"
         val_errordist_outfile = outdir / "plots" / fn
 
-        val_preds, val_metrics, y_true = self.predict_locations(
+        val_preds, val_metrics, y_true, val_samples = self.predict_locations(
             model,
             loader,
             val_errordist_outfile,
@@ -1380,7 +1387,7 @@ class GeoGenIE:
             dataset=dataset,
         )
 
-        train_preds, train_metrics, y_train = self.predict_locations(
+        train_preds, train_metrics, y_train, train_samples = self.predict_locations(
             model,
             self.train_loader_interp,
             None,  # Don't make errordist plot for train data.
@@ -1405,9 +1412,7 @@ class GeoGenIE:
         fn3 = f"{prefix}_train_metrics.json"
         train_metric_outfile = outdir / "training" / fn3
 
-        _ = self.write_pred_locations(
-            val_preds, self.ds.indices[f"{dataset}_indices"], val_preds_outfile
-        )
+        _ = self.write_pred_locations(val_preds, val_preds_outfile, val_samples)
 
         with open(val_metric_outfile, "w") as fout:
             json.dump({k: v for k, v in val_metrics.items()}, fout, indent=2)
@@ -1515,7 +1520,12 @@ class GeoGenIE:
             # Convert X_pred to a PyTorch tensor and move it to the correct
             # device (GPU or CPU)
             pred_tensor = torch.tensor(X_pred, dtype=dtype).to(device)
-            dataset = CustomDataset(pred_tensor, labels=None, sample_weights=None)
+            dataset = CustomDataset(
+                pred_tensor,
+                labels=None,
+                sample_weights=None,
+                sample_ids=self.ds.data["pred_samples"],
+            )
             data_loader = torch.utils.data.DataLoader(
                 dataset, batch_size=self.args.batch_size, shuffle=False
             )
@@ -1524,13 +1534,16 @@ class GeoGenIE:
             model.eval()
 
             predictions = []
+            sample_ids = []
             with torch.no_grad():
-                for data in data_loader:
+                for data, sids in data_loader:
                     data = data.to(device, dtype=dtype)
                     output = model(data)
                     predictions.append(output.cpu().numpy())
+                    sample_ids.append(sids)
 
             predictions = np.concatenate(predictions, axis=0)
+            sample_ids = np.concatenate(sample_ids, axis=0)
             pred_locations = self.ds.norm.inverse_transform(predictions)
 
         else:
@@ -1556,7 +1569,7 @@ class GeoGenIE:
             return pred_locations, pred_outfile
         else:
             real_preds = self.write_pred_locations(
-                pred_locations, self.ds.pred_indices, pred_outfile
+                pred_locations, pred_outfile, sample_ids
             )
             return real_preds
 
