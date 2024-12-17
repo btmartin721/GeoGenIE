@@ -1,0 +1,1192 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>geogenie.outliers.detect_outliers &mdash; GeoGenIE 1.0.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=292eb321"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            GeoGenIE
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorial.html">GeoGenIE Tutorial</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../geogenie.html">geogenie package</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">GeoGenIE</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">geogenie.outliers.detect_outliers</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for geogenie.outliers.detect_outliers</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">import</span> <span class="nn">time</span>
+<span class="kn">from</span> <span class="nn">os</span> <span class="kn">import</span> <span class="n">path</span>
+<span class="kn">from</span> <span class="nn">pathlib</span> <span class="kn">import</span> <span class="n">Path</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">pynndescent</span> <span class="kn">import</span> <span class="n">NNDescent</span>
+<span class="kn">from</span> <span class="nn">scipy.optimize</span> <span class="kn">import</span> <span class="n">minimize</span>
+<span class="kn">from</span> <span class="nn">scipy.spatial.distance</span> <span class="kn">import</span> <span class="n">cdist</span>
+<span class="kn">from</span> <span class="nn">scipy.stats</span> <span class="kn">import</span> <span class="n">gamma</span>
+
+<span class="kn">from</span> <span class="nn">geogenie.plotting.plotting</span> <span class="kn">import</span> <span class="n">PlotGenIE</span>
+<span class="kn">from</span> <span class="nn">geogenie.utils.scorers</span> <span class="kn">import</span> <span class="n">calculate_r2_knn</span><span class="p">,</span> <span class="n">haversine_distance</span>
+<span class="kn">from</span> <span class="nn">geogenie.utils.utils</span> <span class="kn">import</span> <span class="n">geo_coords_is_valid</span>
+
+
+<div class="viewcode-block" id="GeoGeneticOutlierDetector">
+<a class="viewcode-back" href="../../../geogenie.outliers.html#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector">[docs]</a>
+<span class="k">class</span> <span class="nc">GeoGeneticOutlierDetector</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A class to detect outliers based on genomic SNPs and geographic coordinates.</span>
+
+<span class="sd">    This class uses a K-nearest neighbors (KNN) approach to detect outliers based on the difference between predicted and actual data.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        args (argparse.Namespace): Command line arguments.</span>
+<span class="sd">        genetic_data (pd.DataFrame): The SNP data as a DataFrame.</span>
+<span class="sd">        geographic_data (np.array): geographic coordinates as 2D array.</span>
+<span class="sd">        output_dir (str): Output directory.</span>
+<span class="sd">        prefix (str): Prefix for output files.</span>
+<span class="sd">        n_jobs (int): Number of parallel jobs to run.</span>
+<span class="sd">        seed (int): Random seed to use.</span>
+<span class="sd">        url (str): url to download base map for plots.</span>
+<span class="sd">        buffer (float): Buffer to put around sampling area on base map when plotting.</span>
+<span class="sd">        show_plots (bool): Whether to show plots in-line.</span>
+<span class="sd">        debug (bool): If True, writes genetic_data and geographic_data to file.</span>
+<span class="sd">        verbose (int): Verbosity setting (0-2), least to most verbose.</span>
+<span class="sd">        logger (logging.Logger): Logger object.</span>
+<span class="sd">        plotting (PlotGenIE): Plotting object.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">args</span><span class="p">,</span>
+        <span class="n">genetic_data</span><span class="p">,</span>
+        <span class="n">geographic_data</span><span class="p">,</span>
+        <span class="n">output_dir</span><span class="p">,</span>
+        <span class="n">prefix</span><span class="p">,</span>
+        <span class="n">n_jobs</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span>
+        <span class="n">seed</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">url</span><span class="o">=</span><span class="s2">&quot;https://www2.census.gov/geo/tiger/GENZ2018/shp/cb_2018_us_state_500k.zip&quot;</span><span class="p">,</span>
+        <span class="n">buffer</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span>
+        <span class="n">show_plots</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">debug</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">verbose</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Initialize GeoGeneticOutlierDetector.</span>
+
+<span class="sd">        This class uses a K-nearest neighbors (KNN) approach to detect outliers based on the difference between predicted and actual data.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            genetic_data (pd.DataFrame): The SNP data as a DataFrame.</span>
+<span class="sd">            geographic_data (np.array): geographic coordinates as 2D array.</span>
+<span class="sd">            output_dir (str): Output directory.</span>
+<span class="sd">            prefix (str): Prefix for output files.</span>
+<span class="sd">            seed (int): Random seed to use. If None, then the seed is random.</span>
+<span class="sd">            url (str): url to download base map for plots.</span>
+<span class="sd">            buffer (float): Buffer to put around sampling area on base map when plotting.</span>
+<span class="sd">            show_plots (bool): Whether to show plots in-line.</span>
+<span class="sd">            debug (bool): If True, writes genetic_data and geographic_data to file.</span>
+<span class="sd">            verbose (int): Verbosity setting (0-2), least to most verbose.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">debug</span><span class="p">:</span>
+            <span class="n">data_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">output_dir</span><span class="p">,</span> <span class="s2">&quot;data&quot;</span><span class="p">)</span>
+            <span class="n">fn</span> <span class="o">=</span> <span class="n">data_dir</span> <span class="o">/</span> <span class="s2">&quot;debug_eigen.csv&quot;</span>
+            <span class="n">genetic_data</span><span class="o">.</span><span class="n">to_csv</span><span class="p">(</span><span class="n">fn</span><span class="p">,</span> <span class="n">header</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+            <span class="n">tmp</span> <span class="o">=</span> <span class="n">geographic_data</span><span class="o">.</span><span class="n">reset_index</span><span class="p">()</span>
+            <span class="n">tmp</span><span class="o">.</span><span class="n">columns</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;sampleID&quot;</span><span class="p">,</span> <span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="s2">&quot;y&quot;</span><span class="p">]</span>
+
+            <span class="n">fn2</span> <span class="o">=</span> <span class="n">data_dir</span> <span class="o">/</span> <span class="s2">&quot;train_test_coords.csv&quot;</span>
+            <span class="n">tmp</span><span class="o">.</span><span class="n">to_csv</span><span class="p">(</span><span class="n">fn2</span><span class="p">,</span> <span class="n">header</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">genetic_data</span> <span class="o">=</span> <span class="n">genetic_data</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">geographic_data</span> <span class="o">=</span> <span class="n">geographic_data</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span>
+
+        <span class="n">geo_coords_is_valid</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">geographic_data</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">args</span> <span class="o">=</span> <span class="n">args</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">output_dir</span> <span class="o">=</span> <span class="n">output_dir</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">prefix</span> <span class="o">=</span> <span class="n">prefix</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_jobs</span> <span class="o">=</span> <span class="n">n_jobs</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">seed</span> <span class="o">=</span> <span class="n">seed</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">url</span> <span class="o">=</span> <span class="n">url</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">buffer</span> <span class="o">=</span> <span class="n">buffer</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">show_plots</span> <span class="o">=</span> <span class="n">show_plots</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">debug</span> <span class="o">=</span> <span class="n">debug</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span> <span class="o">=</span> <span class="n">verbose</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">plotting</span> <span class="o">=</span> <span class="n">PlotGenIE</span><span class="p">(</span>
+            <span class="s2">&quot;cpu&quot;</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">output_dir</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">prefix</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">basemap_fips</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">highlight_basemap_counties</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">shapefile</span><span class="p">,</span>
+            <span class="n">show_plots</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+            <span class="n">fontsize</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">fontsize</span><span class="p">,</span>
+            <span class="n">filetype</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">filetype</span><span class="p">,</span>
+            <span class="n">dpi</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">plot_dpi</span><span class="p">,</span>
+            <span class="n">remove_splines</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">remove_splines</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Ensure correct coordinate projection and CRS.</span>
+        <span class="n">df_geo</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">plotting</span><span class="o">.</span><span class="n">processor</span><span class="o">.</span><span class="n">to_geopandas</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">geographic_data</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">geographic_data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">plotting</span><span class="o">.</span><span class="n">processor</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">(</span><span class="n">df_geo</span><span class="p">)</span>
+        <span class="n">geo_coords_is_valid</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">geographic_data</span><span class="p">)</span>
+
+<div class="viewcode-block" id="GeoGeneticOutlierDetector.calculate_dgeo">
+<a class="viewcode-back" href="../../../geogenie.outliers.html#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.calculate_dgeo">[docs]</a>
+    <span class="k">def</span> <span class="nf">calculate_dgeo</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pred_geo_coords</span><span class="p">,</span> <span class="n">geo_coords</span><span class="p">,</span> <span class="n">scalar</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Calculate the Dgeo statistic for geographic coordinates.</span>
+
+<span class="sd">        This method calculates the geographic distance between predicted and actual geographic coordinates.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            pred_geo_coords (np.array): Predicted geographic coordinates.</span>
+<span class="sd">            geo_coords (np.array): Actual geographic coordinates.</span>
+<span class="sd">            scalar (float): Scalar value to divide the distance.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            np.array: Calculated Dgeo values.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span> <span class="o">&gt;=</span> <span class="mi">2</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">debug</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;Estimating Dgeo statistic...&quot;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">debug</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">pred_geo_coords</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Invalid shape for pred_geo_coords: </span><span class="si">{</span><span class="n">pred_geo_coords</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">geo_coords</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Invalid shape for geo_coords: </span><span class="si">{</span><span class="n">geo_coords</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+        <span class="n">distances</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">diagonal</span><span class="p">(</span><span class="n">cdist</span><span class="p">(</span><span class="n">geo_coords</span><span class="p">,</span> <span class="n">pred_geo_coords</span><span class="p">,</span> <span class="n">metric</span><span class="o">=</span><span class="n">haversine_distance</span><span class="p">))</span>
+            <span class="o">/</span> <span class="n">scalar</span>
+        <span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span> <span class="o">&gt;=</span> <span class="mi">2</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">debug</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;Finished estimating Dgeo statistic.&quot;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">debug</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">distances</span></div>
+
+
+<div class="viewcode-block" id="GeoGeneticOutlierDetector.calculate_statistic">
+<a class="viewcode-back" href="../../../geogenie.outliers.html#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.calculate_statistic">[docs]</a>
+    <span class="k">def</span> <span class="nf">calculate_statistic</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">predicted_data</span><span class="p">,</span> <span class="n">actual_data</span><span class="p">,</span> <span class="n">is_genetic</span><span class="p">,</span> <span class="n">min_nn_dist</span><span class="p">,</span> <span class="n">scale_factor</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Calculate the Dg or Dgeo statistic based on the difference between predicted and actual data.</span>
+
+<span class="sd">        This method calculates the Dg or Dgeo statistic based on the mean squared error or geographic distance between predicted and actual data.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            predicted_data (np.array): Predicted data from KNN.</span>
+<span class="sd">            actual_data (np.array): Actual data.</span>
+<span class="sd">            is_genetic (bool): Flag to determine if the calculation is for genetic data.</span>
+<span class="sd">            min_nn_dist (float): The minimum distance to consider between geographic points.</span>
+<span class="sd">            scale_factor (float): Scaling factor for geo_coords.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            np.array: Dg or Dgeo statistic for each sample.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">is_genetic</span><span class="p">:</span>
+            <span class="c1"># Dg calculation (mean squared error).</span>
+            <span class="n">d</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">((</span><span class="n">predicted_data</span> <span class="o">-</span> <span class="n">actual_data</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">eps</span> <span class="o">=</span> <span class="mf">1e-6</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Dgeo calculation (geographical distance)</span>
+            <span class="n">d</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">calculate_dgeo</span><span class="p">(</span><span class="n">predicted_data</span><span class="p">,</span> <span class="n">actual_data</span><span class="p">,</span> <span class="n">scale_factor</span><span class="p">)</span>
+            <span class="n">eps</span> <span class="o">=</span> <span class="mf">1e-8</span>
+            <span class="n">min_nn_dist</span><span class="p">,</span> <span class="n">scale_factor</span><span class="p">,</span> <span class="n">recalculate</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">rescale_statistic</span><span class="p">(</span>
+                <span class="n">d</span><span class="p">,</span> <span class="n">scale_factor</span><span class="p">,</span> <span class="n">min_nn_dist</span>
+            <span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">recalculate</span><span class="p">:</span>
+                <span class="c1"># Recalculate Dgeo again with new scale.</span>
+                <span class="n">d</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">calculate_dgeo</span><span class="p">(</span><span class="n">predicted_data</span><span class="p">,</span> <span class="n">actual_data</span><span class="p">,</span> <span class="n">scale_factor</span><span class="p">)</span>
+
+        <span class="n">zero_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">isclose</span><span class="p">(</span><span class="n">d</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">zero_indices</span><span class="p">):</span>
+            <span class="n">d</span><span class="p">[</span><span class="n">zero_indices</span><span class="p">]</span> <span class="o">=</span> <span class="n">eps</span>  <span class="c1"># To avoid zeros in D statistic.</span>
+
+        <span class="n">pred_r2</span> <span class="o">=</span> <span class="n">calculate_r2_knn</span><span class="p">(</span><span class="n">predicted_data</span><span class="p">,</span> <span class="n">actual_data</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">d</span><span class="p">,</span> <span class="n">min_nn_dist</span><span class="p">,</span> <span class="n">scale_factor</span><span class="p">,</span> <span class="n">pred_r2</span></div>
+
+
+<div class="viewcode-block" id="GeoGeneticOutlierDetector.rescale_statistic">
+<a class="viewcode-back" href="../../../geogenie.outliers.html#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.rescale_statistic">[docs]</a>
+    <span class="k">def</span> <span class="nf">rescale_statistic</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">Dgeo</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">orig_min_nn_dist</span><span class="p">,</span> <span class="n">max_threshold</span><span class="o">=</span><span class="mi">20</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Rescales the Dgeo array to avoid large values that might cause errors in maximum likelihood estimation.</span>
+
+<span class="sd">        This method rescales the Dgeo array to avoid large values that might cause errors in maximum likelihood estimation.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            Dgeo (np.ndarray): An array representing geographic distances or differences.</span>
+<span class="sd">            s (float): A scalar value used in calculations.</span>
+<span class="sd">            orig_min_nn_dist (float): Original minimum nearest neighbor distance.</span>
+<span class="sd">            max_threshold (int): Maximum Dgeo value to trigger rescaling.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            float, float: adjusted scalar value, and adjusted minimum nearest neighbor distance.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">min_nn_dist</span> <span class="o">=</span> <span class="n">orig_min_nn_dist</span>
+        <span class="n">recalculate</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="n">maxD</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">Dgeo</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">maxD</span> <span class="o">&gt;</span> <span class="n">max_threshold</span><span class="p">:</span>
+            <span class="n">recalculate</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="n">tmps</span> <span class="o">=</span> <span class="mi">1</span>
+            <span class="k">while</span> <span class="n">maxD</span> <span class="o">&gt;</span> <span class="mi">20</span><span class="p">:</span>
+                <span class="n">tmps</span> <span class="o">*=</span> <span class="mi">10</span>
+                <span class="n">maxD</span> <span class="o">/=</span> <span class="mi">10</span>
+            <span class="n">s</span> <span class="o">*=</span> <span class="n">tmps</span>
+
+            <span class="c1"># new min_nn_dist adjusted according to new s</span>
+            <span class="n">min_nn_dist</span> <span class="o">=</span> <span class="n">orig_min_nn_dist</span> <span class="o">/</span> <span class="n">s</span>
+        <span class="k">return</span> <span class="n">min_nn_dist</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">recalculate</span></div>
+
+
+<div class="viewcode-block" id="GeoGeneticOutlierDetector.find_gen_knn">
+<a class="viewcode-back" href="../../../geogenie.outliers.html#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.find_gen_knn">[docs]</a>
+    <span class="k">def</span> <span class="nf">find_gen_knn</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">coords</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">scale_factor</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Find K-nearest neighbors for genetic data using PyNNDescent.</span>
+
+<span class="sd">        This method finds the K-nearest neighbors for genetic data using PyNNDescent.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            dist_matrix (np.array): Distance matrix.</span>
+<span class="sd">            k (int): Number of neighbors.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            np.array: Indices of K-nearest neighbors.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">nnd</span> <span class="o">=</span> <span class="n">NNDescent</span><span class="p">(</span>
+            <span class="n">coords</span><span class="p">,</span>
+            <span class="n">metric</span><span class="o">=</span><span class="s2">&quot;euclidean&quot;</span><span class="p">,</span>
+            <span class="n">n_neighbors</span><span class="o">=</span><span class="n">k</span><span class="p">,</span>
+            <span class="n">n_jobs</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">n_jobs</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">indices</span><span class="p">,</span> <span class="n">distances</span> <span class="o">=</span> <span class="n">nnd</span><span class="o">.</span><span class="n">neighbor_graph</span>
+
+        <span class="c1"># Exclude the first column which is the point itself</span>
+        <span class="k">return</span> <span class="n">indices</span><span class="p">[:,</span> <span class="mi">1</span> <span class="p">:</span> <span class="n">k</span> <span class="o">+</span> <span class="mi">1</span><span class="p">],</span> <span class="n">distances</span><span class="p">[:,</span> <span class="mi">1</span> <span class="p">:</span> <span class="n">k</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="GeoGeneticOutlierDetector.find_geo_knn">
+<a class="viewcode-back" href="../../../geogenie.outliers.html#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.find_geo_knn">[docs]</a>
+    <span class="k">def</span> <span class="nf">find_geo_knn</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">coords</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">min_nn_dist</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Find K-nearest neighbors for geographic data considering minimum neighbor distance using PyNNDescent.</span>
+
+<span class="sd">        This method finds the K-nearest neighbors for geographic data using PyNNDescent.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            dist_matrix (np.array): Distance matrix.</span>
+<span class="sd">            k (int): Number of neighbors.</span>
+<span class="sd">            min_nn_dist (float): Minimum distance to consider for neighbors.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            np.array: Indices of K-nearest neighbors.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">geo_coords_is_valid</span><span class="p">(</span><span class="n">coords</span><span class="p">)</span>
+
+        <span class="c1"># PyNNDescent takes coordinates ordered: lat, lon</span>
+        <span class="n">geo_coords</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">flip</span><span class="p">(</span><span class="n">coords</span><span class="p">)</span>
+
+        <span class="c1"># Initialize NNDescent with the precomputed distance matrix</span>
+        <span class="n">nnd</span> <span class="o">=</span> <span class="n">NNDescent</span><span class="p">(</span>
+            <span class="n">geo_coords</span><span class="p">,</span>
+            <span class="n">metric</span><span class="o">=</span><span class="s2">&quot;haversine&quot;</span><span class="p">,</span>
+            <span class="n">n_neighbors</span><span class="o">=</span><span class="n">k</span><span class="p">,</span>
+            <span class="n">n_jobs</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">n_jobs</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">indices</span><span class="p">,</span> <span class="n">distances</span> <span class="o">=</span> <span class="n">nnd</span><span class="o">.</span><span class="n">neighbor_graph</span>
+
+        <span class="c1"># Exclude neighbors that are too close (less than min_nn_dist)</span>
+        <span class="n">valid_indices</span> <span class="o">=</span> <span class="n">distances</span> <span class="o">&gt;=</span> <span class="n">min_nn_dist</span>
+        <span class="n">k_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">valid_indices</span><span class="p">,</span> <span class="n">indices</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+
+        <span class="c1"># Truncate or pad the result_indices to ensure exactly k neighbors</span>
+        <span class="c1"># (excluding the point itself which is at index 0)</span>
+        <span class="k">return</span> <span class="n">k_indices</span><span class="p">[:,</span> <span class="mi">1</span> <span class="p">:</span> <span class="n">k</span> <span class="o">+</span> <span class="mi">1</span><span class="p">],</span> <span class="n">distances</span><span class="p">[:,</span> <span class="mi">1</span> <span class="p">:</span> <span class="n">k</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="GeoGeneticOutlierDetector.find_optimal_k">
+<a class="viewcode-back" href="../../../geogenie.outliers.html#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.find_optimal_k">[docs]</a>
+    <span class="k">def</span> <span class="nf">find_optimal_k</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">geo_coords</span><span class="p">,</span>
+        <span class="n">gen_coords</span><span class="p">,</span>
+        <span class="n">klim</span><span class="p">,</span>
+        <span class="n">w_power</span><span class="p">,</span>
+        <span class="n">min_nn_dist</span><span class="p">,</span>
+        <span class="n">is_genetic</span><span class="p">,</span>
+        <span class="n">scale_factor</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Find optimal number of nearest neighbors for KNN.</span>
+
+<span class="sd">        This method finds the optimal number of nearest neighbors for KNN based on the Dg or Dgeo statistic.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            geo_coords (np.array): Geographic coordinates.</span>
+<span class="sd">            gen_coords (np.array): Genetic coordinatees.</span>
+<span class="sd">            dist_matrix (np.array): Distance matrix.</span>
+<span class="sd">            klim (tuple): Range of K values to search (min_k, max_k).</span>
+<span class="sd">            w_power (float): Power for distance weighting.</span>
+<span class="sd">            min_nn_dist (int): Minimum nearest neighbor distance to consider points.</span>
+<span class="sd">            is_genetic (bool): Flag to determine if the calculation is for genetic data as distance matrix.</span>
+<span class="sd">            scale_factor (float): Factor to scale geo_coords by.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            int: Optimal K value.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span> <span class="o">&gt;=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Finding optimal K for Nearest Neighbors...&quot;</span><span class="p">)</span>
+
+        <span class="n">min_k</span><span class="p">,</span> <span class="n">max_k</span> <span class="o">=</span> <span class="n">klim</span>
+        <span class="n">all_D</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">min_k</span><span class="p">,</span> <span class="n">max_k</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">is_genetic</span><span class="p">:</span>
+                <span class="c1"># Genetic coords, geo dist matrix.</span>
+                <span class="n">knn_indices</span><span class="p">,</span> <span class="n">distances</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">find_geo_knn</span><span class="p">(</span><span class="n">geo_coords</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">min_nn_dist</span><span class="p">)</span>
+
+                <span class="c1"># Genetic predictions.</span>
+                <span class="n">predictions</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">predict_coords_knn</span><span class="p">(</span>
+                    <span class="n">gen_coords</span><span class="p">,</span> <span class="n">distances</span><span class="p">,</span> <span class="n">knn_indices</span><span class="p">,</span> <span class="n">w_power</span>
+                <span class="p">)</span>
+
+                <span class="c1"># Genetic error.</span>
+                <span class="p">(</span>
+                    <span class="n">D_statistic</span><span class="p">,</span>
+                    <span class="n">min_nn_dist</span><span class="p">,</span>
+                    <span class="n">scale_factor</span><span class="p">,</span>
+                    <span class="n">_</span><span class="p">,</span>
+                <span class="p">)</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">calculate_statistic</span><span class="p">(</span>
+                    <span class="n">predictions</span><span class="p">,</span> <span class="n">gen_coords</span><span class="p">,</span> <span class="n">is_genetic</span><span class="p">,</span> <span class="n">min_nn_dist</span><span class="p">,</span> <span class="n">scale_factor</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># Geo coords, genetic dist matrix.</span>
+                <span class="n">knn_indices</span><span class="p">,</span> <span class="n">distances</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">find_gen_knn</span><span class="p">(</span><span class="n">gen_coords</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">scale_factor</span><span class="p">)</span>
+
+                <span class="c1"># Geographic predictions.</span>
+                <span class="n">predictions</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">predict_coords_knn</span><span class="p">(</span>
+                    <span class="n">geo_coords</span><span class="p">,</span> <span class="n">distances</span><span class="p">,</span> <span class="n">knn_indices</span><span class="p">,</span> <span class="n">w_power</span>
+                <span class="p">)</span>
+
+                <span class="c1"># Geographic error.</span>
+                <span class="p">(</span>
+                    <span class="n">D_statistic</span><span class="p">,</span>
+                    <span class="n">min_nn_dist</span><span class="p">,</span>
+                    <span class="n">scale_factor</span><span class="p">,</span>
+                    <span class="n">_</span><span class="p">,</span>
+                <span class="p">)</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">calculate_statistic</span><span class="p">(</span>
+                    <span class="n">predictions</span><span class="p">,</span> <span class="n">geo_coords</span><span class="p">,</span> <span class="n">is_genetic</span><span class="p">,</span> <span class="n">min_nn_dist</span><span class="p">,</span> <span class="n">scale_factor</span>
+                <span class="p">)</span>
+
+            <span class="n">all_D</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">D_statistic</span><span class="p">))</span>
+        <span class="n">optimal_k</span> <span class="o">=</span> <span class="n">min_k</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">all_D</span><span class="p">)</span>  <span class="c1"># Adjust index to actual K value</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span> <span class="o">&gt;=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Completed optimal K search.&quot;</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">optimal_k</span></div>
+
+
+<div class="viewcode-block" id="GeoGeneticOutlierDetector.predict_coords_knn">
+<a class="viewcode-back" href="../../../geogenie.outliers.html#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.predict_coords_knn">[docs]</a>
+    <span class="k">def</span> <span class="nf">predict_coords_knn</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">coords</span><span class="p">,</span> <span class="n">knn_distances</span><span class="p">,</span> <span class="n">knn_indices</span><span class="p">,</span> <span class="n">w_power</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Predict coordinates data using weighted KNN.</span>
+
+<span class="sd">        This method predicts coordinates data using weighted KNN based on the distances to the K-nearest neighbors.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            coords (np.array): Array of genetic or geographic coordinates.</span>
+<span class="sd">            knn_distances (np.array): Distances to K-nearest neighbors.</span>
+<span class="sd">            knn_indices (np.array): Indices of K-nearest neighbors.</span>
+<span class="sd">            w_power (float): Power of distance weight in prediction.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            np.array: Predicted coordinates using weighted KNN.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">predictions</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">coords</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">coords</span><span class="p">)):</span>
+            <span class="n">neighbor_distances</span> <span class="o">=</span> <span class="n">knn_distances</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="n">neighbor_indices</span> <span class="o">=</span> <span class="n">knn_indices</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+
+            <span class="c1"># Compute weights inversely proportional to the distance</span>
+            <span class="n">weights</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="n">neighbor_distances</span> <span class="o">+</span> <span class="mf">1e-8</span><span class="p">)</span> <span class="o">**</span> <span class="n">w_power</span>
+            <span class="n">normalized_weights</span> <span class="o">=</span> <span class="n">weights</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">weights</span><span class="p">)</span>
+
+            <span class="c1"># Calculate the weighted average of the neighbors</span>
+            <span class="n">predictions</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">average</span><span class="p">(</span>
+                <span class="n">coords</span><span class="p">[</span><span class="n">neighbor_indices</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">weights</span><span class="o">=</span><span class="n">normalized_weights</span>
+            <span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">predictions</span></div>
+
+
+<div class="viewcode-block" id="GeoGeneticOutlierDetector.fit_gamma_mle">
+<a class="viewcode-back" href="../../../geogenie.outliers.html#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.fit_gamma_mle">[docs]</a>
+    <span class="k">def</span> <span class="nf">fit_gamma_mle</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">D_statistic</span><span class="p">,</span> <span class="n">sig_level</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Detect outliers using a Gamma distribution fitted to the Dg or Dgeo statistic.</span>
+
+<span class="sd">        This method detects outliers using a Gamma distribution fitted to the Dg or Dgeo statistic.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            D_statistic (np.array): Dg or Dgeo statistic for each sample.</span>
+<span class="sd">            Dgeo (np.array): For determining initial_shape and initial_rate.</span>
+<span class="sd">            sig_level (float): Significance level for detecting outliers.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            tuple: Indices of outliers, p-values, and fitted Gamma parameters.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">initial_shape</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">D_statistic</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">var</span><span class="p">(</span><span class="n">D_statistic</span><span class="p">)</span>
+        <span class="n">initial_rate</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">D_statistic</span><span class="p">)</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">var</span><span class="p">(</span><span class="n">D_statistic</span><span class="p">)</span>
+
+        <span class="n">result</span> <span class="o">=</span> <span class="n">minimize</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">gamma_neg_log_likelihood</span><span class="p">,</span>
+            <span class="n">x0</span><span class="o">=</span><span class="p">(</span><span class="n">initial_shape</span><span class="p">,</span> <span class="n">initial_rate</span><span class="p">),</span>
+            <span class="n">args</span><span class="o">=</span><span class="p">(</span><span class="n">D_statistic</span><span class="p">,),</span>
+            <span class="n">bounds</span><span class="o">=</span><span class="p">[(</span><span class="mf">1e-8</span><span class="p">,</span> <span class="mf">1e8</span><span class="p">),</span> <span class="p">(</span><span class="mf">1e-8</span><span class="p">,</span> <span class="mf">1e8</span><span class="p">)],</span>
+            <span class="n">method</span><span class="o">=</span><span class="s2">&quot;L-BFGS-B&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">shape</span><span class="p">,</span> <span class="n">rate</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">x</span>
+        <span class="n">scale</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">rate</span>  <span class="c1"># Convert rate back to scale for gamma distribution</span>
+        <span class="n">p_values</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">gamma</span><span class="o">.</span><span class="n">cdf</span><span class="p">(</span><span class="n">D_statistic</span><span class="p">,</span> <span class="n">a</span><span class="o">=</span><span class="n">shape</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="n">scale</span><span class="p">)</span>
+        <span class="n">outliers</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">p_values</span> <span class="o">&lt;</span> <span class="n">sig_level</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">gamma_params</span> <span class="o">=</span> <span class="p">(</span><span class="n">shape</span><span class="p">,</span> <span class="n">scale</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">outliers</span><span class="p">,</span> <span class="n">p_values</span><span class="p">,</span> <span class="n">gamma_params</span></div>
+
+
+<div class="viewcode-block" id="GeoGeneticOutlierDetector.gamma_neg_log_likelihood">
+<a class="viewcode-back" href="../../../geogenie.outliers.html#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.gamma_neg_log_likelihood">[docs]</a>
+    <span class="k">def</span> <span class="nf">gamma_neg_log_likelihood</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Negative log likelihood for gamma distribution.</span>
+
+<span class="sd">        This method calculates the negative log likelihood value for the gamma distribution.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            params (tuple): Contains the shape and rate parameters for the gamma distribution.</span>
+<span class="sd">            data (np.array): Data to fit the gamma distribution to.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            float: Negative log likelihood value.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">shape</span><span class="p">,</span> <span class="n">rate</span> <span class="o">=</span> <span class="n">params</span>
+        <span class="n">scale</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">rate</span>  <span class="c1"># Convert rate to scale for gamma distribution</span>
+        <span class="k">return</span> <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">gamma</span><span class="o">.</span><span class="n">logpdf</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">a</span><span class="o">=</span><span class="n">shape</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="n">scale</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="GeoGeneticOutlierDetector.multi_stage_outlier_knn">
+<a class="viewcode-back" href="../../../geogenie.outliers.html#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.multi_stage_outlier_knn">[docs]</a>
+    <span class="k">def</span> <span class="nf">multi_stage_outlier_knn</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">geo_coords</span><span class="p">,</span>
+        <span class="n">gen_coords</span><span class="p">,</span>
+        <span class="n">analysis_type</span><span class="o">=</span><span class="s2">&quot;composite&quot;</span><span class="p">,</span>
+        <span class="n">sig_level</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span>
+        <span class="n">maxk</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span>
+        <span class="n">w_power</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+        <span class="n">min_nn_dist</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span>
+        <span class="n">scale_factor</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Iterative Outlier Detection via KNN for genetic and geographic data.</span>
+
+<span class="sd">        This method performs iterative outlier detection using KNN for genetic and geographic data.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            geo_coords (np.array): Array of geographic coordinates.</span>
+<span class="sd">            gen_coords (np.array): Array of genetic data coordinates.</span>
+<span class="sd">            analysis_type (str): Type of analysis to perform (genetic, geographic, composite).</span>
+<span class="sd">            sig_level (float): Significance level for detecting outliers.</span>
+<span class="sd">            maxk (int): Maximum number of nearest neighbors to consider.</span>
+<span class="sd">            w_power (float): Power of distance weight in KNN prediction.</span>
+<span class="sd">            min_nn_dist (int): Minimum distance required to consider points.</span>
+<span class="sd">            scale_factor (int): Scaling factor for geo coordinates.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            tuple: Indices of detected outliers for geographic and genetic data.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">geo_coords</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">gen_coords</span><span class="p">):</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;geographic and genetic coordinates must have the same number of samples: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">geo_coords</span><span class="p">)</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">gen_coords</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+        <span class="n">max_iter</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">geo_coords</span><span class="p">)</span> <span class="o">//</span> <span class="mi">2</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">orig_min_nn_dist</span> <span class="o">=</span> <span class="n">min_nn_dist</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">orig_scale_factor</span> <span class="o">=</span> <span class="n">scale_factor</span>
+        <span class="n">min_nn_dist</span> <span class="o">/=</span> <span class="n">scale_factor</span>
+
+        <span class="n">time_durations</span><span class="p">,</span> <span class="n">optk_gen</span><span class="p">,</span> <span class="n">optk_geo</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">search_nn_optk</span><span class="p">(</span>
+            <span class="n">geo_coords</span><span class="p">,</span>
+            <span class="n">gen_coords</span><span class="p">,</span>
+            <span class="n">maxk</span><span class="p">,</span>
+            <span class="n">w_power</span><span class="p">,</span>
+            <span class="n">min_nn_dist</span><span class="p">,</span>
+            <span class="n">scale_factor</span><span class="p">,</span>
+            <span class="n">analysis_type</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="n">opt_ks</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;genetic&quot;</span><span class="p">:</span> <span class="n">optk_gen</span><span class="p">,</span> <span class="s2">&quot;geographic&quot;</span><span class="p">:</span> <span class="n">optk_geo</span><span class="p">}</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span> <span class="o">&gt;=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;Optimal K for Genetic Regression: </span><span class="si">{</span><span class="n">optk_gen</span><span class="si">}</span><span class="s2">, Time taken: </span><span class="si">{</span><span class="n">time_durations</span><span class="p">[</span><span class="s1">&#39;find_optimal_k_genetic&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> seconds&quot;</span>
+            <span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;Optimal K for Geographic Regression: </span><span class="si">{</span><span class="n">optk_geo</span><span class="si">}</span><span class="s2">, Time taken: </span><span class="si">{</span><span class="n">time_durations</span><span class="p">[</span><span class="s1">&#39;find_optimal_k_geographic&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> seconds&quot;</span>
+            <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">analysis_type</span> <span class="o">==</span> <span class="s2">&quot;composite&quot;</span><span class="p">:</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="p">{}</span>
+            <span class="k">for</span> <span class="n">at</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;genetic&quot;</span><span class="p">,</span> <span class="s2">&quot;geographic&quot;</span><span class="p">]:</span>
+                <span class="n">res</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">analysis</span><span class="p">(</span>
+                    <span class="n">geo_coords</span><span class="p">,</span>
+                    <span class="n">gen_coords</span><span class="p">,</span>
+                    <span class="n">at</span><span class="p">,</span>
+                    <span class="n">sig_level</span><span class="p">,</span>
+                    <span class="n">min_nn_dist</span><span class="p">,</span>
+                    <span class="n">scale_factor</span><span class="p">,</span>
+                    <span class="n">max_iter</span><span class="p">,</span>
+                    <span class="n">opt_ks</span><span class="p">,</span>
+                    <span class="n">res</span><span class="p">,</span>
+                    <span class="n">at</span><span class="p">,</span>
+                    <span class="n">time_durations</span><span class="p">,</span>
+                <span class="p">)</span>
+        <span class="k">elif</span> <span class="n">analysis_type</span> <span class="o">==</span> <span class="s2">&quot;genetic&quot;</span><span class="p">:</span>
+            <span class="n">at</span> <span class="o">=</span> <span class="s2">&quot;genetic&quot;</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">analysis</span><span class="p">(</span>
+                <span class="n">geo_coords</span><span class="p">,</span>
+                <span class="n">gen_coords</span><span class="p">,</span>
+                <span class="n">analysis_type</span><span class="p">,</span>
+                <span class="n">sig_level</span><span class="p">,</span>
+                <span class="n">min_nn_dist</span><span class="p">,</span>
+                <span class="n">scale_factor</span><span class="p">,</span>
+                <span class="n">max_iter</span><span class="p">,</span>
+                <span class="n">opt_ks</span><span class="p">,</span>
+                <span class="n">res</span><span class="p">,</span>
+                <span class="n">at</span><span class="p">,</span>
+                <span class="n">time_durations</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">elif</span> <span class="n">analysis_type</span> <span class="o">==</span> <span class="s2">&quot;geographic&quot;</span><span class="p">:</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">analysis</span><span class="p">(</span>
+                <span class="n">geo_coords</span><span class="p">,</span>
+                <span class="n">gen_coords</span><span class="p">,</span>
+                <span class="n">analysis_type</span><span class="p">,</span>
+                <span class="n">sig_level</span><span class="p">,</span>
+                <span class="n">min_nn_dist</span><span class="p">,</span>
+                <span class="n">scale_factor</span><span class="p">,</span>
+                <span class="n">max_iter</span><span class="p">,</span>
+                <span class="n">opt_ks</span><span class="p">,</span>
+                <span class="n">res</span><span class="p">,</span>
+                <span class="n">at</span><span class="p">,</span>
+                <span class="n">time_durations</span><span class="p">,</span>
+            <span class="p">)</span>
+
+        <span class="c1"># Return the indices of the detected outliers</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">res</span><span class="p">[</span><span class="s2">&quot;geographic&quot;</span><span class="p">][</span><span class="s2">&quot;outlier_flags&quot;</span><span class="p">])[</span><span class="mi">0</span><span class="p">],</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">res</span><span class="p">[</span><span class="s2">&quot;genetic&quot;</span><span class="p">][</span><span class="s2">&quot;outlier_flags&quot;</span><span class="p">])[</span><span class="mi">0</span><span class="p">],</span>
+            <span class="n">res</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="GeoGeneticOutlierDetector.analysis">
+<a class="viewcode-back" href="../../../geogenie.outliers.html#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.analysis">[docs]</a>
+    <span class="k">def</span> <span class="nf">analysis</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">geo_coords</span><span class="p">,</span>
+        <span class="n">gen_coords</span><span class="p">,</span>
+        <span class="n">analysis_type</span><span class="p">,</span>
+        <span class="n">sig_level</span><span class="p">,</span>
+        <span class="n">min_nn_dist</span><span class="p">,</span>
+        <span class="n">scale_factor</span><span class="p">,</span>
+        <span class="n">max_iter</span><span class="p">,</span>
+        <span class="n">opt_ks</span><span class="p">,</span>
+        <span class="n">res</span><span class="p">,</span>
+        <span class="n">at</span><span class="p">,</span>
+        <span class="n">time_duration</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Perform outlier detection analysis for genetic or geographic data.</span>
+
+<span class="sd">        This method performs outlier detection analysis for genetic or geographic data.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            geo_coords (np.array): Array of geographic coordinates.</span>
+<span class="sd">            gen_coords (np.array): Array of genetic data coordinates.</span>
+<span class="sd">            analysis_type (str): Type of analysis to perform (genetic, geographic, composite).</span>
+<span class="sd">            sig_level (float): Significance level for detecting outliers.</span>
+<span class="sd">            min_nn_dist (int): Minimum distance required to consider points.</span>
+<span class="sd">            scale_factor (int): Scaling factor for geo coordinates.</span>
+<span class="sd">            max_iter (int): Maximum number of iterations.</span>
+<span class="sd">            opt_ks (dict): Optimal K values for genetic and geographic data.</span>
+<span class="sd">            res (dict): Dictionary to store results.</span>
+<span class="sd">            at (str): Analysis type (genetic, geographic).</span>
+<span class="sd">            time_duration (dict): Dictionary to store run times for each method.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="p">(</span>
+            <span class="n">time_duration</span><span class="p">,</span>
+            <span class="n">outlier_flags</span><span class="p">,</span>
+            <span class="n">d_stats</span><span class="p">,</span>
+            <span class="n">p_values</span><span class="p">,</span>
+            <span class="n">r2_values</span><span class="p">,</span>
+            <span class="n">gamma_params</span><span class="p">,</span>
+        <span class="p">)</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">run_multistage</span><span class="p">(</span>
+            <span class="n">geo_coords</span><span class="p">,</span>
+            <span class="n">gen_coords</span><span class="p">,</span>
+            <span class="n">sig_level</span><span class="p">,</span>
+            <span class="n">min_nn_dist</span><span class="p">,</span>
+            <span class="n">scale_factor</span><span class="p">,</span>
+            <span class="n">max_iter</span><span class="p">,</span>
+            <span class="n">opt_ks</span><span class="p">[</span><span class="n">at</span><span class="p">],</span>
+            <span class="n">analysis_type</span><span class="p">,</span>
+            <span class="n">time_duration</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span> <span class="o">&gt;=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Completed multi-stage outlier detection.&quot;</span><span class="p">)</span>
+
+            <span class="c1"># Plotting Gamma distribution</span>
+        <span class="n">start_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">plot_gamma_dist</span><span class="p">(</span><span class="n">sig_level</span><span class="p">,</span> <span class="n">d_stats</span><span class="p">,</span> <span class="n">gamma_params</span><span class="p">,</span> <span class="n">at</span><span class="p">)</span>
+
+        <span class="n">end_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+        <span class="n">time_duration</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;plot_gamma_distribution_</span><span class="si">{</span><span class="n">at</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">end_time</span> <span class="o">-</span> <span class="n">start_time</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span> <span class="o">&gt;=</span> <span class="mi">2</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">debug</span><span class="p">:</span>
+            <span class="n">key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;plot_gamma_distribution_</span><span class="si">{</span><span class="n">at</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Plotted Gamma distributions in </span><span class="si">{</span><span class="n">time_duration</span><span class="p">[</span><span class="n">key</span><span class="p">]</span><span class="si">}</span><span class="s2"> seconds&quot;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">debug</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+        <span class="n">res</span><span class="p">[</span><span class="n">at</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;time_duration&quot;</span><span class="p">:</span> <span class="n">time_duration</span><span class="p">,</span>
+            <span class="s2">&quot;outlier_flags&quot;</span><span class="p">:</span> <span class="n">outlier_flags</span><span class="p">,</span>
+            <span class="s2">&quot;d_stats&quot;</span><span class="p">:</span> <span class="n">d_stats</span><span class="p">,</span>
+            <span class="s2">&quot;p_values&quot;</span><span class="p">:</span> <span class="n">p_values</span><span class="p">,</span>
+            <span class="s2">&quot;r2_values&quot;</span><span class="p">:</span> <span class="n">r2_values</span><span class="p">,</span>
+            <span class="s2">&quot;gamma_params&quot;</span><span class="p">:</span> <span class="n">gamma_params</span><span class="p">,</span>
+        <span class="p">}</span>
+
+        <span class="k">return</span> <span class="n">res</span></div>
+
+
+<div class="viewcode-block" id="GeoGeneticOutlierDetector.run_multistage">
+<a class="viewcode-back" href="../../../geogenie.outliers.html#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.run_multistage">[docs]</a>
+    <span class="k">def</span> <span class="nf">run_multistage</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">geo_coords</span><span class="p">,</span>
+        <span class="n">gen_coords</span><span class="p">,</span>
+        <span class="n">sig_level</span><span class="p">,</span>
+        <span class="n">min_nn_dist</span><span class="p">,</span>
+        <span class="n">scale_factor</span><span class="p">,</span>
+        <span class="n">max_iter</span><span class="p">,</span>
+        <span class="n">optk</span><span class="p">,</span>
+        <span class="n">analysis_type</span><span class="p">,</span>
+        <span class="n">time_durations</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Run multi-stage outlier detection using KNN.</span>
+
+<span class="sd">        This method runs multi-stage outlier detection using KNN for genetic and geographic data.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            geo_coords (np.array): Array of geographic coordinates.</span>
+<span class="sd">            gen_coords (np.array): Array of genetic data coordinates.</span>
+<span class="sd">            sig_level (float): Significance level for detecting outliers.</span>
+<span class="sd">            min_nn_dist (int): Minimum distance required to consider points.</span>
+<span class="sd">            scale_factor (int): Scaling factor for geo coordinates.</span>
+<span class="sd">            max_iter (int): Maximum number of iterations.</span>
+<span class="sd">            optk (int): Optimal K value for nearest neighbors.</span>
+<span class="sd">            analysis_type (str): Type of analysis to perform (genetic, geographic, composite).</span>
+<span class="sd">            time_durations (dict): Dictionary to store run times for each method.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            tuple: Time durations, outlier flags, D statistics, p-values, r-squared values, and gamma parameters</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">outlier_flags</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">gen_coords</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+        <span class="n">allow</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="n">break_msg</span> <span class="o">=</span> <span class="s2">&quot;No new outliers detected. Terminating iteration.&quot;</span>
+
+        <span class="n">iteration</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">while</span> <span class="n">iteration</span> <span class="o">&lt;</span> <span class="n">max_iter</span><span class="p">:</span>
+            <span class="n">iteration</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="n">new_outliers_detected</span> <span class="o">=</span> <span class="kc">False</span>
+
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span> <span class="o">&gt;=</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;Iteration </span><span class="si">{</span><span class="n">iteration</span><span class="si">}</span><span class="s2"> of multi-stage outlier detection.</span><span class="se">\n\n</span><span class="s2">&quot;</span>
+                <span class="p">)</span>
+
+            <span class="p">(</span>
+                <span class="n">time_durations</span><span class="p">,</span>
+                <span class="n">current_outliers</span><span class="p">,</span>
+                <span class="n">d_stats</span><span class="p">,</span>
+                <span class="n">p_values</span><span class="p">,</span>
+                <span class="n">r2_values</span><span class="p">,</span>
+                <span class="n">gamma_params</span><span class="p">,</span>
+                <span class="n">filtered_indices</span><span class="p">,</span>
+            <span class="p">)</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">filter_and_detect</span><span class="p">(</span>
+                <span class="n">geo_coords</span><span class="p">,</span>
+                <span class="n">gen_coords</span><span class="p">,</span>
+                <span class="n">sig_level</span><span class="p">,</span>
+                <span class="n">min_nn_dist</span><span class="p">,</span>
+                <span class="n">scale_factor</span><span class="p">,</span>
+                <span class="n">optk</span><span class="p">,</span>
+                <span class="n">outlier_flags</span><span class="p">,</span>
+                <span class="n">time_durations</span><span class="p">,</span>
+                <span class="n">analysis_type</span><span class="p">,</span>
+            <span class="p">)</span>
+
+            <span class="c1"># Map indices from filtered to original</span>
+            <span class="k">if</span> <span class="n">current_outliers</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">current_outliers</span><span class="o">.</span><span class="n">size</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">p_values</span> <span class="o">&gt;</span> <span class="n">sig_level</span><span class="p">):</span>
+                    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span> <span class="o">&gt;=</span> <span class="mi">1</span><span class="p">:</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">break_msg</span><span class="p">)</span>
+                    <span class="k">break</span>
+
+                <span class="n">actual_outlier_indices</span> <span class="o">=</span> <span class="n">filtered_indices</span><span class="p">[</span><span class="n">current_outliers</span><span class="p">]</span>
+
+                <span class="c1"># Update the flags in the original arrays</span>
+                <span class="n">outlier_flags</span><span class="p">[</span><span class="n">actual_outlier_indices</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+                <span class="n">new_outliers_detected</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">allow</span> <span class="o">=</span> <span class="kc">False</span>
+
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">new_outliers_detected</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">allow</span><span class="p">:</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span> <span class="o">&gt;=</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">break_msg</span><span class="p">)</span>
+                <span class="k">break</span>
+
+            <span class="c1"># No significant outliers.</span>
+            <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">p_values</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">sig_level</span><span class="p">:</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span> <span class="o">&gt;=</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">break_msg</span><span class="p">)</span>
+                <span class="k">break</span>
+
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span> <span class="o">&gt;=</span> <span class="mi">2</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">debug</span><span class="p">:</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Finished iteration </span><span class="si">{</span><span class="n">iteration</span><span class="si">}</span><span class="s2">.&quot;</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">debug</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="n">time_durations</span><span class="p">,</span>
+            <span class="n">outlier_flags</span><span class="p">,</span>
+            <span class="n">d_stats</span><span class="p">,</span>
+            <span class="n">p_values</span><span class="p">,</span>
+            <span class="n">r2_values</span><span class="p">,</span>
+            <span class="n">gamma_params</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="GeoGeneticOutlierDetector.filter_and_detect">
+<a class="viewcode-back" href="../../../geogenie.outliers.html#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.filter_and_detect">[docs]</a>
+    <span class="k">def</span> <span class="nf">filter_and_detect</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">geo_coords</span><span class="p">,</span>
+        <span class="n">gen_coords</span><span class="p">,</span>
+        <span class="n">sig_level</span><span class="p">,</span>
+        <span class="n">min_nn_dist</span><span class="p">,</span>
+        <span class="n">scale_factor</span><span class="p">,</span>
+        <span class="n">optk</span><span class="p">,</span>
+        <span class="n">outlier_flags</span><span class="p">,</span>
+        <span class="n">time_durations</span><span class="p">,</span>
+        <span class="n">analysis_type</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Filter outliers and detect new outliers using KNN.</span>
+
+<span class="sd">        This method filters outliers and detects new outliers using KNN for genetic and geographic data.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            geo_coords (np.array): Array of geographic coordinates.</span>
+<span class="sd">            gen_coords (np.array): Array of genetic data coordinates.</span>
+<span class="sd">            sig_level (float): Significance level for detecting outliers.</span>
+<span class="sd">            min_nn_dist (int): Minimum distance required to consider points.</span>
+<span class="sd">            scale_factor (int): Scaling factor for geo coordinates.</span>
+<span class="sd">            optk (int): Optimal K value for nearest neighbors.</span>
+<span class="sd">            outlier_flags (np.array): Array of outlier flags.</span>
+<span class="sd">            time_durations (dict): Dictionary to store run times for each method.</span>
+<span class="sd">            analysis_type (str): Type of analysis to perform (genetic, geographic, composite).</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            tuple: Time durations, outlier flags, D statistics, p-values, r-squared values, gamma parameters, and filtered indices</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">non_outlier_mask</span> <span class="o">=</span> <span class="o">~</span><span class="n">outlier_flags</span>
+
+        <span class="c1"># Keep track of original indices</span>
+        <span class="n">original_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">geo_coords</span><span class="p">))</span>
+        <span class="n">filtered_indices</span> <span class="o">=</span> <span class="n">original_indices</span><span class="p">[</span><span class="n">non_outlier_mask</span><span class="p">]</span>
+
+        <span class="c1"># Get only non-outliers.</span>
+        <span class="n">filtered_geo_coords</span> <span class="o">=</span> <span class="n">geo_coords</span><span class="p">[</span><span class="n">non_outlier_mask</span><span class="p">]</span>
+        <span class="n">filtered_gen_coords</span> <span class="o">=</span> <span class="n">gen_coords</span><span class="p">[</span><span class="n">non_outlier_mask</span><span class="p">]</span>
+
+        <span class="p">(</span>
+            <span class="n">time_durations</span><span class="p">,</span>
+            <span class="n">current_outliers</span><span class="p">,</span>
+            <span class="n">d_stats</span><span class="p">,</span>
+            <span class="n">p_values</span><span class="p">,</span>
+            <span class="n">r2_values</span><span class="p">,</span>
+            <span class="n">gamma_params</span><span class="p">,</span>
+        <span class="p">)</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">detect_outliers</span><span class="p">(</span>
+            <span class="n">filtered_geo_coords</span><span class="p">,</span>
+            <span class="n">filtered_gen_coords</span><span class="p">,</span>
+            <span class="n">optk</span><span class="p">,</span>
+            <span class="n">time_durations</span><span class="p">,</span>
+            <span class="n">w_power</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+            <span class="n">sig_level</span><span class="o">=</span><span class="n">sig_level</span><span class="p">,</span>
+            <span class="n">min_nn_dist</span><span class="o">=</span><span class="n">min_nn_dist</span><span class="p">,</span>
+            <span class="n">scale_factor</span><span class="o">=</span><span class="n">scale_factor</span><span class="p">,</span>
+            <span class="n">analysis_type</span><span class="o">=</span><span class="n">analysis_type</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="n">time_durations</span><span class="p">,</span>
+            <span class="n">current_outliers</span><span class="p">,</span>
+            <span class="n">d_stats</span><span class="p">,</span>
+            <span class="n">p_values</span><span class="p">,</span>
+            <span class="n">r2_values</span><span class="p">,</span>
+            <span class="n">gamma_params</span><span class="p">,</span>
+            <span class="n">filtered_indices</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="GeoGeneticOutlierDetector.search_nn_optk">
+<a class="viewcode-back" href="../../../geogenie.outliers.html#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.search_nn_optk">[docs]</a>
+    <span class="k">def</span> <span class="nf">search_nn_optk</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">geo_coords</span><span class="p">,</span>
+        <span class="n">gen_coords</span><span class="p">,</span>
+        <span class="n">maxk</span><span class="p">,</span>
+        <span class="n">w_power</span><span class="p">,</span>
+        <span class="n">min_nn_dist</span><span class="p">,</span>
+        <span class="n">scale_factor</span><span class="p">,</span>
+        <span class="n">analysis_type</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Search for optimal K for nearest neighbors.</span>
+
+<span class="sd">        This method searches for the optimal K for nearest neighbors based on the Dg or Dgeo statistic.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            geo_coords (np.array): Array of geographic coordinates.</span>
+<span class="sd">            gen_coords (np.array): Array of genetic data coordinates.</span>
+<span class="sd">            maxk (int): Maximum number of nearest neighbors to consider.</span>
+<span class="sd">            w_power (float): Power of distance weight in KNN prediction.</span>
+<span class="sd">            min_nn_dist (int): Minimum distance required to consider points.</span>
+<span class="sd">            scale_factor (int): Scaling factor for geo coordinates.</span>
+<span class="sd">            analysis_type (str): Type of analysis to perform (genetic, geographic, composite).</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            tuple: Time durations, optimal K for genetic data, and optimal K for geographic data.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">time_durations</span> <span class="o">=</span> <span class="p">{}</span>
+
+        <span class="n">optk_gen</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">optk_geo</span> <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="k">if</span> <span class="n">analysis_type</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;genetic&quot;</span><span class="p">,</span> <span class="s2">&quot;composite&quot;</span><span class="p">]:</span>
+            <span class="c1"># Step 1: Find optimal K for both genetic and geographic data</span>
+            <span class="n">start_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+            <span class="n">optk_gen</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">find_optimal_k</span><span class="p">(</span>
+                <span class="n">geo_coords</span><span class="p">,</span>
+                <span class="n">gen_coords</span><span class="p">,</span>
+                <span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">maxk</span><span class="p">),</span>
+                <span class="n">w_power</span><span class="p">,</span>
+                <span class="n">min_nn_dist</span><span class="p">,</span>
+                <span class="n">is_genetic</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                <span class="n">scale_factor</span><span class="o">=</span><span class="n">scale_factor</span><span class="p">,</span>
+            <span class="p">)</span>
+
+        <span class="n">end_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+        <span class="n">time_durations</span><span class="p">[</span><span class="s2">&quot;find_optimal_k_genetic&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">end_time</span> <span class="o">-</span> <span class="n">start_time</span>
+
+        <span class="k">if</span> <span class="n">analysis_type</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;geographic&quot;</span><span class="p">,</span> <span class="s2">&quot;composite&quot;</span><span class="p">]:</span>
+            <span class="n">start_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+            <span class="n">optk_geo</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">find_optimal_k</span><span class="p">(</span>
+                <span class="n">geo_coords</span><span class="p">,</span>
+                <span class="n">gen_coords</span><span class="p">,</span>
+                <span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">maxk</span><span class="p">),</span>
+                <span class="n">w_power</span><span class="p">,</span>
+                <span class="n">min_nn_dist</span><span class="p">,</span>
+                <span class="n">is_genetic</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                <span class="n">scale_factor</span><span class="o">=</span><span class="n">scale_factor</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">end_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+            <span class="n">time_durations</span><span class="p">[</span><span class="s2">&quot;find_optimal_k_geographic&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">end_time</span> <span class="o">-</span> <span class="n">start_time</span>
+        <span class="k">return</span> <span class="n">time_durations</span><span class="p">,</span> <span class="n">optk_gen</span><span class="p">,</span> <span class="n">optk_geo</span></div>
+
+
+<div class="viewcode-block" id="GeoGeneticOutlierDetector.plot_gamma_dist">
+<a class="viewcode-back" href="../../../geogenie.outliers.html#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.plot_gamma_dist">[docs]</a>
+    <span class="k">def</span> <span class="nf">plot_gamma_dist</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sig_level</span><span class="p">,</span> <span class="n">d_stats</span><span class="p">,</span> <span class="n">gamma_params</span><span class="p">,</span> <span class="n">dtype</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Plot the gamma distribution for detected outliers.</span>
+
+<span class="sd">        This method plots the gamma distribution for detected outliers based on the Dg or Dgeo statistic.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            sig_level (float): Significance level for detecting outliers.</span>
+<span class="sd">            d_stats (np.array): Dg or Dgeo statistic for each sample.</span>
+<span class="sd">            gamma_params (tuple): Parameters for the gamma distribution.</span>
+<span class="sd">            dtype (str): Type of data (genetic, geographic</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">outdir</span> <span class="o">=</span> <span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">output_dir</span><span class="p">,</span> <span class="s2">&quot;plots&quot;</span><span class="p">)</span>
+        <span class="n">fn</span> <span class="o">=</span> <span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">outdir</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">prefix</span><span class="si">}</span><span class="s2">_gamma_</span><span class="si">{</span><span class="n">dtype</span><span class="si">}</span><span class="s2">.png&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">plotting</span><span class="o">.</span><span class="n">plot_gamma_distribution</span><span class="p">(</span>
+            <span class="n">gamma_params</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>
+            <span class="n">gamma_params</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span>
+            <span class="n">d_stats</span><span class="p">,</span>
+            <span class="n">sig_level</span><span class="p">,</span>
+            <span class="n">fn</span><span class="p">,</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">dtype</span><span class="o">.</span><span class="n">capitalize</span><span class="p">()</span><span class="si">}</span><span class="s2"> Outlier Gamma Distribution&quot;</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="GeoGeneticOutlierDetector.detect_outliers">
+<a class="viewcode-back" href="../../../geogenie.outliers.html#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.detect_outliers">[docs]</a>
+    <span class="k">def</span> <span class="nf">detect_outliers</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">geo_coords</span><span class="p">,</span>
+        <span class="n">gen_coords</span><span class="p">,</span>
+        <span class="n">optk</span><span class="p">,</span>
+        <span class="n">time_durations</span><span class="p">,</span>
+        <span class="n">w_power</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+        <span class="n">sig_level</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span>
+        <span class="n">min_nn_dist</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span>
+        <span class="n">scale_factor</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
+        <span class="n">analysis_type</span><span class="o">=</span><span class="s2">&quot;genetic&quot;</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Detect outliers based on composite data using the KNN approach.</span>
+
+<span class="sd">        This method detects outliers based on composite data using the KNN approach.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            geo_coords (np.array): Array of geographic coordinates.</span>
+<span class="sd">            gen_coords (np.array): Array of genetic data coordinates.</span>
+<span class="sd">            optk (int): Optimal K for nearest neigbbors (geographic).</span>
+<span class="sd">            time_durations (dict): Dictionary storing run times for each method.</span>
+<span class="sd">            w_power (float): Power of distance weight in KNN prediction.</span>
+<span class="sd">            sig_level (float): Significance level for detecting outliers.</span>
+<span class="sd">            min_nn_dist (int): Minimum distance required to consider points.</span>
+<span class="sd">            scale_factor (int): Scaling factor for geo coordinates.</span>
+<span class="sd">            analysis_type (str): Either &#39;genetic&#39; or &#39;geographic&#39;.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            tuple: Indices of detected outliers, p-values, and gamma parameters for geographic and genetic outliers.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            tuple: Indices of detected outliers, p-values, and gamma parameters for geographic and genetic outliers.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">analysis_type</span> <span class="o">==</span> <span class="s2">&quot;genetic&quot;</span><span class="p">:</span>
+            <span class="n">dependent_data</span> <span class="o">=</span> <span class="n">gen_coords</span>
+            <span class="n">independent_data</span> <span class="o">=</span> <span class="n">geo_coords</span>
+            <span class="n">knn_func</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">find_geo_knn</span>
+            <span class="n">is_genetic</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="k">elif</span> <span class="n">analysis_type</span> <span class="o">==</span> <span class="s2">&quot;geographic&quot;</span><span class="p">:</span>
+            <span class="n">dependent_data</span> <span class="o">=</span> <span class="n">geo_coords</span>
+            <span class="n">independent_data</span> <span class="o">=</span> <span class="n">gen_coords</span>
+            <span class="n">knn_func</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">find_gen_knn</span>
+            <span class="n">is_genetic</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Invalid &#39;analysis_type&#39; parameter provided: </span><span class="si">{</span><span class="n">analysis_type</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+        <span class="c1"># Step 2: Find KNN based on distances</span>
+        <span class="n">start_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+        <span class="n">knn_indices</span><span class="p">,</span> <span class="n">dist</span> <span class="o">=</span> <span class="n">knn_func</span><span class="p">(</span><span class="n">independent_data</span><span class="p">,</span> <span class="n">optk</span><span class="p">,</span> <span class="n">min_nn_dist</span><span class="p">)</span>
+        <span class="n">end_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+        <span class="n">time_durations</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;find_knn_</span><span class="si">{</span><span class="n">analysis_type</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">end_time</span> <span class="o">-</span> <span class="n">start_time</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span> <span class="o">&gt;=</span> <span class="mi">2</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">debug</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Found KNN indices in: </span><span class="si">{</span><span class="n">time_durations</span><span class="p">[</span><span class="n">key</span><span class="p">]</span><span class="si">}</span><span class="s2"> seconds&quot;</span>
+            <span class="n">key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;find_knn_</span><span class="si">{</span><span class="n">analysis_type</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">debug</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+        <span class="c1"># Step 3: Predict using weighted KNN</span>
+        <span class="n">start_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+        <span class="n">predictions</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">predict_coords_knn</span><span class="p">(</span>
+            <span class="n">dependent_data</span><span class="p">,</span> <span class="n">dist</span><span class="p">,</span> <span class="n">knn_indices</span><span class="p">,</span> <span class="n">w_power</span>
+        <span class="p">)</span>
+        <span class="n">end_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+        <span class="n">time_durations</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;predict_knn_</span><span class="si">{</span><span class="n">analysis_type</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">end_time</span> <span class="o">-</span> <span class="n">start_time</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span> <span class="o">&gt;=</span> <span class="mi">2</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">debug</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Predicted using weighted KNN: </span><span class="si">{</span><span class="n">time_durations</span><span class="p">[</span><span class="n">key</span><span class="p">]</span><span class="si">}</span><span class="s2"> seconds&quot;</span>
+            <span class="n">key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;predict_knn_</span><span class="si">{</span><span class="n">analysis_type</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">debug</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+        <span class="c1"># Step 4: Calculate D statistics and detect outliers</span>
+        <span class="n">start_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+        <span class="n">d</span><span class="p">,</span> <span class="n">min_nn_dist</span><span class="p">,</span> <span class="n">scale_factor</span><span class="p">,</span> <span class="n">r2_vals</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">calculate_statistic</span><span class="p">(</span>
+            <span class="n">predictions</span><span class="p">,</span>
+            <span class="n">dependent_data</span><span class="p">,</span>
+            <span class="n">is_genetic</span><span class="o">=</span><span class="n">is_genetic</span><span class="p">,</span>
+            <span class="n">min_nn_dist</span><span class="o">=</span><span class="n">min_nn_dist</span><span class="p">,</span>
+            <span class="n">scale_factor</span><span class="o">=</span><span class="n">scale_factor</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">end_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+        <span class="n">time_durations</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;calculate_statistic_</span><span class="si">{</span><span class="n">analysis_type</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">end_time</span> <span class="o">-</span> <span class="n">start_time</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span> <span class="o">&gt;=</span> <span class="mi">2</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">debug</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Calculated D statistics in: </span><span class="si">{</span><span class="n">time_durations</span><span class="p">[</span><span class="n">key</span><span class="p">]</span><span class="si">}</span><span class="s2"> seconds&quot;</span>
+            <span class="n">key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;calculate_statistic_</span><span class="si">{</span><span class="n">analysis_type</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">debug</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span> <span class="o">&gt;=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;r-squared for </span><span class="si">{</span><span class="n">analysis_type</span><span class="si">}</span><span class="s2"> outlier detection: </span><span class="si">{</span><span class="n">r2_vals</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+
+        <span class="c1"># Step 5: Fit Gamma distribution and detect outliers</span>
+        <span class="n">start_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+        <span class="n">outliers</span><span class="p">,</span> <span class="n">p_values</span><span class="p">,</span> <span class="n">gamma_params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fit_gamma_mle</span><span class="p">(</span><span class="n">d</span><span class="p">,</span> <span class="n">sig_level</span><span class="p">)</span>
+        <span class="n">end_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+        <span class="n">time_durations</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;fit_gamma_</span><span class="si">{</span><span class="n">analysis_type</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">end_time</span> <span class="o">-</span> <span class="n">start_time</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span> <span class="o">&gt;=</span> <span class="mi">2</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">debug</span><span class="p">:</span>
+            <span class="n">key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;fit_gamma_</span><span class="si">{</span><span class="n">analysis_type</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Fitted gamma distribution for </span><span class="si">{</span><span class="n">analysis_type</span><span class="si">}</span><span class="s2"> outliers in: </span><span class="si">{</span><span class="n">time_durations</span><span class="p">[</span><span class="n">key</span><span class="p">]</span><span class="si">}</span><span class="s2"> seconds&quot;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">debug</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="n">time_durations</span><span class="p">,</span>
+            <span class="n">outliers</span><span class="p">,</span>
+            <span class="n">d</span><span class="p">,</span>
+            <span class="n">p_values</span><span class="p">,</span>
+            <span class="n">r2_vals</span><span class="p">,</span>
+            <span class="n">gamma_params</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="GeoGeneticOutlierDetector.composite_outlier_detection">
+<a class="viewcode-back" href="../../../geogenie.outliers.html#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.composite_outlier_detection">[docs]</a>
+    <span class="k">def</span> <span class="nf">composite_outlier_detection</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">sig_level</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span> <span class="n">maxk</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> <span class="n">min_nn_dist</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">scale_factor</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">w_power</span><span class="o">=</span><span class="mi">2</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Perform composite outlier detection using the KNN approach.</span>
+
+<span class="sd">        This method performs composite outlier detection using the KNN approach.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            sig_level (float): Significance level for detecting outliers.</span>
+<span class="sd">            maxk (int): Maximum number of nearest neighbors to consider.</span>
+<span class="sd">            min_nn_dist (int): Minimum distance required to consider points.</span>
+<span class="sd">            scale_factor (int): Scaling factor for geo coordinates.</span>
+<span class="sd">            w_power (float): Power of distance weight in KNN prediction.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            dict: Detected outliers for geographic and genetic data.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span> <span class="o">&gt;=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Starting composite outlier detection...&quot;</span><span class="p">)</span>
+
+        <span class="n">dgen</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">genetic_data</span>
+        <span class="n">dgeo</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">geographic_data</span>
+        <span class="n">outliers</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="p">(</span>
+            <span class="n">outliers</span><span class="p">[</span><span class="s2">&quot;geographic&quot;</span><span class="p">],</span>
+            <span class="n">outliers</span><span class="p">[</span><span class="s2">&quot;genetic&quot;</span><span class="p">],</span>
+            <span class="n">_</span><span class="p">,</span>
+        <span class="p">)</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">multi_stage_outlier_knn</span><span class="p">(</span>
+            <span class="n">dgeo</span><span class="p">,</span>
+            <span class="n">dgen</span><span class="p">,</span>
+            <span class="n">analysis_type</span><span class="o">=</span><span class="s2">&quot;composite&quot;</span><span class="p">,</span>
+            <span class="n">sig_level</span><span class="o">=</span><span class="n">sig_level</span><span class="p">,</span>
+            <span class="n">maxk</span><span class="o">=</span><span class="n">maxk</span><span class="p">,</span>
+            <span class="n">w_power</span><span class="o">=</span><span class="n">w_power</span><span class="p">,</span>
+            <span class="n">min_nn_dist</span><span class="o">=</span><span class="n">min_nn_dist</span><span class="p">,</span>
+            <span class="n">scale_factor</span><span class="o">=</span><span class="n">scale_factor</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span> <span class="o">&gt;=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Outlier detection completed.&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">outliers</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Bradley T. Martin and Tyler K. Chafin.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

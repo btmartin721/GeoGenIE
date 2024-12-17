@@ -665,7 +665,7 @@ def setup_parser(test_mode=False):
     args = validate_weighted_opts(parser, args)
     validate_colorscale(parser, args)
     validate_smote(parser, args)
-    validate_gb_params(parser, args)
+    # validate_gb_params(parser, args)
     validate_dtype(parser, args)
     args.samples_to_plot = validate_str2list(args.samples_to_plot)
     args.highlight_basemap_counties = validate_str2list(args.highlight_basemap_counties)

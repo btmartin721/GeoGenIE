@@ -1,12 +1,7 @@
 import logging
 import os
-from re import S
 import warnings
 from pathlib import Path
-
-from matplotlib.pylab import f
-from pyparsing import C
-import test
 
 os.environ["PYTHONWARNINGS"] = "ignore::RuntimeWarning"
 warnings.filterwarnings(action="ignore", category=RuntimeWarning)
@@ -18,27 +13,24 @@ import pysam
 import torch
 from kneed import KneeLocator
 from sklearn.base import clone
-from sklearn.cluster import KMeans, DBSCAN
+from sklearn.cluster import KMeans
 from sklearn.decomposition import NMF, PCA, KernelPCA
 from sklearn.impute import SimpleImputer
 from sklearn.manifold import MDS, TSNE
-from sklearn.metrics import silhouette_score, pairwise_distances
+from sklearn.metrics import pairwise_distances, silhouette_score
 from sklearn.model_selection import GridSearchCV, train_test_split
 from sklearn.neighbors import KernelDensity
-from sklearn.preprocessing import PolynomialFeatures, MinMaxScaler
+from sklearn.preprocessing import PolynomialFeatures
 from torch.utils.data import DataLoader
 
 from geogenie.outliers.detect_outliers import GeoGeneticOutlierDetector
 from geogenie.plotting.plotting import PlotGenIE
 from geogenie.samplers.samplers import GeographicDensitySampler
 from geogenie.utils.data import CustomDataset
-from geogenie.utils.exceptions import (
-    EmbeddingError,
-    InvalidInputShapeError,
-    InvalidSampleDataError,
-    OutlierDetectionError,
-    SampleOrderingError,
-)
+from geogenie.utils.exceptions import (EmbeddingError, InvalidInputShapeError,
+                                       InvalidSampleDataError,
+                                       OutlierDetectionError,
+                                       SampleOrderingError)
 from geogenie.utils.scorers import LocallyLinearEmbeddingWrapper
 from geogenie.utils.transformers import MCA, MinMaxScalerGeo
 from geogenie.utils.utils import get_iupac_dict, read_csv_with_dynamic_sep
@@ -47,127 +39,25 @@ from geogenie.utils.utils import get_iupac_dict, read_csv_with_dynamic_sep
 class DataStructure:
     """Class to hold data structure from input VCF file.
 
-    High level class overview. Key class functionalities include:
+    High level class overview. Key class functionalities include data loading, preprocessing, transformation, and machine learning model preparation.
 
-    Initialization and Data Parsing: It loads VCF (Variant Call Format) files using pysam, processes genotypes, and handles missing data.
+    Initialization and Data Parsing - It loads VCF (Variant Call Format) files using pysam, processes genotypes, and handles missing data.
 
-    Data Transformation and Imputation: Implements methods for allele counting, imputing missing genotypes, normalizing data, and transforming genotypes to various encodings.
+    Data Transformation and Imputation - Implements methods for allele counting, imputing missing genotypes, normalizing data, and transforming genotypes to various encodings.
 
-    Data Splitting: Facilitates splitting data into training, validation, and test sets.
+    Data Splitting - Facilitates splitting data into training, validation, and test sets.
 
-    Outlier Detection: Includes methods for detecting and handling outliers in the data.
+    Outlier Detection - Includes methods for detecting and handling outliers in the data.
 
     Data Preprocessing and Embedding: The class contains methods for preprocessing data, including scaling, dimensionality reduction, and embedding using various techniques like PCA, t-SNE, MCA, etc.
 
-    Data Analysis and Visualization: The script integrates with the geogenie library for tasks like outlier detection and plotting.
+    Data Analysis and Visualization - The script integrates with the geogenie library for tasks like outlier detection and plotting.
 
-    Machine Learning and Data Loading: It includes functionalities for creating data loaders (using torch) and preparing datasets for machine learning tasks, with support for different data sampling strategies and weightings.
+    Machine Learning and Data Loading - It includes functionalities for creating data loaders (using torch) and preparing datasets for machine learning tasks, with support for different data sampling strategies and weightings.
 
-    Utility Methods: The script provides additional utility methods for tasks like reading GTseq data, setting parameters, and selecting optimal components for different data transformations.
+    Utility Methods - The script provides additional utility methods for tasks like reading GTseq data, setting parameters, and selecting optimal components for different data transformations.
 
-    In summary, the script is designed for comprehensive genomic data analysis, offering capabilities for data loading, preprocessing, transformation, machine learning model preparation, and visualization. It's structured to handle data from VCF files, process it through various analytical and transformational steps, and prepare it for further analysis or machine learning tasks.
-
-    Attributes:
-        vcf: A VariantFile object from the pysam library. It represents the VCF file loaded for processing genotypes.
-
-        samples: A list of sample IDs extracted from the VCF file's header.
-
-        logger: A logging object used to log information, warnings, and errors throughout the class's methods.
-
-        genotypes: A NumPy array storing the parsed genotypes from the VCF file.
-
-        is_missing: A boolean array indicating missing data in the genotypes.
-
-        genotypes_iupac: An array representing genotypes converted to IUPAC nucleotide codes.
-
-        verbose: A boolean or integer indicating the verbosity level for logging.
-
-        samples_weight: Used for storing sample weights, potentially for use in machine learning models or data sampling.
-
-        data: A dictionary to store various data attributes, such as training, validation, and testing datasets.
-
-        mask: A boolean mask used for filtering samples, especially in the context of outlier detection.
-
-        simputer: An instance of SimpleImputer from sklearn.impute, used for imputing missing data in the genotypes.
-
-        sample_data: A pandas DataFrame containing additional sample data, including geographical coordinates (longitude and latitude).
-
-        locs: An array of geographical coordinates associated with the samples.
-
-        norm: An attribute for storing the normalizing transformation, used for geographical coordinates as the targets. However, this is not currently used.
-
-        y: The target variable, representing geographical coordinates.
-
-        genotypes_enc: Encoded genotypes, presumably in a format suitable for analysis or machine learning.
-
-        X, y, X_pred, true_idx: Extracted datasets and indices after processing, including features (X), targets (y), features to predict on (X_pred), and corresponding indices (true_idx).
-
-        indices: A dictionary storing various index arrays used in the data processing, like training, validation, and testing indices.
-
-        plotting: An instance of PlotGenIE for plotting-related tasks.
-
-        train_loader, val_loader, test_loader, train_val_loader: DataLoader objects from PyTorch, used for loading batches of data during model training and evaluation.
-
-        _params: A private attribute intended to store parameters, for configuring the model parameters and settings.
-
-    Methods:
-        Constructor (__init__): Initializes the class with a VCF file and sets up basic attributes like samples, logger, genotypes, and missing data flags.
-
-        define_params: Sets up or updates parameters for the class from an argparse.Namespace object.
-
-        _parse_genotypes: Parses genotypes from the VCF file and converts them into NumPy arrays, handling missing data.
-
-        map_alleles_to_iupac: Maps alleles to IUPAC nucleotide codes.
-
-        is_biallelic: Checks whether a genomic record has exactly two alleles (biallelic).
-
-        count_alleles: Counts the alleles for each SNP across all samples.
-
-        impute_missing: Imputes missing genotypes (features) in the data.
-
-        sort_samples: Sorts sample data to match the order in the VCF file.
-
-        normalize_target: Normalizes target variables (locations), converting geographic coordinates to a normalized scale.
-
-        _check_sample_ordering: Validates the ordering of samples between the sample data and the VCF file.
-
-        snps_to_012: Converts SNPs to a 0/1/2 encoding format, with 0=reference, 1=heterozygous, and 2=alternate alleles.
-
-        filter_gt: Filters genotypes based on minor allele count and optionally selects a random subset of SNPs.
-
-        split_train_test: Splits the data into training, validation, and testing sets.
-
-        map_outliers_through_filters: Maps outlier indices through multiple filtering stages back to the original dataset.
-
-        load_and_preprocess_data: A comprehensive method that wraps various preprocessing steps like loading, sorting, imputing, embedding, and splitting the data.
-
-        extract_datasets: Extracts and separates datasets into known and predicted sets based on the presence of missing data.
-
-        validate_feature_target_len: Validates that the feature and target datasets have the same length.
-
-        setup_index_masks: Sets up index masks for filtering the data.
-
-        run_outlier_detection: Performs outlier detection using geographic and genetic criteria.
-
-        call_create_dataloaders: Helper method to create DataLoader objects for different data sets.
-
-        embed: Embeds the SNP data using various dimensionality reduction techniques.
-
-        perform_mca_and_select_components: Performs Multiple Correspondence Analysis (MCA) and selects the optimal number of components.
-
-        select_optimal_components: Selects the optimal number of components for dimensionality reduction methods based on explained variance or inertia.
-
-        find_optimal_nmf_components: Finds the optimal number of components for Non-negative Matrix Factorization (NMF) based on reconstruction error.
-
-        get_num_pca_comp: Determines the optimal number of principal components for PCA.
-
-        create_dataloaders: Creates DataLoader objects for training, testing, and validation datasets.
-
-        get_sample_weights: Calculates sample weights based on sampling density.
-
-        read_gtseq: Reads and processes GTSeq data, converting it to VCF format.
-
-        params: Getter and setter for managing class parameters.
+    In summary, the script is designed for comprehensive genomic data analysis, offering capabilities for data loading, preprocessing, transformation, machine learning model preparation, and visualization. It is structured to handle data from VCF files, process it through various analytical and transformational steps, and prepare it for further analysis or machine learning tasks.
     """
 
     def __init__(self, vcf_file, verbose=False, dtype=torch.float32, debug=False):
@@ -313,11 +203,11 @@ class DataStructure:
         """Maps a list of allele tuples to their corresponding IUPAC nucleotide codes.
 
         Args:
-            alleles (list of tuple of str): List of tuples representing alleles.
+            alleles (List[tuple]): List of tuples representing alleles.
             iupac_dict (dict): Dictionary mapping allele tuples to IUPAC codes.
 
         Returns:
-            list of str: List of IUPAC nucleotide codes corresponding to the alleles.
+            List[str]: List of IUPAC nucleotide codes corresponding to the alleles.
         """
         mapped_codes = []
         for allele_pair in alleles:
@@ -345,7 +235,7 @@ class DataStructure:
         return len(record.alleles) == 2
 
     def define_params(self, args):
-        """Defines/ updates class attrubutes from an argparse.Namespace object.
+        """Defines and updates class attrubutes from an argparse.Namespace object.
 
         This method sets the class attributes based on the parameters provided in the argparse.Namespace object. It is used to update the class parameters with the values provided in the command-line arguments.
 
@@ -617,7 +507,7 @@ class DataStructure:
         Automatically determine the bandwidth for KernelDensity using cross-validation.
 
         Args:
-            data (array-like): The data to estimate density.
+            data (np.ndarray | list): The data to estimate density.
 
         Returns:
             float: Optimal bandwidth for KDE.
@@ -638,11 +528,10 @@ class DataStructure:
         return optimal_bandwidth
 
     def _determine_eps(self, data, k=5):
-        """
-        Automatically determine the epsilon parameter for DBSCAN using k-distance.
+        """Automatically determine the epsilon parameter for DBSCAN using k-distance.
 
         Args:
-            data (array-like): The data to cluster.
+            data (np.ndarray | list): The data to cluster.
             k (int): Number of nearest neighbors.
 
         Returns:
@@ -959,12 +848,12 @@ class DataStructure:
         """Maps outlier indices through multiple filtering stages back to the original dataset.
 
         Args:
-            original_indices (np.array): Array of original indices before any filtering.
-            filter_stages (list of np.array): List of arrays of indices after each filtering stage.
-            outliers (np.array): Outlier indices in the most filtered dataset.
+            original_indices (np.ndarray): Array of original indices before any filtering.
+            filter_stages (List[np.ndarray]): List of arrays of indices after each filtering stage.
+            outliers (np.ndarray): Outlier indices in the most filtered dataset.
 
         Returns:
-            np.array: Mapped outlier indices in the original dataset.
+            np.ndarray: Mapped outlier indices in the original dataset.
         """
         current_indices = outliers
         for stage_indices in reversed(filter_stages):
@@ -974,54 +863,35 @@ class DataStructure:
     def load_and_preprocess_data(self, args):
         """Wrapper method to load and preprocess data.
 
-        Code execution order:
+        Code execution order is listed below.
 
-        Sample Data Loading and Sorting:
-        Calls self.sort_samples with args.sample_data to load and sort sample data. This step involves reading sample data, presumably including their geographical locations, and aligning them with the genomic data.
+        Sample Data Loading and Sorting - Calls `self.sort_samples` with `args.sample_data` to load and sort sample data. This step involves reading sample data, presumably including their geographical locations, and aligning them with the genomic data.
 
-        SNP Encoding Transformation:
-        Transforms Single Nucleotide Polymorphisms (SNPs) into a 0/1/2 encoding format using self.snps_to_012, considering parameters like min_mac (minimum minor allele count) and max_snps (maximum number of SNPs).
+        SNP Encoding Transformation - Transforms Single Nucleotide Polymorphisms (SNPs) into a 0,1,2 encoding format using self.snps_to_012, considering parameters like min_mac (minimum minor allele count) and max_snps (maximum number of SNPs).
 
-        Validation of Feature and Target Lengths:
-        Ensures that the feature data (X) and target data (y) have the same number of rows using self.validate_feature_target_len.
+        Validation of Feature and Target Lengths - Ensures that the feature data (X) and target data (y) have the same number of rows using self.validate_feature_target_len.
 
-        Missing Data Imputation on full dataset:
-        Imputes missing data in self.genotypes_enc using self.impute_missing.
+        Missing Data Imputation on full dataset - Imputes missing data in `self.genotypes_enc` using `self.impute_missing`.
 
-        Data Embedding:
-        Performs an embedding transformation (like PCA) on the imputed data (X) using self.embed, with full_dataset_only=True and transform_only=False.
+        Data Embedding and Transformation - Performs an embedding transformation (like PCA) on the imputed data (X) using self.embed, with full_dataset_only=True and transform_only=False.
 
-        Index Mask Setup:
-        Defines masks for prediction (self.pred_mask) to identify samples with known and unknown locations.
-        Sets up index masks for data using self.setup_index_masks.
+        Index Mask Setup - Defines masks for prediction (self.pred_mask) to identify samples with known and unknown locations. Sets up index masks for data using self.setup_index_masks.
 
-        Outlier Detection (Conditional):
-        If args.detect_outliers is True, performs outlier detection using self.run_outlier_detection.
+        Outlier Detection (Conditional) - If args.detect_outliers is True, performs outlier detection using self.run_outlier_detection.
 
-        Dataset Extraction:
-        Extracts and partitions datasets into known and predicted datasets using self.extract_datasets.
+        Extract datasets - self.X, self.y, self.X_pred, self.true_idx, self.all_samples, self.samples, self.pred_samples, self.outlier_samples, self.non_outlier_samples = self.extract_datasets(all_outliers, args)
 
-        Plotting Outliers (Conditional):
-        If outliers are detected, plots the outliers using self.plotting.plot_outliers.
+        Plotting Outliers (Conditional) - If outliers are detected, plots the outliers using self.plotting.plot_outliers.
 
-        Data Normalization (Placeholder):
-        Normalizes the target data (y) using self.normalize_target with placeholder=True. This does nothing, unless 'placeholder=False'.
+        Data Normalization (Placeholder) - Normalizes the target data (y) using self.normalize_target with placeholder=True. This does nothing, unless `placeholder=False`.
 
-        Splitting into Train, Test, and Validation Sets:
-        Splits the dataset into training, validation, and testing sets using self.split_train_test.
+        Splitting into Train, Test, and Validation Sets - Splits the dataset into training, validation, and testing sets using self.split_train_test.
 
-        Feature Embedding for Train, Validation, and Test Sets (Conditional):
-        If args.embedding_type is not "none", embeds the features of training, validation, and test sets using self.embed.
+        Feature Embedding for Train, Validation, and Test Sets (Conditional) - `args.embedding_type` is not `none`, embeds the features of training, validation, and test sets using `self.embed`.
 
-        Logging Data Split and DataLoader Creation:
-        Logs the completion of data splitting and the start of DataLoader creation, if verbosity is enabled.
+        Logging Data Split and DataLoader Creation - Logs the completion of data splitting and the start of DataLoader creation, if verbosity is enabled.
 
-        DataLoader Creation:
-        Creates DataLoaders for training, validation, and test datasets using self.call_create_dataloaders.
-        Additional DataLoader is created for gradient boosting if args.use_gradient_boosting is True.
-
-        Logging Completion of Preprocessing:
-        Logs the successful completion of data loading and preprocessing, if verbosity is enabled.
+        DataLoader Creation - Creates DataLoaders for training, validation, and test datasets using `self.call_create_dataloaders`. Additional DataLoader is created for gradient boosting if args.use_gradient_boosting is True. Logging Completion of Preprocessing Logs the successful completion of data loading and preprocessing, if verbosity is enabled.
         """
 
         self.plotting = PlotGenIE(
@@ -1372,7 +1242,7 @@ class DataStructure:
             indices (numpy.ndarray): Indices of samples.
             y (numpy.ndarray): Target variable (coordinates).
             index (numpy.ndarray): Index array for samples.
-            filter_stage_indices (list of np.ndarray): List of filter stage indices.
+            filter_stage_indices (List[np.ndarray]): List of filter stage indices.
 
         Returns:
             numpy.ndarray: Array of outlier indices.
@@ -1420,18 +1290,18 @@ class DataStructure:
         """Helper method to create DataLoader objects for different datasets.
 
         Args:
-            X (numpy.ndarray or list of PyG Data objects): Feature data.
-            y (numpy.ndarray or None): Target data.
+            X (numpy.ndarray | list): Feature data.
+            y (numpy.ndarray | None): Target data.
             args (argparse.Namespace): User-supplied arguments.
-            is_val (bool): Whether the dataset is validation/test data. Default is False.
-            sample_ids (list of str): List of sample IDs. Default is None.
+            is_val (bool): Whether the dataset is validation and test data. Default is False.
+            sample_ids (List[str]): List of sample IDs. Default is None.
             dataset (str): Dataset type. Required keyword argument. Default is None.
 
         Returns:
             torch.utils.data.DataLoader: DataLoader object.
 
         Raises:
-            ValueError: If sample IDs are not provided.
+            ValueError: If sampleIDs are not provided.
         """
         if sample_ids is None:
             msg = "Sample IDs must be provided to create DataLoader objects."
@@ -1660,7 +1530,7 @@ class DataStructure:
 
         Args:
             data (pd.DataFrame): The categorical data.
-            n_components_range (range): The range of components to explore.
+            n_components_range (list): The range of components to explore.
             S (float): Sensitivity setting for selecting optimal number of components.
 
         Returns:
@@ -1759,12 +1629,12 @@ class DataStructure:
         """Create dataloaders for training, testing, and validation datasets.
 
         Args:
-            X (numpy.ndarray or list of PyG Data objects): X dataset. Train, test, or validation.
-            y (numpy.ndarray or None): Target data (train, test, or validation). None for GNN.
+            X (numpy.ndarray | list): X dataset. Train, test, or validation.
+            y (numpy.ndarray | None): Target data (train, test, or validation). None for GNN.
             batch_size (int): Batch size to use with model.
             args (argparse.Namespace): User-supplied arguments.
             is_val (bool): Whether using validation/ test dataset. Otherwise should be training dataset. Default is False.
-            sample_ids (list of str): List of sample IDs. Default is None.
+            sample_ids (List[str]): List of sample IDs. Default is None.
             dataset (str): Dataset type. Required keyword argument. Default is None.
 
         Returns:

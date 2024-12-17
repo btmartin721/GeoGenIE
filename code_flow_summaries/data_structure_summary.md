@@ -1,0 +1,118 @@
+# Module: data_structure
+
+## Imports
+
+- logging
+- os
+- warnings
+- pathlib
+- numpy
+- pandas
+- pysam
+- torch
+- kneed
+- sklearn.base
+- sklearn.cluster
+- sklearn.decomposition
+- sklearn.impute
+- sklearn.manifold
+- sklearn.metrics
+- sklearn.model_selection
+- sklearn.neighbors
+- sklearn.preprocessing
+- torch.utils.data
+- geogenie.outliers.detect_outliers
+- geogenie.plotting.plotting
+- geogenie.samplers.samplers
+- geogenie.utils.data
+- geogenie.utils.exceptions
+- geogenie.utils.scorers
+- geogenie.utils.transformers
+- geogenie.utils.utils
+
+## Functions
+
+- __init__
+- _load_vcf_file
+- _decompress_recompress_index_and_load_vcf
+- _decompress_vcf
+- _recompress_vcf
+- _index_vcf
+- _cleanup_decompressed_file
+- _parse_genotypes
+- map_alleles_to_iupac
+- is_biallelic
+- define_params
+- count_alleles
+- impute_missing
+- sort_samples
+- normalize_target
+- _check_sample_ordering
+- snps_to_012
+- filter_gt
+- _find_optimal_clusters
+- _determine_bandwidth
+- _determine_eps
+- _adjust_splits
+- split_train_test
+- map_outliers_through_filters
+- load_and_preprocess_data
+- generate_unknowns
+- extract_datasets
+- validate_feature_target_len
+- setup_index_masks
+- run_outlier_detection
+- call_create_dataloaders
+- embed
+- perform_mca_and_select_components
+- select_optimal_components
+- find_optimal_nmf_components
+- get_num_pca_comp
+- create_dataloaders
+- get_sample_weights
+- params
+- params
+
+## Classes and Methods
+
+- DataStructure
+  - __init__
+  - _load_vcf_file
+  - _decompress_recompress_index_and_load_vcf
+  - _decompress_vcf
+  - _recompress_vcf
+  - _index_vcf
+  - _cleanup_decompressed_file
+  - _parse_genotypes
+  - map_alleles_to_iupac
+  - is_biallelic
+  - define_params
+  - count_alleles
+  - impute_missing
+  - sort_samples
+  - normalize_target
+  - _check_sample_ordering
+  - snps_to_012
+  - filter_gt
+  - _find_optimal_clusters
+  - _determine_bandwidth
+  - _determine_eps
+  - _adjust_splits
+  - split_train_test
+  - map_outliers_through_filters
+  - load_and_preprocess_data
+  - generate_unknowns
+  - extract_datasets
+  - validate_feature_target_len
+  - setup_index_masks
+  - run_outlier_detection
+  - call_create_dataloaders
+  - embed
+  - perform_mca_and_select_components
+  - select_optimal_components
+  - find_optimal_nmf_components
+  - get_num_pca_comp
+  - create_dataloaders
+  - get_sample_weights
+  - params
+  - params

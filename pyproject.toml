@@ -78,6 +78,7 @@ dev = [
     "sphinx",
     "sphinx-rtd-theme",
     "sphinxcontrib-napoleon",
+    "sphinxcontrib-bibtex",
     "sphinx-autodoc-typehints",
     "twine",
     "wheel",
@@ -87,6 +88,7 @@ docs = [
     "sphinx",
     "sphinx-rtd-theme",
     "sphinxcontrib-napoleon",
+    "sphinxcontrib-bibtex",
     "sphinx-autodoc-typehints",
 ]
 

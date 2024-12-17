@@ -794,28 +794,28 @@ class PlotGenIE:
             error_predictions = error_predictions.reshape(
                 (grid_x.shape[0], grid_y.shape[0])
             )
-        if error_std.shape != grid_x.shape:
-            error_std = error_std.reshape((grid_x.shape[0], grid_y.shape[0]))
+        # if error_std.shape != grid_x.shape:
+        #     error_std = error_std.reshape((grid_x.shape[0], grid_y.shape[0]))
 
-        fig, axs = plt.subplots(1, 2, figsize=(16, 12))
+        fig, ax = plt.subplots(1, 1, figsize=(16, 12))
 
-        ax = axs[0]
-        ax2 = axs[1]
+        # ax = [0]]
+        # ax2 = axs[1]
 
         ax = self._remove_spines(ax)
-        ax2 = self._remove_spines(ax2)
+        # ax2 = self._remove_spines(ax2)
 
         # Customization.
 
         if not self.remove_splines:
             ax.set_xlabel("Latitude")
             ax.set_ylabel("Longitude")
-            ax2.set_xlabel("Latitude")
-            ax2.set_ylabel("Longitude")
+            # ax2.set_xlabel("Latitude")
+            # ax2.set_ylabel("Longitude")
 
         # Ensure correct scale and aspect ratio
         ax.set_aspect("equal", "box")
-        ax2.set_aspect("equal", "box")
+        # ax2.set_aspect("equal", "box")
 
         def roundup(x):
             x -= x % -100
@@ -829,16 +829,16 @@ class PlotGenIE:
             vmax = min(roundup(np.max(haversine_errors)), max_colorscale)
         else:
             vmax = max(roundup(np.max(haversine_errors)), max_colorscale)
-        vmax_std = min(roundup(np.max(error_std)), 100)
+        # vmax_std = min(roundup(np.max(error_std)), 100)
 
         # Define colormap and normalization
         cmap = plt.get_cmap("magma_r")
         cmap.set_bad(cmap(0))  # Set color for NaN values
-        uncertainty_cmap = plt.get_cmap("magma_r")
-        uncertainty_cmap.set_bad(uncertainty_cmap(0))  # Set color for NaN values
+        # uncertainty_cmap = plt.get_cmap("magma_r")
+        # uncertainty_cmap.set_bad(uncertainty_cmap(0))  # Set color for NaN values
 
         norm = mcolors.Normalize(vmin=min_colorscale, vmax=vmax)
-        norm_std = mcolors.Normalize(vmin=0, vmax=vmax_std)
+        # norm_std = mcolors.Normalize(vmin=0, vmax=vmax_std)
 
         contour = ax.contourf(
             grid_x,
@@ -855,20 +855,20 @@ class PlotGenIE:
             extend="both",  # Include values beyond the defined range
         )
 
-        uncert_contour = ax2.contourf(
-            grid_x,
-            grid_y,
-            error_std,
-            cmap=uncertainty_cmap,
-            norm=norm_std,
-            levels=np.linspace(
-                0,
-                vmax_std,
-                num=n_contour_levels,
-                endpoint=True,
-            ),
-            extend="both",  # Include values beyond the defined range
-        )
+        # uncert_contour = ax2.contourf(
+        #     grid_x,
+        #     grid_y,
+        #     error_std,
+        #     cmap=uncertainty_cmap,
+        #     norm=norm_std,
+        #     levels=np.linspace(
+        #         0,
+        #         vmax_std,
+        #         num=n_contour_levels,
+        #         endpoint=True,
+        #     ),
+        #     extend="both",  # Include values beyond the defined range
+        # )
 
         cbar = self._make_colorbar(
             min_colorscale,
@@ -878,29 +878,29 @@ class PlotGenIE:
             contour,
         )
 
-        uncert_cbar = self._make_colorbar(
-            0,
-            vmax_std,
-            n_contour_levels,
-            ax2,
-            uncert_contour,
+        # uncert_cbar = self._make_colorbar(
+        #     0,
+        #     vmax_std,
+        #     n_contour_levels,
+        #     ax2,
+        #     uncert_contour,
+        # )
+
+        # for i, a in enumerate([ax]):
+            # Plot the basemap
+        ax = self.basemap.plot(
+            ax=ax,
+            color="none",
+            edgecolor="k",
+            linewidth=3,
+            facecolor="none",
+            label="State/ County Lines",
         )
 
-        for i, a in enumerate([ax, ax2]):
-            # Plot the basemap
-            a = self.basemap.plot(
-                ax=a,
-                color="none",
-                edgecolor="k",
-                linewidth=3,
-                facecolor="none",
-                label="State/ County Lines",
-            )
-
-            if i == 0:
-                ax = a
-            else:
-                ax2 = a
+        # if i == 0:
+        # ax = a
+        # else:
+        #     ax2 = a
 
         if dataset.lower() == "val":
             dataset = "validation"
@@ -919,7 +919,7 @@ class PlotGenIE:
 
         # Plot samples layer
         ax = self._plot_scatter_map(dataset, ax, actual_coords, marker_scale_factor)
-        ax2 = self._plot_scatter_map(dataset, ax2, actual_coords, marker_scale_factor)
+        # ax2 = self._plot_scatter_map(dataset, ax2, actual_coords, marker_scale_factor)
 
         ncol = 2 if centroids is not None else 1
 
@@ -927,10 +927,10 @@ class PlotGenIE:
         ax.legend(bbox_to_anchor=(0.5, 1.7), loc="upper center", ncol=ncol)
 
         cbar = self._set_cbar_fontsize(cbar)
-        uncert_cbar = self._set_cbar_fontsize(uncert_cbar)
+        # uncert_cbar = self._set_cbar_fontsize(uncert_cbar)
 
         cbar.ax.set_title("Prediction Error (km)\n", fontsize=self.fontsize)
-        uncert_cbar.ax.set_title("Interpolation Uncertainty\n", fontsize=self.fontsize)
+        # uncert_cbar.ax.set_title("Interpolation Uncertainty\n", fontsize=self.fontsize)
 
         plt.subplots_adjust(wspace=0.5, hspace=0.05)
 

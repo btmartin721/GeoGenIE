@@ -1,0 +1,232 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>geogenie.models.models &mdash; GeoGenIE 1.0.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=292eb321"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            GeoGenIE
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorial.html">GeoGenIE Tutorial</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../geogenie.html">geogenie package</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">GeoGenIE</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">geogenie.models.models</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for geogenie.models.models</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span> <span class="nn">logging</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">torch</span>
+<span class="kn">import</span> <span class="nn">torch.nn</span> <span class="k">as</span> <span class="nn">nn</span>
+
+
+<div class="viewcode-block" id="MLPRegressor">
+<a class="viewcode-back" href="../../../geogenie.models.html#geogenie.models.models.MLPRegressor">[docs]</a>
+<span class="k">class</span> <span class="nc">MLPRegressor</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Define PyTorch MLP Model.</span>
+
+<span class="sd">    This class defines a PyTorch Multi-Layer Perceptron (MLP) model for regression tasks.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        input_size (int): The number of input features.</span>
+<span class="sd">        width (int): The width of the hidden layers.</span>
+<span class="sd">        nlayers (int): The number of hidden layers.</span>
+<span class="sd">        dropout_prop (float): The dropout proportion.</span>
+<span class="sd">        device (str): The device to run the model on.</span>
+<span class="sd">        dtype (torch.dtype): The data type of the model.</span>
+<span class="sd">        batch_size (int): The batch size for the model.</span>
+<span class="sd">        seqmodel (torch.nn.Sequential): The sequential model</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">input_size</span><span class="p">,</span>
+        <span class="n">width</span><span class="o">=</span><span class="mi">256</span><span class="p">,</span>
+        <span class="n">nlayers</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+        <span class="n">dropout_prop</span><span class="o">=</span><span class="mf">0.25</span><span class="p">,</span>
+        <span class="n">device</span><span class="o">=</span><span class="s2">&quot;cpu&quot;</span><span class="p">,</span>
+        <span class="n">output_width</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+        <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">,</span>
+        <span class="n">batch_size</span><span class="o">=</span><span class="mi">32</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Instantiate the MLPRegressor class.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            input_size (int): The number of input features.</span>
+<span class="sd">            width (int): The width of the hidden layers.</span>
+<span class="sd">            nlayers (int): The number of hidden layers.</span>
+<span class="sd">            dropout_prop (float): The dropout proportion.</span>
+<span class="sd">            device (str): The device to run the model on.</span>
+<span class="sd">            dtype (torch.dtype): The data type of the model.</span>
+<span class="sd">            output_width (int): The number of output features.</span>
+<span class="sd">            batch_size (int): The batch size for the model.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">MLPRegressor</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">device</span> <span class="o">=</span> <span class="n">device</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dtype</span> <span class="o">=</span> <span class="n">dtype</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+
+        <span class="n">initial_width</span> <span class="o">=</span> <span class="n">width</span>
+        <span class="k">if</span> <span class="n">width</span> <span class="o">&gt;=</span> <span class="n">input_size</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+                <span class="s2">&quot;Provided hidden layer width is &gt;= number of input features. Reducing initial layer width.&quot;</span>
+            <span class="p">)</span>
+
+        <span class="k">while</span> <span class="n">width</span> <span class="o">&gt;=</span> <span class="n">input_size</span><span class="p">:</span>
+            <span class="n">width</span> <span class="o">*=</span> <span class="mf">0.8</span>
+            <span class="n">width</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">width</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">initial_width</span> <span class="o">&gt;=</span> <span class="n">input_size</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Reduced initial hidden layer width: </span><span class="si">{</span><span class="n">width</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">seqmodel</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_define_model</span><span class="p">(</span>
+            <span class="n">input_size</span><span class="p">,</span> <span class="n">width</span><span class="p">,</span> <span class="n">nlayers</span><span class="p">,</span> <span class="n">dropout_prop</span><span class="p">,</span> <span class="n">output_width</span>
+        <span class="p">)</span>
+
+<div class="viewcode-block" id="MLPRegressor._define_model">
+<a class="viewcode-back" href="../../../geogenie.models.html#geogenie.models.models.MLPRegressor._define_model">[docs]</a>
+    <span class="k">def</span> <span class="nf">_define_model</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_size</span><span class="p">,</span> <span class="n">width</span><span class="p">,</span> <span class="n">nlayers</span><span class="p">,</span> <span class="n">dropout_prop</span><span class="p">,</span> <span class="n">output_width</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Method to define the neural network model.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            input_size (int): The number of input features.</span>
+<span class="sd">            width (int): The width of the hidden layers.</span>
+<span class="sd">            nlayers (int): The number of hidden layers.</span>
+<span class="sd">            dropout_prop (float): The dropout proportion.</span>
+<span class="sd">            output_width (int): The number of output features.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            torch.nn.Sequential: The sequential model.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Start with a Linear layer and BatchNorm1d</span>
+        <span class="n">layers</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">BatchNorm1d</span><span class="p">(</span><span class="n">input_size</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">dtype</span><span class="p">),</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">input_size</span><span class="p">,</span> <span class="n">width</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">dtype</span><span class="p">),</span>
+            <span class="n">nn</span><span class="o">.</span><span class="n">ELU</span><span class="p">(),</span>
+        <span class="p">]</span>
+
+        <span class="c1"># Add the first half of the layers</span>
+        <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">floor</span><span class="p">(</span><span class="n">nlayers</span> <span class="o">/</span> <span class="mi">2</span><span class="p">))</span> <span class="o">-</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="n">layers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">width</span><span class="p">,</span> <span class="n">width</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">dtype</span><span class="p">))</span>
+            <span class="n">layers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">ELU</span><span class="p">())</span>
+
+        <span class="c1"># Add dropout layer</span>
+        <span class="n">layers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Dropout</span><span class="p">(</span><span class="n">dropout_prop</span><span class="p">))</span>
+
+        <span class="c1"># Add the second half of the layers</span>
+        <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">nlayers</span> <span class="o">/</span> <span class="mi">2</span><span class="p">))):</span>
+            <span class="n">layers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">width</span><span class="p">,</span> <span class="n">width</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">dtype</span><span class="p">))</span>
+            <span class="n">layers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">ELU</span><span class="p">())</span>
+
+        <span class="c1"># Add output layers</span>
+        <span class="n">layers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">width</span><span class="p">,</span> <span class="n">output_width</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">dtype</span><span class="p">))</span>
+
+        <span class="k">return</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">(</span><span class="o">*</span><span class="n">layers</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="MLPRegressor.forward">
+<a class="viewcode-back" href="../../../geogenie.models.html#geogenie.models.models.MLPRegressor.forward">[docs]</a>
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Forward pass through the neural network.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            x (torch.Tensor): The input tensor to the neural network.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            torch.Tensor: The output tensor after passing through the network.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">x</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>  <span class="c1"># Check if batch size is 1</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">seqmodel</span><span class="p">[</span><span class="mi">1</span><span class="p">:](</span><span class="n">x</span><span class="p">)</span>  <span class="c1"># Skip the first layer (BatchNorm)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Pass the input &#39;x&#39; through the sequential model</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">seqmodel</span><span class="p">(</span><span class="n">x</span><span class="p">)</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Bradley T. Martin and Tyler K. Chafin.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

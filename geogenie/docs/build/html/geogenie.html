@@ -1,0 +1,901 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>geogenie package &mdash; GeoGenIE 1.0.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=292eb321"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="geogenie.models package" href="geogenie.models.html" />
+    <link rel="prev" title="GeoGenIE Tutorial" href="tutorial.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            GeoGenIE
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="tutorial.html">GeoGenIE Tutorial</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">geogenie package</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#subpackages">Subpackages</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="geogenie.models.html">geogenie.models package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="geogenie.outliers.html">geogenie.outliers package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="geogenie.plotting.html">geogenie.plotting package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="geogenie.utils.html">geogenie.utils package</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#submodules">Submodules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#module-geogenie.cli">geogenie.cli module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#geogenie.cli.main"><code class="docutils literal notranslate"><span class="pre">main()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#module-geogenie.geogenie">geogenie.geogenie module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#geogenie.geogenie.GeoGenIE"><code class="docutils literal notranslate"><span class="pre">GeoGenIE</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#geogenie.geogenie.GeoGenIE.args"><code class="docutils literal notranslate"><span class="pre">GeoGenIE.args</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#geogenie.geogenie.GeoGenIE.genotypes"><code class="docutils literal notranslate"><span class="pre">GeoGenIE.genotypes</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#geogenie.geogenie.GeoGenIE.samples"><code class="docutils literal notranslate"><span class="pre">GeoGenIE.samples</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#geogenie.geogenie.GeoGenIE.sample_data"><code class="docutils literal notranslate"><span class="pre">GeoGenIE.sample_data</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#geogenie.geogenie.GeoGenIE.locs"><code class="docutils literal notranslate"><span class="pre">GeoGenIE.locs</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#geogenie.geogenie.GeoGenIE.dtype"><code class="docutils literal notranslate"><span class="pre">GeoGenIE.dtype</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#geogenie.geogenie.GeoGenIE.logger"><code class="docutils literal notranslate"><span class="pre">GeoGenIE.logger</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#geogenie.geogenie.GeoGenIE.device"><code class="docutils literal notranslate"><span class="pre">GeoGenIE.device</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#geogenie.geogenie.GeoGenIE.plotting"><code class="docutils literal notranslate"><span class="pre">GeoGenIE.plotting</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#geogenie.geogenie.GeoGenIE.boot"><code class="docutils literal notranslate"><span class="pre">GeoGenIE.boot</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#geogenie.geogenie.GeoGenIE._batch_init"><code class="docutils literal notranslate"><span class="pre">GeoGenIE._batch_init()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#geogenie.geogenie.GeoGenIE._create_metrics_dictionary"><code class="docutils literal notranslate"><span class="pre">GeoGenIE._create_metrics_dictionary()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#geogenie.geogenie.GeoGenIE.calculate_prediction_metrics"><code class="docutils literal notranslate"><span class="pre">GeoGenIE.calculate_prediction_metrics()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#geogenie.geogenie.GeoGenIE.compute_rolling_statistics"><code class="docutils literal notranslate"><span class="pre">GeoGenIE.compute_rolling_statistics()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#geogenie.geogenie.GeoGenIE.evaluate_and_save_results"><code class="docutils literal notranslate"><span class="pre">GeoGenIE.evaluate_and_save_results()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#geogenie.geogenie.GeoGenIE.extract_best_params"><code class="docutils literal notranslate"><span class="pre">GeoGenIE.extract_best_params()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#geogenie.geogenie.GeoGenIE.get_all_stats"><code class="docutils literal notranslate"><span class="pre">GeoGenIE.get_all_stats()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#geogenie.geogenie.GeoGenIE.get_correlation_coef"><code class="docutils literal notranslate"><span class="pre">GeoGenIE.get_correlation_coef()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#geogenie.geogenie.GeoGenIE.load_best_params"><code class="docutils literal notranslate"><span class="pre">GeoGenIE.load_best_params()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#geogenie.geogenie.GeoGenIE.load_data"><code class="docutils literal notranslate"><span class="pre">GeoGenIE.load_data()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#geogenie.geogenie.GeoGenIE.make_unseen_predictions"><code class="docutils literal notranslate"><span class="pre">GeoGenIE.make_unseen_predictions()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#geogenie.geogenie.GeoGenIE.optimize_parameters"><code class="docutils literal notranslate"><span class="pre">GeoGenIE.optimize_parameters()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#geogenie.geogenie.GeoGenIE.perform_bootstrap_training"><code class="docutils literal notranslate"><span class="pre">GeoGenIE.perform_bootstrap_training()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#geogenie.geogenie.GeoGenIE.perform_standard_training"><code class="docutils literal notranslate"><span class="pre">GeoGenIE.perform_standard_training()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#geogenie.geogenie.GeoGenIE.plot_bootstrap_aggregates"><code class="docutils literal notranslate"><span class="pre">GeoGenIE.plot_bootstrap_aggregates()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#geogenie.geogenie.GeoGenIE.predict_locations"><code class="docutils literal notranslate"><span class="pre">GeoGenIE.predict_locations()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#geogenie.geogenie.GeoGenIE.print_stats_to_logger"><code class="docutils literal notranslate"><span class="pre">GeoGenIE.print_stats_to_logger()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#geogenie.geogenie.GeoGenIE.save_model"><code class="docutils literal notranslate"><span class="pre">GeoGenIE.save_model()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#geogenie.geogenie.GeoGenIE.test_step"><code class="docutils literal notranslate"><span class="pre">GeoGenIE.test_step()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#geogenie.geogenie.GeoGenIE.total_execution_time_decorator"><code class="docutils literal notranslate"><span class="pre">GeoGenIE.total_execution_time_decorator()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#geogenie.geogenie.GeoGenIE.train_model"><code class="docutils literal notranslate"><span class="pre">GeoGenIE.train_model()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#geogenie.geogenie.GeoGenIE.train_rf"><code class="docutils literal notranslate"><span class="pre">GeoGenIE.train_rf()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#geogenie.geogenie.GeoGenIE.train_step"><code class="docutils literal notranslate"><span class="pre">GeoGenIE.train_step()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#geogenie.geogenie.GeoGenIE.train_test_predict"><code class="docutils literal notranslate"><span class="pre">GeoGenIE.train_test_predict()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#geogenie.geogenie.GeoGenIE.visualize_oversampling"><code class="docutils literal notranslate"><span class="pre">GeoGenIE.visualize_oversampling()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#geogenie.geogenie.GeoGenIE.write_pred_locations"><code class="docutils literal notranslate"><span class="pre">GeoGenIE.write_pred_locations()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#geogenie.geogenie.save_execution_times"><code class="docutils literal notranslate"><span class="pre">save_execution_times()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#geogenie.geogenie.timer"><code class="docutils literal notranslate"><span class="pre">timer()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#module-geogenie">Module contents</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">GeoGenIE</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">geogenie package</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/geogenie.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="geogenie-package">
+<h1>geogenie package<a class="headerlink" href="#geogenie-package" title="Link to this heading"></a></h1>
+<section id="subpackages">
+<h2>Subpackages<a class="headerlink" href="#subpackages" title="Link to this heading"></a></h2>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="geogenie.models.html">geogenie.models package</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="geogenie.models.html#submodules">Submodules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geogenie.models.html#module-geogenie.models.models">geogenie.models.models module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geogenie.models.html#module-geogenie.models">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="geogenie.outliers.html">geogenie.outliers package</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="geogenie.outliers.html#submodules">Submodules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geogenie.outliers.html#module-geogenie.outliers.detect_outliers">geogenie.outliers.detect_outliers module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geogenie.outliers.html#module-geogenie.outliers">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="geogenie.plotting.html">geogenie.plotting package</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="geogenie.plotting.html#submodules">Submodules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geogenie.plotting.html#module-geogenie.plotting.plotting">geogenie.plotting.plotting module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geogenie.plotting.html#module-geogenie.plotting">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="geogenie.utils.html">geogenie.utils package</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="geogenie.utils.html#submodules">Submodules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geogenie.utils.html#module-geogenie.utils.argument_parser">geogenie.utils.argument_parser module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geogenie.utils.html#module-geogenie.utils.callbacks">geogenie.utils.callbacks module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geogenie.utils.html#module-geogenie.utils.data">geogenie.utils.data module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geogenie.utils.html#module-geogenie.utils.data_structure">geogenie.utils.data_structure module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geogenie.utils.html#module-geogenie.utils.exceptions">geogenie.utils.exceptions module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geogenie.utils.html#module-geogenie.utils.logger">geogenie.utils.logger module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geogenie.utils.html#module-geogenie.utils.loss">geogenie.utils.loss module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geogenie.utils.html#module-geogenie.utils.scorers">geogenie.utils.scorers module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geogenie.utils.html#module-geogenie.utils.spatial_data_processors">geogenie.utils.spatial_data_processors module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geogenie.utils.html#module-geogenie.utils.transformers">geogenie.utils.transformers module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geogenie.utils.html#module-geogenie.utils.utils">geogenie.utils.utils module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geogenie.utils.html#module-geogenie.utils">Module contents</a></li>
+</ul>
+</li>
+</ul>
+</div>
+</section>
+<section id="submodules">
+<h2>Submodules<a class="headerlink" href="#submodules" title="Link to this heading"></a></h2>
+</section>
+<section id="module-geogenie.cli">
+<span id="geogenie-cli-module"></span><h2>geogenie.cli module<a class="headerlink" href="#module-geogenie.cli" title="Link to this heading"></a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.cli.main">
+<span class="sig-prename descclassname"><span class="pre">geogenie.cli.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/cli.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.cli.main" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</section>
+<section id="module-geogenie.geogenie">
+<span id="geogenie-geogenie-module"></span><h2>geogenie.geogenie module<a class="headerlink" href="#module-geogenie.geogenie" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="geogenie.geogenie.GeoGenIE">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">geogenie.geogenie.</span></span><span class="sig-name descname"><span class="pre">GeoGenIE</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/geogenie.html#GeoGenIE"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.geogenie.GeoGenIE" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>A class designed for predicting geographic localities from genomic SNP (Single Nucleotide Polymorphism) data using neural network and gradient boosting decision tree models.</p>
+<p>GeoGenIE facilitates the integration of genomic data analysis with geographic predictions, aiding in studies like population genetic and molecular ecology.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.geogenie.GeoGenIE.args">
+<span class="sig-name descname"><span class="pre">args</span></span><a class="headerlink" href="#geogenie.geogenie.GeoGenIE.args" title="Link to this definition"></a></dt>
+<dd><p>Command line arguments containing configurations for data processing, model training, and visualization.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>argparse.Namespace</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.geogenie.GeoGenIE.genotypes">
+<span class="sig-name descname"><span class="pre">genotypes</span></span><a class="headerlink" href="#geogenie.geogenie.GeoGenIE.genotypes" title="Link to this definition"></a></dt>
+<dd><p>Genomic SNP data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>np.ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.geogenie.GeoGenIE.samples">
+<span class="sig-name descname"><span class="pre">samples</span></span><a class="headerlink" href="#geogenie.geogenie.GeoGenIE.samples" title="Link to this definition"></a></dt>
+<dd><p>Sample IDs.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>np.ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.geogenie.GeoGenIE.sample_data">
+<span class="sig-name descname"><span class="pre">sample_data</span></span><a class="headerlink" href="#geogenie.geogenie.GeoGenIE.sample_data" title="Link to this definition"></a></dt>
+<dd><p>Dictionary containing sample data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.geogenie.GeoGenIE.locs">
+<span class="sig-name descname"><span class="pre">locs</span></span><a class="headerlink" href="#geogenie.geogenie.GeoGenIE.locs" title="Link to this definition"></a></dt>
+<dd><p>Geographic coordinates of the samples.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>np.ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.geogenie.GeoGenIE.dtype">
+<span class="sig-name descname"><span class="pre">dtype</span></span><a class="headerlink" href="#geogenie.geogenie.GeoGenIE.dtype" title="Link to this definition"></a></dt>
+<dd><p>Data type for PyTorch tensors.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>torch.dtype</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.geogenie.GeoGenIE.logger">
+<span class="sig-name descname"><span class="pre">logger</span></span><a class="headerlink" href="#geogenie.geogenie.GeoGenIE.logger" title="Link to this definition"></a></dt>
+<dd><p>Logger object for logging messages.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>logging.Logger</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.geogenie.GeoGenIE.device">
+<span class="sig-name descname"><span class="pre">device</span></span><a class="headerlink" href="#geogenie.geogenie.GeoGenIE.device" title="Link to this definition"></a></dt>
+<dd><p>Device to run the computations on (CPU or GPU).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.geogenie.GeoGenIE.plotting">
+<span class="sig-name descname"><span class="pre">plotting</span></span><a class="headerlink" href="#geogenie.geogenie.GeoGenIE.plotting" title="Link to this definition"></a></dt>
+<dd><p>PlotGenIE object for generating plots.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="geogenie.plotting.html#geogenie.plotting.plotting.PlotGenIE" title="geogenie.plotting.plotting.PlotGenIE">PlotGenIE</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.geogenie.GeoGenIE.boot">
+<span class="sig-name descname"><span class="pre">boot</span></span><a class="headerlink" href="#geogenie.geogenie.GeoGenIE.boot" title="Link to this definition"></a></dt>
+<dd><p>Bootstrap object for bootstrapping predictions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Bootstrap</p>
+</dd>
+</dl>
+</dd></dl>
+
+<p class="rubric">Notes</p>
+<ul class="simple">
+<li><p>This class is particularly useful in the fields of population genomics, evolutionary biology, and molecular ecology, where geographic predictions based on genomic data are crucial.</p></li>
+<li><p>It requires genomic SNP data as input and utilizes neural network models for making geographic predictions.</p></li>
+<li><p>The class supports data preprocessing, model training, and visualization of the results.</p></li>
+<li><p>It also provides support for bootstrapping predictions and optimizing hyperparameters using Optuna.</p></li>
+<li><p>The class is designed to handle large-scale genomic datasets and perform geographic predictions efficiently.</p></li>
+</ul>
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.geogenie.GeoGenIE._batch_init">
+<span class="sig-name descname"><span class="pre">_batch_init</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">batch</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/geogenie.html#GeoGenIE._batch_init"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.geogenie.GeoGenIE._batch_init" title="Link to this definition"></a></dt>
+<dd><p>Initializes the batch for training or validation.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> (<em>torch.nn.Module</em>) – The PyTorch model to train or validate.</p></li>
+<li><p><strong>batch</strong> (<em>tuple</em>) – A tuple containing data, targets, and sample weights.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A tuple containing data, targets, and sample weights as tensors moved to the appropriate device.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.geogenie.GeoGenIE._create_metrics_dictionary">
+<span class="sig-name descname"><span class="pre">_create_metrics_dictionary</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">values</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/geogenie.html#GeoGenIE._create_metrics_dictionary"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.geogenie.GeoGenIE._create_metrics_dictionary" title="Link to this definition"></a></dt>
+<dd><p>Creates a dictionary for metrics from a list of values.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>values</strong> (<em>list</em>) – List of values in the specified order, with ‘percentiles’ being a NumPy array at index 16.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Dictionary with metrics.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.geogenie.GeoGenIE.calculate_prediction_metrics">
+<span class="sig-name descname"><span class="pre">calculate_prediction_metrics</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">outfile</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">predictions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ground_truth</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">log_stats</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bootstrap</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_train</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dataset</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/geogenie.html#GeoGenIE.calculate_prediction_metrics"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.geogenie.GeoGenIE.calculate_prediction_metrics" title="Link to this definition"></a></dt>
+<dd><p>Calculate metrics for the predictions and ground truth.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>outfile</strong> (<em>str</em>) – The path to the file where the metrics will be saved.</p></li>
+<li><p><strong>predictions</strong> (<em>np.ndarray</em>) – Predictions from the model.</p></li>
+<li><p><strong>ground_truth</strong> (<em>np.ndarray</em>) – Ground truth values.</p></li>
+<li><p><strong>log_stats</strong> (<em>bool</em>) – If True, log the prediction metrics.</p></li>
+<li><p><strong>bootstrap</strong> (<em>bool</em>) – If True, perform bootstrap predictions.</p></li>
+<li><p><strong>is_train</strong> (<em>bool</em><em>, </em><em>optional</em>) – If True, indicates that the data is training data. Defaults to False.</p></li>
+<li><p><strong>dataset</strong> (<em>str</em><em>, </em><em>optional</em>) – The dataset being used. Defaults to None.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A tuple containing the predictions, ground truth, and metrics dictionary.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.geogenie.GeoGenIE.compute_rolling_statistics">
+<span class="sig-name descname"><span class="pre">compute_rolling_statistics</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">times</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">window_size</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/geogenie.html#GeoGenIE.compute_rolling_statistics"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.geogenie.GeoGenIE.compute_rolling_statistics" title="Link to this definition"></a></dt>
+<dd><p>Computes rolling average and standard deviation over a specified window size.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>times</strong> (<em>list</em><em> or </em><em>array-like</em>) – A sequence of numerical values (e.g., times or scores).</p></li>
+<li><p><strong>window_size</strong> (<em>int</em>) – The number of elements to consider for each rolling window.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>A tuple containing two lists:</dt><dd><ul class="simple">
+<li><p>averages (list): The rolling averages.</p></li>
+<li><p>std_devs (list): The rolling standard deviations.</p></li>
+</ul>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<ul class="simple">
+<li><p>This method is useful for analyzing time series data where you need to smooth out short-term fluctuations and highlight longer-term trends or cycles.</p></li>
+</ul>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.geogenie.GeoGenIE.evaluate_and_save_results">
+<span class="sig-name descname"><span class="pre">evaluate_and_save_results</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">train_losses</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">val_losses</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dataset</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'val'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">centroids</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_rf</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/geogenie.html#GeoGenIE.evaluate_and_save_results"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.geogenie.GeoGenIE.evaluate_and_save_results" title="Link to this definition"></a></dt>
+<dd><p>Evaluate the model and save the results.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> (<em>torch.nn.Module</em>) – The trained model to evaluate.</p></li>
+<li><p><strong>train_losses</strong> (<em>list</em>) – List of training losses.</p></li>
+<li><p><strong>val_losses</strong> (<em>list</em>) – List of validation losses.</p></li>
+<li><p><strong>dataset</strong> (<em>str</em>) – The dataset to use for evaluation (‘val’ or ‘test’).</p></li>
+<li><p><strong>centroids</strong> (<em>np.ndarray</em><em>, </em><em>optional</em>) – Centroids if using synthetic resampling. Defaults to None.</p></li>
+<li><p><strong>use_rf</strong> (<em>bool</em><em>, </em><em>optional</em>) – If True, use RandomForest model. Defaults to False.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.geogenie.GeoGenIE.extract_best_params">
+<span class="sig-name descname"><span class="pre">extract_best_params</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">best_params</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/geogenie.html#GeoGenIE.extract_best_params"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.geogenie.GeoGenIE.extract_best_params" title="Link to this definition"></a></dt>
+<dd><p>Extracts the best parameters for the optimizer.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>best_params</strong> (<em>dict</em>) – Dictionary of best parameters.</p></li>
+<li><p><strong>model</strong> (<em>torch.nn.Module</em>) – The PyTorch model to train.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Optimizer for the model.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>torch.optim.Optimizer</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.geogenie.GeoGenIE.get_all_stats">
+<span class="sig-name descname"><span class="pre">get_all_stats</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">predictions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ground_truth</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mad</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">coefficient_of_variation</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">within_threshold</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/geogenie.html#GeoGenIE.get_all_stats"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.geogenie.GeoGenIE.get_all_stats" title="Link to this definition"></a></dt>
+<dd><p>Computes various statistics for predictions and ground truth.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>predictions</strong> (<em>np.ndarray</em>) – Predictions from the model.</p></li>
+<li><p><strong>ground_truth</strong> (<em>np.ndarray</em>) – Ground truth values.</p></li>
+<li><p><strong>mad</strong> (<em>callable</em>) – Function to compute median absolute deviation.</p></li>
+<li><p><strong>coefficient_of_variation</strong> (<em>callable</em>) – Function to compute coefficient of variation.</p></li>
+<li><p><strong>within_threshold</strong> (<em>callable</em>) – Function to compute percentage within a threshold.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A tuple containing z-scores, a list of statistical values, and haversine errors.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.geogenie.GeoGenIE.get_correlation_coef">
+<span class="sig-name descname"><span class="pre">get_correlation_coef</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">predictions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ground_truth</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">corr_func</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/geogenie.html#GeoGenIE.get_correlation_coef"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.geogenie.GeoGenIE.get_correlation_coef" title="Link to this definition"></a></dt>
+<dd><p>Computes correlation coefficients for predictions and ground truth.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>predictions</strong> (<em>np.ndarray</em>) – Predictions from the model.</p></li>
+<li><p><strong>ground_truth</strong> (<em>np.ndarray</em>) – Ground truth values.</p></li>
+<li><p><strong>corr_func</strong> (<em>callable</em>) – Function to compute correlation coefficients.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A tuple containing correlation coefficients and p-values for both longitude and latitude.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.geogenie.GeoGenIE.load_best_params">
+<span class="sig-name descname"><span class="pre">load_best_params</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filename</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/geogenie.html#GeoGenIE.load_best_params"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.geogenie.GeoGenIE.load_best_params" title="Link to this definition"></a></dt>
+<dd><p>Loads the best parameters from a file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>filename</strong> (<em>str</em>) – The path to the file containing the best parameters.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Dictionary of best parameters.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>FileNotFoundError</strong> – If the file does not exist.</p></li>
+<li><p><strong>TypeError</strong> – If the best parameters are not in the expected format.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.geogenie.GeoGenIE.load_data">
+<span class="sig-name descname"><span class="pre">load_data</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/geogenie.html#GeoGenIE.load_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.geogenie.GeoGenIE.load_data" title="Link to this definition"></a></dt>
+<dd><p>Loads genotypes from VCF file using pysam, then preprocesses the data by imputing, embedding, and transforming the input data.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.geogenie.GeoGenIE.make_unseen_predictions">
+<span class="sig-name descname"><span class="pre">make_unseen_predictions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_rf</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">col_indices</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">boot_rep</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/geogenie.html#GeoGenIE.make_unseen_predictions"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.geogenie.GeoGenIE.make_unseen_predictions" title="Link to this definition"></a></dt>
+<dd><p>Makes predictions on unseen data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> (<em>torch.nn.Module</em>) – The trained model to use for predictions.</p></li>
+<li><p><strong>device</strong> (<em>torch.device</em>) – Device for training (‘cpu’ or ‘cuda’).</p></li>
+<li><p><strong>use_rf</strong> (<em>bool</em><em>, </em><em>optional</em>) – If True, use RandomForest model. Defaults to False.</p></li>
+<li><p><strong>col_indices</strong> (<em>list</em><em>, </em><em>optional</em>) – List of column indices to use for predictions. Defaults to None.</p></li>
+<li><p><strong>boot_rep</strong> (<em>int</em><em>, </em><em>optional</em>) – Bootstrap repetition index. Defaults to None.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>DataFrame containing the predicted locations if boot_rep is None.
+tuple: Tuple containing predicted locations and output file path if boot_rep is not None.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>pandas.DataFrame</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.geogenie.GeoGenIE.optimize_parameters">
+<span class="sig-name descname"><span class="pre">optimize_parameters</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ModelClass</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/geogenie.html#GeoGenIE.optimize_parameters"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.geogenie.GeoGenIE.optimize_parameters" title="Link to this definition"></a></dt>
+<dd><p>Perform parameter optimization using Optuna.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ModelClass</strong> (<em>torch.nn.Module</em>) – The PyTorch model class for which the optimization is to be done.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Best parameters found by Optuna optimization.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.geogenie.GeoGenIE.perform_bootstrap_training">
+<span class="sig-name descname"><span class="pre">perform_bootstrap_training</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ModelClass</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">best_params</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/geogenie.html#GeoGenIE.perform_bootstrap_training"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.geogenie.GeoGenIE.perform_bootstrap_training" title="Link to this definition"></a></dt>
+<dd><p>Perform bootstrap training using the provided parameters.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ModelClass</strong> (<em>torch.nn.Module</em>) – The PyTorch model class to use.</p></li>
+<li><p><strong>best_params</strong> (<em>dict</em>) – Dictionary of best parameters found by Optuna or specified by the user.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.geogenie.GeoGenIE.perform_standard_training">
+<span class="sig-name descname"><span class="pre">perform_standard_training</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">train_loader</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">val_loader</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">best_params</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ModelClass</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/geogenie.html#GeoGenIE.perform_standard_training"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.geogenie.GeoGenIE.perform_standard_training" title="Link to this definition"></a></dt>
+<dd><p>Perform standard model training.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>train_loader</strong> (<em>torch.utils.data.DataLoader</em>) – DataLoader for the training set.</p></li>
+<li><p><strong>val_loader</strong> (<em>torch.utils.data.DataLoader</em>) – DataLoader for the validation set.</p></li>
+<li><p><strong>device</strong> (<em>torch.device</em>) – Device for training (‘cpu’ or ‘cuda’).</p></li>
+<li><p><strong>best_params</strong> (<em>dict</em>) – Dictionary of parameters to use with model training.</p></li>
+<li><p><strong>ModelClass</strong> (<em>torch.nn.Module</em>) – Callable subclass for PyTorch model.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A tuple containing the best model, training losses, validation losses, and centroids if any.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.geogenie.GeoGenIE.plot_bootstrap_aggregates">
+<span class="sig-name descname"><span class="pre">plot_bootstrap_aggregates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">train_times</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/geogenie.html#GeoGenIE.plot_bootstrap_aggregates"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.geogenie.GeoGenIE.plot_bootstrap_aggregates" title="Link to this definition"></a></dt>
+<dd><p>Plots bootstrap aggregates and training times.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>df</strong> (<em>pandas.DataFrame</em>) – DataFrame containing bootstrap aggregates.</p></li>
+<li><p><strong>train_times</strong> (<em>list</em>) – List of training times.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.geogenie.GeoGenIE.predict_locations">
+<span class="sig-name descname"><span class="pre">predict_locations</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_loader</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outfile</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">return_truths</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_rf</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">log_metrics</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bootstrap</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_train</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dataset</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_val</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/geogenie.html#GeoGenIE.predict_locations"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.geogenie.GeoGenIE.predict_locations" title="Link to this definition"></a></dt>
+<dd><p>Predict locations using the trained model and evaluate predictions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> (<em>torch.nn.Module</em>) – The trained model to use for predictions.</p></li>
+<li><p><strong>data_loader</strong> (<em>torch.utils.data.DataLoader</em>) – DataLoader for the prediction data.</p></li>
+<li><p><strong>outfile</strong> (<em>str</em>) – The path to the file where the predictions will be saved.</p></li>
+<li><p><strong>return_truths</strong> (<em>bool</em><em>, </em><em>optional</em>) – If True, return the ground truth values along with predictions. Defaults to False.</p></li>
+<li><p><strong>use_rf</strong> (<em>bool</em><em>, </em><em>optional</em>) – If True, use RandomForest model. Defaults to False.</p></li>
+<li><p><strong>log_metrics</strong> (<em>bool</em><em>, </em><em>optional</em>) – If True, log the prediction metrics. Defaults to True.</p></li>
+<li><p><strong>bootstrap</strong> (<em>bool</em><em>, </em><em>optional</em>) – If True, perform bootstrap predictions. Defaults to False.</p></li>
+<li><p><strong>is_train</strong> (<em>bool</em><em>, </em><em>optional</em>) – If True, indicates that the data is training data. Defaults to False.</p></li>
+<li><p><strong>dataset</strong> (<em>str</em><em>, </em><em>optional</em>) – The dataset being used. Defaults to None.</p></li>
+<li><p><strong>is_val</strong> (<em>bool</em><em>, </em><em>optional</em>) – If True, indicates that the data is validation data. Defaults to True.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Predictions from the model.
+(optional) dict: Metrics related to the predictions if return_truths is True.
+(optional) numpy.ndarray: Ground truth values if return_truths is True.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>numpy.ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.geogenie.GeoGenIE.print_stats_to_logger">
+<span class="sig-name descname"><span class="pre">print_stats_to_logger</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">metrics</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/geogenie.html#GeoGenIE.print_stats_to_logger"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.geogenie.GeoGenIE.print_stats_to_logger" title="Link to this definition"></a></dt>
+<dd><p>Logs the computed metrics to the logger.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>metrics</strong> (<em>dict</em>) – Dictionary of metrics to log.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.geogenie.GeoGenIE.save_model">
+<span class="sig-name descname"><span class="pre">save_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filename</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/geogenie.html#GeoGenIE.save_model"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.geogenie.GeoGenIE.save_model" title="Link to this definition"></a></dt>
+<dd><p>Saves the trained model to a file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> (<em>torch.nn.Module</em>) – The trained PyTorch model to save.</p></li>
+<li><p><strong>filename</strong> (<em>str</em>) – The path to the file where the model will be saved.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.geogenie.GeoGenIE.test_step">
+<span class="sig-name descname"><span class="pre">test_step</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">val_loader</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/geogenie.html#GeoGenIE.test_step"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.geogenie.GeoGenIE.test_step" title="Link to this definition"></a></dt>
+<dd><p>Performs a single validation step.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>val_loader</strong> (<em>torch.utils.data.DataLoader</em>) – DataLoader for validation data.</p></li>
+<li><p><strong>model</strong> (<em>torch.nn.Module</em>) – The PyTorch model to validate.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The average validation loss.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.geogenie.GeoGenIE.total_execution_time_decorator">
+<span class="sig-name descname"><span class="pre">total_execution_time_decorator</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">func</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/geogenie.html#GeoGenIE.total_execution_time_decorator"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.geogenie.GeoGenIE.total_execution_time_decorator" title="Link to this definition"></a></dt>
+<dd><p>Decorator to time the execution of a function and print the duration in Hours:Minutes:Seconds format. Logs the execution time using the class’s logger.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>func</strong> (<em>callable</em>) – The function to be timed.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The wrapped function with execution time measurement.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>callable</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.geogenie.GeoGenIE.train_model">
+<span class="sig-name descname"><span class="pre">train_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">train_loader</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">val_loader</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">optimizer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trial</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">objective_mode</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">do_bootstrap</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">early_stopping</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lr_scheduler</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/geogenie.html#GeoGenIE.train_model"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.geogenie.GeoGenIE.train_model" title="Link to this definition"></a></dt>
+<dd><p>Trains a given model using specified parameters and data loaders.</p>
+<p>This method supports early stopping and learning rate scheduling, and evaluates the model’s performance on the validation dataset.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>train_loader</strong> (<em>torch.utils.data.DataLoader</em>) – DataLoader for training data.</p></li>
+<li><p><strong>val_loader</strong> (<em>torch.utils.data.DataLoader</em>) – DataLoader for validation data.</p></li>
+<li><p><strong>model</strong> (<em>torch.nn.Module</em>) – The PyTorch model to train.</p></li>
+<li><p><strong>optimizer</strong> (<em>torch.optim.Optimizer</em>) – The optimizer for training the model.</p></li>
+<li><p><strong>trial</strong> (<em>optuna.trial.Trial</em><em>, </em><em>optional</em>) – Optuna trial object for hyperparameter optimization. Defaults to None.</p></li>
+<li><p><strong>objective_mode</strong> (<em>bool</em><em>, </em><em>optional</em>) – If True, the method is used for optimization objectives. Defaults to False.</p></li>
+<li><p><strong>do_bootstrap</strong> (<em>bool</em><em>, </em><em>optional</em>) – If True, performs bootstrap training. Defaults to False.</p></li>
+<li><p><strong>early_stopping</strong> (<a class="reference internal" href="geogenie.utils.html#geogenie.utils.callbacks.EarlyStopping" title="geogenie.utils.callbacks.EarlyStopping"><em>EarlyStopping</em></a><em>, </em><em>optional</em>) – Early stopping callback. Defaults to None.</p></li>
+<li><p><strong>lr_scheduler</strong> (<em>torch.optim.lr_scheduler</em><em>, </em><em>optional</em>) – Learning rate scheduler. Defaults to None.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Depending on the mode, returns trained model and additional training information or None if training failed.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple or None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.geogenie.GeoGenIE.train_rf">
+<span class="sig-name descname"><span class="pre">train_rf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">clf_params</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">objective_mode</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/geogenie.html#GeoGenIE.train_rf"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.geogenie.GeoGenIE.train_rf" title="Link to this definition"></a></dt>
+<dd><p>Trains an XGBRegressor model using the specified parameters and data loaders.</p>
+<p>The method supports data augmentation using SMOTE (Synthetic Minority Over-sampling Technique) and evaluates the model’s performance using Root Mean Squared Error (RMSE).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>clf_params</strong> (<em>dict</em>) – Parameters for Random Forest or Gradient Boosting models.</p></li>
+<li><p><strong>objective_mode</strong> (<em>bool</em><em>, </em><em>optional</em>) – If True, the method is used for optimization objectives. Defaults to False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The trained model.
+float: RMSE of the model on the validation set.
+(additional returns if not in objective_mode): Additional data related to model training and evaluation.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>RandomForestRegressor or XGBRegressor</p>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<ul class="simple">
+<li><p>The function first checks if SMOTE is to be applied and performs data augmentation accordingly.</p></li>
+<li><p>Depending on the configuration, either a Random Forest or a Gradient Boosting model is trained.</p></li>
+<li><p>The performance of the trained model is evaluated using RMSE on the validation dataset.</p></li>
+</ul>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.geogenie.GeoGenIE.train_step">
+<span class="sig-name descname"><span class="pre">train_step</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">train_loader</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">optimizer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">grad_clip</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">objective_mode</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/geogenie.html#GeoGenIE.train_step"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.geogenie.GeoGenIE.train_step" title="Link to this definition"></a></dt>
+<dd><p>Performs a single training step.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>train_loader</strong> (<em>torch.utils.data.DataLoader</em>) – DataLoader for training data.</p></li>
+<li><p><strong>model</strong> (<em>torch.nn.Module</em>) – The PyTorch model to train.</p></li>
+<li><p><strong>optimizer</strong> (<em>torch.optim.Optimizer</em>) – The optimizer for training the model.</p></li>
+<li><p><strong>grad_clip</strong> (<em>float</em>) – Value for gradient clipping.</p></li>
+<li><p><strong>objective_mode</strong> (<em>bool</em>) – If True, the method is used for optimization objectives.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The average training loss or None if training failed.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float or None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.geogenie.GeoGenIE.train_test_predict">
+<span class="sig-name descname"><span class="pre">train_test_predict</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/geogenie.html#GeoGenIE.train_test_predict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.geogenie.GeoGenIE.train_test_predict" title="Link to this definition"></a></dt>
+<dd><p>Perform the complete training, testing, and prediction pipeline.</p>
+<p>This method sets the seed, initializes the device, loads the data, performs parameter optimization, trains the model, evaluates and saves results, and makes predictions on unseen data.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.geogenie.GeoGenIE.visualize_oversampling">
+<span class="sig-name descname"><span class="pre">visualize_oversampling</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">features</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">labels</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_weights</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bins_resampled</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/geogenie.html#GeoGenIE.visualize_oversampling"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.geogenie.GeoGenIE.visualize_oversampling" title="Link to this definition"></a></dt>
+<dd><p>Visualizes the effect of SMOTE (Synthetic Minority Over-sampling Technique) on the dataset.</p>
+<p>This method creates a visual comparison of the original and the oversampled datasets.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>features</strong> (<em>np.array</em><em> or </em><em>pandas.DataFrame</em>) – The feature set, either as a NumPy array or a DataFrame.</p></li>
+<li><p><strong>labels</strong> (<em>np.array</em><em> or </em><em>pandas.DataFrame</em>) – The label set, expected to contain ‘x’ and ‘y’ coordinates.</p></li>
+<li><p><strong>sample_weights</strong> (<em>np.array</em>) – Array of sample weights.</p></li>
+<li><p><strong>df</strong> (<em>pandas.DataFrame</em>) – Original DataFrame before applying SMOTE.</p></li>
+<li><p><strong>bins_resampled</strong> (<em>array-like</em>) – Array of bin labels for the data after applying SMOTE.</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<ul class="simple">
+<li><p>The method first validates and converts the features, labels, and sample weights to pandas DataFrames.</p></li>
+<li><p>It then combines these into a single DataFrame and passes this to the <cite>plot_smote_bins</cite> method of the <cite>PlotGenIE</cite> class.</p></li>
+<li><p>This visualization helps in understanding how SMOTE affects the distribution of samples across different geographical bins.</p></li>
+</ul>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.geogenie.GeoGenIE.write_pred_locations">
+<span class="sig-name descname"><span class="pre">write_pred_locations</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pred_locations</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filename</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_ids</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/geogenie.html#GeoGenIE.write_pred_locations"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.geogenie.GeoGenIE.write_pred_locations" title="Link to this definition"></a></dt>
+<dd><p>Writes predicted locations to a file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>pred_locations</strong> (<em>np.ndarray</em>) – Array of predicted locations. Expects shape (n_samples, 2).</p></li>
+<li><p><strong>filename</strong> (<em>str</em>) – The path to the file where predictions will be saved.</p></li>
+<li><p><strong>sample_ids</strong> (<em>np.ndarray</em>) – Array of sample IDs.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>DataFrame containing the predicted locations.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>pandas.DataFrame</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.geogenie.save_execution_times">
+<span class="sig-prename descclassname"><span class="pre">geogenie.geogenie.</span></span><span class="sig-name descname"><span class="pre">save_execution_times</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filename</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/geogenie.html#save_execution_times"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.geogenie.save_execution_times" title="Link to this definition"></a></dt>
+<dd><p>Appends the execution times to a CSV file. If the file doesn’t exist, it creates one.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>filename</strong> (<em>str</em>) – The name of the file where data will be saved.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.geogenie.timer">
+<span class="sig-prename descclassname"><span class="pre">geogenie.geogenie.</span></span><span class="sig-name descname"><span class="pre">timer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">func</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/geogenie.html#timer"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.geogenie.timer" title="Link to this definition"></a></dt>
+<dd><p>Decorator that measures and stores the execution time of a function.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>func</strong> (<em>Callable</em>) – The function to be wrapped by the timer.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The wrapped function with timing functionality.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Callable</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="module-geogenie">
+<span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-geogenie" title="Link to this heading"></a></h2>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="tutorial.html" class="btn btn-neutral float-left" title="GeoGenIE Tutorial" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="geogenie.models.html" class="btn btn-neutral float-right" title="geogenie.models package" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Bradley T. Martin and Tyler K. Chafin.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

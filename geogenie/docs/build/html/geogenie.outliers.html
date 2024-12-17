@@ -1,0 +1,713 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>geogenie.outliers package &mdash; GeoGenIE 1.0.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=292eb321"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="geogenie.plotting package" href="geogenie.plotting.html" />
+    <link rel="prev" title="geogenie.models package" href="geogenie.models.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            GeoGenIE
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="tutorial.html">GeoGenIE Tutorial</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="geogenie.html">geogenie package</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="geogenie.html#subpackages">Subpackages</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="geogenie.models.html">geogenie.models package</a></li>
+<li class="toctree-l3 current"><a class="current reference internal" href="#">geogenie.outliers package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#module-geogenie.outliers.detect_outliers">geogenie.outliers.detect_outliers module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#module-geogenie.outliers">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="geogenie.plotting.html">geogenie.plotting package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="geogenie.utils.html">geogenie.utils package</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="geogenie.html#submodules">Submodules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geogenie.html#module-geogenie.cli">geogenie.cli module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geogenie.html#module-geogenie.geogenie">geogenie.geogenie module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geogenie.html#module-geogenie">Module contents</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">GeoGenIE</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="geogenie.html">geogenie package</a></li>
+      <li class="breadcrumb-item active">geogenie.outliers package</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/geogenie.outliers.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="geogenie-outliers-package">
+<h1>geogenie.outliers package<a class="headerlink" href="#geogenie-outliers-package" title="Link to this heading"></a></h1>
+<section id="submodules">
+<h2>Submodules<a class="headerlink" href="#submodules" title="Link to this heading"></a></h2>
+</section>
+<section id="module-geogenie.outliers.detect_outliers">
+<span id="geogenie-outliers-detect-outliers-module"></span><h2>geogenie.outliers.detect_outliers module<a class="headerlink" href="#module-geogenie.outliers.detect_outliers" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">geogenie.outliers.detect_outliers.</span></span><span class="sig-name descname"><span class="pre">GeoGeneticOutlierDetector</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">genetic_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">geographic_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prefix</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_jobs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">url</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'https://www2.census.gov/geo/tiger/GENZ2018/shp/cb_2018_us_state_500k.zip'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">buffer</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">show_plots</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">debug</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">verbose</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/outliers/detect_outliers.html#GeoGeneticOutlierDetector"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>A class to detect outliers based on genomic SNPs and geographic coordinates.</p>
+<p>This class uses a K-nearest neighbors (KNN) approach to detect outliers based on the difference between predicted and actual data.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.args">
+<span class="sig-name descname"><span class="pre">args</span></span><a class="headerlink" href="#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.args" title="Link to this definition"></a></dt>
+<dd><p>Command line arguments.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>argparse.Namespace</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.genetic_data">
+<span class="sig-name descname"><span class="pre">genetic_data</span></span><a class="headerlink" href="#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.genetic_data" title="Link to this definition"></a></dt>
+<dd><p>The SNP data as a DataFrame.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>pd.DataFrame</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.geographic_data">
+<span class="sig-name descname"><span class="pre">geographic_data</span></span><a class="headerlink" href="#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.geographic_data" title="Link to this definition"></a></dt>
+<dd><p>geographic coordinates as 2D array.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>np.array</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.output_dir">
+<span class="sig-name descname"><span class="pre">output_dir</span></span><a class="headerlink" href="#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.output_dir" title="Link to this definition"></a></dt>
+<dd><p>Output directory.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.prefix">
+<span class="sig-name descname"><span class="pre">prefix</span></span><a class="headerlink" href="#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.prefix" title="Link to this definition"></a></dt>
+<dd><p>Prefix for output files.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.n_jobs">
+<span class="sig-name descname"><span class="pre">n_jobs</span></span><a class="headerlink" href="#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.n_jobs" title="Link to this definition"></a></dt>
+<dd><p>Number of parallel jobs to run.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.seed">
+<span class="sig-name descname"><span class="pre">seed</span></span><a class="headerlink" href="#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.seed" title="Link to this definition"></a></dt>
+<dd><p>Random seed to use.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.url">
+<span class="sig-name descname"><span class="pre">url</span></span><a class="headerlink" href="#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.url" title="Link to this definition"></a></dt>
+<dd><p>url to download base map for plots.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.buffer">
+<span class="sig-name descname"><span class="pre">buffer</span></span><a class="headerlink" href="#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.buffer" title="Link to this definition"></a></dt>
+<dd><p>Buffer to put around sampling area on base map when plotting.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.show_plots">
+<span class="sig-name descname"><span class="pre">show_plots</span></span><a class="headerlink" href="#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.show_plots" title="Link to this definition"></a></dt>
+<dd><p>Whether to show plots in-line.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bool</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.debug">
+<span class="sig-name descname"><span class="pre">debug</span></span><a class="headerlink" href="#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.debug" title="Link to this definition"></a></dt>
+<dd><p>If True, writes genetic_data and geographic_data to file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bool</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.verbose">
+<span class="sig-name descname"><span class="pre">verbose</span></span><a class="headerlink" href="#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.verbose" title="Link to this definition"></a></dt>
+<dd><p>Verbosity setting (0-2), least to most verbose.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.logger">
+<span class="sig-name descname"><span class="pre">logger</span></span><a class="headerlink" href="#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.logger" title="Link to this definition"></a></dt>
+<dd><p>Logger object.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>logging.Logger</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.plotting">
+<span class="sig-name descname"><span class="pre">plotting</span></span><a class="headerlink" href="#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.plotting" title="Link to this definition"></a></dt>
+<dd><p>Plotting object.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="geogenie.plotting.html#geogenie.plotting.plotting.PlotGenIE" title="geogenie.plotting.plotting.PlotGenIE">PlotGenIE</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.analysis">
+<span class="sig-name descname"><span class="pre">analysis</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">geo_coords</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gen_coords</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">analysis_type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sig_level</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_nn_dist</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale_factor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_iter</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">opt_ks</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">res</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">at</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">time_duration</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/outliers/detect_outliers.html#GeoGeneticOutlierDetector.analysis"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.analysis" title="Link to this definition"></a></dt>
+<dd><p>Perform outlier detection analysis for genetic or geographic data.</p>
+<p>This method performs outlier detection analysis for genetic or geographic data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>geo_coords</strong> (<em>np.array</em>) – Array of geographic coordinates.</p></li>
+<li><p><strong>gen_coords</strong> (<em>np.array</em>) – Array of genetic data coordinates.</p></li>
+<li><p><strong>analysis_type</strong> (<em>str</em>) – Type of analysis to perform (genetic, geographic, composite).</p></li>
+<li><p><strong>sig_level</strong> (<em>float</em>) – Significance level for detecting outliers.</p></li>
+<li><p><strong>min_nn_dist</strong> (<em>int</em>) – Minimum distance required to consider points.</p></li>
+<li><p><strong>scale_factor</strong> (<em>int</em>) – Scaling factor for geo coordinates.</p></li>
+<li><p><strong>max_iter</strong> (<em>int</em>) – Maximum number of iterations.</p></li>
+<li><p><strong>opt_ks</strong> (<em>dict</em>) – Optimal K values for genetic and geographic data.</p></li>
+<li><p><strong>res</strong> (<em>dict</em>) – Dictionary to store results.</p></li>
+<li><p><strong>at</strong> (<em>str</em>) – Analysis type (genetic, geographic).</p></li>
+<li><p><strong>time_duration</strong> (<em>dict</em>) – Dictionary to store run times for each method.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.calculate_dgeo">
+<span class="sig-name descname"><span class="pre">calculate_dgeo</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pred_geo_coords</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">geo_coords</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scalar</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/outliers/detect_outliers.html#GeoGeneticOutlierDetector.calculate_dgeo"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.calculate_dgeo" title="Link to this definition"></a></dt>
+<dd><p>Calculate the Dgeo statistic for geographic coordinates.</p>
+<p>This method calculates the geographic distance between predicted and actual geographic coordinates.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>pred_geo_coords</strong> (<em>np.array</em>) – Predicted geographic coordinates.</p></li>
+<li><p><strong>geo_coords</strong> (<em>np.array</em>) – Actual geographic coordinates.</p></li>
+<li><p><strong>scalar</strong> (<em>float</em>) – Scalar value to divide the distance.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Calculated Dgeo values.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>np.array</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.calculate_statistic">
+<span class="sig-name descname"><span class="pre">calculate_statistic</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">predicted_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">actual_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_genetic</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_nn_dist</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale_factor</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/outliers/detect_outliers.html#GeoGeneticOutlierDetector.calculate_statistic"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.calculate_statistic" title="Link to this definition"></a></dt>
+<dd><p>Calculate the Dg or Dgeo statistic based on the difference between predicted and actual data.</p>
+<p>This method calculates the Dg or Dgeo statistic based on the mean squared error or geographic distance between predicted and actual data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>predicted_data</strong> (<em>np.array</em>) – Predicted data from KNN.</p></li>
+<li><p><strong>actual_data</strong> (<em>np.array</em>) – Actual data.</p></li>
+<li><p><strong>is_genetic</strong> (<em>bool</em>) – Flag to determine if the calculation is for genetic data.</p></li>
+<li><p><strong>min_nn_dist</strong> (<em>float</em>) – The minimum distance to consider between geographic points.</p></li>
+<li><p><strong>scale_factor</strong> (<em>float</em>) – Scaling factor for geo_coords.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Dg or Dgeo statistic for each sample.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>np.array</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.composite_outlier_detection">
+<span class="sig-name descname"><span class="pre">composite_outlier_detection</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sig_level</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">maxk</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">50</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_nn_dist</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1000</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale_factor</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">w_power</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/outliers/detect_outliers.html#GeoGeneticOutlierDetector.composite_outlier_detection"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.composite_outlier_detection" title="Link to this definition"></a></dt>
+<dd><p>Perform composite outlier detection using the KNN approach.</p>
+<p>This method performs composite outlier detection using the KNN approach.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>sig_level</strong> (<em>float</em>) – Significance level for detecting outliers.</p></li>
+<li><p><strong>maxk</strong> (<em>int</em>) – Maximum number of nearest neighbors to consider.</p></li>
+<li><p><strong>min_nn_dist</strong> (<em>int</em>) – Minimum distance required to consider points.</p></li>
+<li><p><strong>scale_factor</strong> (<em>int</em>) – Scaling factor for geo coordinates.</p></li>
+<li><p><strong>w_power</strong> (<em>float</em>) – Power of distance weight in KNN prediction.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Detected outliers for geographic and genetic data.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.detect_outliers">
+<span class="sig-name descname"><span class="pre">detect_outliers</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">geo_coords</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gen_coords</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">optk</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">time_durations</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">w_power</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sig_level</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_nn_dist</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1000</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale_factor</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">analysis_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'genetic'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/outliers/detect_outliers.html#GeoGeneticOutlierDetector.detect_outliers"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.detect_outliers" title="Link to this definition"></a></dt>
+<dd><p>Detect outliers based on composite data using the KNN approach.</p>
+<p>This method detects outliers based on composite data using the KNN approach.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>geo_coords</strong> (<em>np.array</em>) – Array of geographic coordinates.</p></li>
+<li><p><strong>gen_coords</strong> (<em>np.array</em>) – Array of genetic data coordinates.</p></li>
+<li><p><strong>optk</strong> (<em>int</em>) – Optimal K for nearest neigbbors (geographic).</p></li>
+<li><p><strong>time_durations</strong> (<em>dict</em>) – Dictionary storing run times for each method.</p></li>
+<li><p><strong>w_power</strong> (<em>float</em>) – Power of distance weight in KNN prediction.</p></li>
+<li><p><strong>sig_level</strong> (<em>float</em>) – Significance level for detecting outliers.</p></li>
+<li><p><strong>min_nn_dist</strong> (<em>int</em>) – Minimum distance required to consider points.</p></li>
+<li><p><strong>scale_factor</strong> (<em>int</em>) – Scaling factor for geo coordinates.</p></li>
+<li><p><strong>analysis_type</strong> (<em>str</em>) – Either ‘genetic’ or ‘geographic’.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Indices of detected outliers, p-values, and gamma parameters for geographic and genetic outliers.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Indices of detected outliers, p-values, and gamma parameters for geographic and genetic outliers.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.filter_and_detect">
+<span class="sig-name descname"><span class="pre">filter_and_detect</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">geo_coords</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gen_coords</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sig_level</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_nn_dist</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale_factor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">optk</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outlier_flags</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">time_durations</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">analysis_type</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/outliers/detect_outliers.html#GeoGeneticOutlierDetector.filter_and_detect"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.filter_and_detect" title="Link to this definition"></a></dt>
+<dd><p>Filter outliers and detect new outliers using KNN.</p>
+<p>This method filters outliers and detects new outliers using KNN for genetic and geographic data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>geo_coords</strong> (<em>np.array</em>) – Array of geographic coordinates.</p></li>
+<li><p><strong>gen_coords</strong> (<em>np.array</em>) – Array of genetic data coordinates.</p></li>
+<li><p><strong>sig_level</strong> (<em>float</em>) – Significance level for detecting outliers.</p></li>
+<li><p><strong>min_nn_dist</strong> (<em>int</em>) – Minimum distance required to consider points.</p></li>
+<li><p><strong>scale_factor</strong> (<em>int</em>) – Scaling factor for geo coordinates.</p></li>
+<li><p><strong>optk</strong> (<em>int</em>) – Optimal K value for nearest neighbors.</p></li>
+<li><p><strong>outlier_flags</strong> (<em>np.array</em>) – Array of outlier flags.</p></li>
+<li><p><strong>time_durations</strong> (<em>dict</em>) – Dictionary to store run times for each method.</p></li>
+<li><p><strong>analysis_type</strong> (<em>str</em>) – Type of analysis to perform (genetic, geographic, composite).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Time durations, outlier flags, D statistics, p-values, r-squared values, gamma parameters, and filtered indices</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.find_gen_knn">
+<span class="sig-name descname"><span class="pre">find_gen_knn</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">coords</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale_factor</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/outliers/detect_outliers.html#GeoGeneticOutlierDetector.find_gen_knn"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.find_gen_knn" title="Link to this definition"></a></dt>
+<dd><p>Find K-nearest neighbors for genetic data using PyNNDescent.</p>
+<p>This method finds the K-nearest neighbors for genetic data using PyNNDescent.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>dist_matrix</strong> (<em>np.array</em>) – Distance matrix.</p></li>
+<li><p><strong>k</strong> (<em>int</em>) – Number of neighbors.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Indices of K-nearest neighbors.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>np.array</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.find_geo_knn">
+<span class="sig-name descname"><span class="pre">find_geo_knn</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">coords</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_nn_dist</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/outliers/detect_outliers.html#GeoGeneticOutlierDetector.find_geo_knn"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.find_geo_knn" title="Link to this definition"></a></dt>
+<dd><p>Find K-nearest neighbors for geographic data considering minimum neighbor distance using PyNNDescent.</p>
+<p>This method finds the K-nearest neighbors for geographic data using PyNNDescent.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>dist_matrix</strong> (<em>np.array</em>) – Distance matrix.</p></li>
+<li><p><strong>k</strong> (<em>int</em>) – Number of neighbors.</p></li>
+<li><p><strong>min_nn_dist</strong> (<em>float</em>) – Minimum distance to consider for neighbors.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Indices of K-nearest neighbors.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>np.array</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.find_optimal_k">
+<span class="sig-name descname"><span class="pre">find_optimal_k</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">geo_coords</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gen_coords</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">klim</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">w_power</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_nn_dist</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_genetic</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale_factor</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/outliers/detect_outliers.html#GeoGeneticOutlierDetector.find_optimal_k"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.find_optimal_k" title="Link to this definition"></a></dt>
+<dd><p>Find optimal number of nearest neighbors for KNN.</p>
+<p>This method finds the optimal number of nearest neighbors for KNN based on the Dg or Dgeo statistic.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>geo_coords</strong> (<em>np.array</em>) – Geographic coordinates.</p></li>
+<li><p><strong>gen_coords</strong> (<em>np.array</em>) – Genetic coordinatees.</p></li>
+<li><p><strong>dist_matrix</strong> (<em>np.array</em>) – Distance matrix.</p></li>
+<li><p><strong>klim</strong> (<em>tuple</em>) – Range of K values to search (min_k, max_k).</p></li>
+<li><p><strong>w_power</strong> (<em>float</em>) – Power for distance weighting.</p></li>
+<li><p><strong>min_nn_dist</strong> (<em>int</em>) – Minimum nearest neighbor distance to consider points.</p></li>
+<li><p><strong>is_genetic</strong> (<em>bool</em>) – Flag to determine if the calculation is for genetic data as distance matrix.</p></li>
+<li><p><strong>scale_factor</strong> (<em>float</em>) – Factor to scale geo_coords by.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Optimal K value.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.fit_gamma_mle">
+<span class="sig-name descname"><span class="pre">fit_gamma_mle</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">D_statistic</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sig_level</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/outliers/detect_outliers.html#GeoGeneticOutlierDetector.fit_gamma_mle"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.fit_gamma_mle" title="Link to this definition"></a></dt>
+<dd><p>Detect outliers using a Gamma distribution fitted to the Dg or Dgeo statistic.</p>
+<p>This method detects outliers using a Gamma distribution fitted to the Dg or Dgeo statistic.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>D_statistic</strong> (<em>np.array</em>) – Dg or Dgeo statistic for each sample.</p></li>
+<li><p><strong>Dgeo</strong> (<em>np.array</em>) – For determining initial_shape and initial_rate.</p></li>
+<li><p><strong>sig_level</strong> (<em>float</em>) – Significance level for detecting outliers.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Indices of outliers, p-values, and fitted Gamma parameters.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.gamma_neg_log_likelihood">
+<span class="sig-name descname"><span class="pre">gamma_neg_log_likelihood</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/outliers/detect_outliers.html#GeoGeneticOutlierDetector.gamma_neg_log_likelihood"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.gamma_neg_log_likelihood" title="Link to this definition"></a></dt>
+<dd><p>Negative log likelihood for gamma distribution.</p>
+<p>This method calculates the negative log likelihood value for the gamma distribution.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>params</strong> (<em>tuple</em>) – Contains the shape and rate parameters for the gamma distribution.</p></li>
+<li><p><strong>data</strong> (<em>np.array</em>) – Data to fit the gamma distribution to.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Negative log likelihood value.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.multi_stage_outlier_knn">
+<span class="sig-name descname"><span class="pre">multi_stage_outlier_knn</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">geo_coords</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gen_coords</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">analysis_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'composite'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sig_level</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">maxk</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">50</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">w_power</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_nn_dist</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1000</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale_factor</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/outliers/detect_outliers.html#GeoGeneticOutlierDetector.multi_stage_outlier_knn"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.multi_stage_outlier_knn" title="Link to this definition"></a></dt>
+<dd><p>Iterative Outlier Detection via KNN for genetic and geographic data.</p>
+<p>This method performs iterative outlier detection using KNN for genetic and geographic data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>geo_coords</strong> (<em>np.array</em>) – Array of geographic coordinates.</p></li>
+<li><p><strong>gen_coords</strong> (<em>np.array</em>) – Array of genetic data coordinates.</p></li>
+<li><p><strong>analysis_type</strong> (<em>str</em>) – Type of analysis to perform (genetic, geographic, composite).</p></li>
+<li><p><strong>sig_level</strong> (<em>float</em>) – Significance level for detecting outliers.</p></li>
+<li><p><strong>maxk</strong> (<em>int</em>) – Maximum number of nearest neighbors to consider.</p></li>
+<li><p><strong>w_power</strong> (<em>float</em>) – Power of distance weight in KNN prediction.</p></li>
+<li><p><strong>min_nn_dist</strong> (<em>int</em>) – Minimum distance required to consider points.</p></li>
+<li><p><strong>scale_factor</strong> (<em>int</em>) – Scaling factor for geo coordinates.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Indices of detected outliers for geographic and genetic data.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.plot_gamma_dist">
+<span class="sig-name descname"><span class="pre">plot_gamma_dist</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sig_level</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">d_stats</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gamma_params</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/outliers/detect_outliers.html#GeoGeneticOutlierDetector.plot_gamma_dist"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.plot_gamma_dist" title="Link to this definition"></a></dt>
+<dd><p>Plot the gamma distribution for detected outliers.</p>
+<p>This method plots the gamma distribution for detected outliers based on the Dg or Dgeo statistic.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>sig_level</strong> (<em>float</em>) – Significance level for detecting outliers.</p></li>
+<li><p><strong>d_stats</strong> (<em>np.array</em>) – Dg or Dgeo statistic for each sample.</p></li>
+<li><p><strong>gamma_params</strong> (<em>tuple</em>) – Parameters for the gamma distribution.</p></li>
+<li><p><strong>dtype</strong> (<em>str</em>) – Type of data (genetic, geographic</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.predict_coords_knn">
+<span class="sig-name descname"><span class="pre">predict_coords_knn</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">coords</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">knn_distances</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">knn_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">w_power</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/outliers/detect_outliers.html#GeoGeneticOutlierDetector.predict_coords_knn"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.predict_coords_knn" title="Link to this definition"></a></dt>
+<dd><p>Predict coordinates data using weighted KNN.</p>
+<p>This method predicts coordinates data using weighted KNN based on the distances to the K-nearest neighbors.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>coords</strong> (<em>np.array</em>) – Array of genetic or geographic coordinates.</p></li>
+<li><p><strong>knn_distances</strong> (<em>np.array</em>) – Distances to K-nearest neighbors.</p></li>
+<li><p><strong>knn_indices</strong> (<em>np.array</em>) – Indices of K-nearest neighbors.</p></li>
+<li><p><strong>w_power</strong> (<em>float</em>) – Power of distance weight in prediction.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Predicted coordinates using weighted KNN.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>np.array</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.rescale_statistic">
+<span class="sig-name descname"><span class="pre">rescale_statistic</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">Dgeo</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">s</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">orig_min_nn_dist</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">20</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/outliers/detect_outliers.html#GeoGeneticOutlierDetector.rescale_statistic"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.rescale_statistic" title="Link to this definition"></a></dt>
+<dd><p>Rescales the Dgeo array to avoid large values that might cause errors in maximum likelihood estimation.</p>
+<p>This method rescales the Dgeo array to avoid large values that might cause errors in maximum likelihood estimation.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>Dgeo</strong> (<em>np.ndarray</em>) – An array representing geographic distances or differences.</p></li>
+<li><p><strong>s</strong> (<em>float</em>) – A scalar value used in calculations.</p></li>
+<li><p><strong>orig_min_nn_dist</strong> (<em>float</em>) – Original minimum nearest neighbor distance.</p></li>
+<li><p><strong>max_threshold</strong> (<em>int</em>) – Maximum Dgeo value to trigger rescaling.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>adjusted scalar value, and adjusted minimum nearest neighbor distance.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float, float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.run_multistage">
+<span class="sig-name descname"><span class="pre">run_multistage</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">geo_coords</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gen_coords</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sig_level</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_nn_dist</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale_factor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_iter</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">optk</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">analysis_type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">time_durations</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/outliers/detect_outliers.html#GeoGeneticOutlierDetector.run_multistage"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.run_multistage" title="Link to this definition"></a></dt>
+<dd><p>Run multi-stage outlier detection using KNN.</p>
+<p>This method runs multi-stage outlier detection using KNN for genetic and geographic data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>geo_coords</strong> (<em>np.array</em>) – Array of geographic coordinates.</p></li>
+<li><p><strong>gen_coords</strong> (<em>np.array</em>) – Array of genetic data coordinates.</p></li>
+<li><p><strong>sig_level</strong> (<em>float</em>) – Significance level for detecting outliers.</p></li>
+<li><p><strong>min_nn_dist</strong> (<em>int</em>) – Minimum distance required to consider points.</p></li>
+<li><p><strong>scale_factor</strong> (<em>int</em>) – Scaling factor for geo coordinates.</p></li>
+<li><p><strong>max_iter</strong> (<em>int</em>) – Maximum number of iterations.</p></li>
+<li><p><strong>optk</strong> (<em>int</em>) – Optimal K value for nearest neighbors.</p></li>
+<li><p><strong>analysis_type</strong> (<em>str</em>) – Type of analysis to perform (genetic, geographic, composite).</p></li>
+<li><p><strong>time_durations</strong> (<em>dict</em>) – Dictionary to store run times for each method.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Time durations, outlier flags, D statistics, p-values, r-squared values, and gamma parameters</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.search_nn_optk">
+<span class="sig-name descname"><span class="pre">search_nn_optk</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">geo_coords</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gen_coords</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">maxk</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">w_power</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_nn_dist</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale_factor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">analysis_type</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/outliers/detect_outliers.html#GeoGeneticOutlierDetector.search_nn_optk"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.outliers.detect_outliers.GeoGeneticOutlierDetector.search_nn_optk" title="Link to this definition"></a></dt>
+<dd><p>Search for optimal K for nearest neighbors.</p>
+<p>This method searches for the optimal K for nearest neighbors based on the Dg or Dgeo statistic.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>geo_coords</strong> (<em>np.array</em>) – Array of geographic coordinates.</p></li>
+<li><p><strong>gen_coords</strong> (<em>np.array</em>) – Array of genetic data coordinates.</p></li>
+<li><p><strong>maxk</strong> (<em>int</em>) – Maximum number of nearest neighbors to consider.</p></li>
+<li><p><strong>w_power</strong> (<em>float</em>) – Power of distance weight in KNN prediction.</p></li>
+<li><p><strong>min_nn_dist</strong> (<em>int</em>) – Minimum distance required to consider points.</p></li>
+<li><p><strong>scale_factor</strong> (<em>int</em>) – Scaling factor for geo coordinates.</p></li>
+<li><p><strong>analysis_type</strong> (<em>str</em>) – Type of analysis to perform (genetic, geographic, composite).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Time durations, optimal K for genetic data, and optimal K for geographic data.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="module-geogenie.outliers">
+<span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-geogenie.outliers" title="Link to this heading"></a></h2>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="geogenie.models.html" class="btn btn-neutral float-left" title="geogenie.models package" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="geogenie.plotting.html" class="btn btn-neutral float-right" title="geogenie.plotting package" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Bradley T. Martin and Tyler K. Chafin.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

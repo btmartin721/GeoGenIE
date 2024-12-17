@@ -1,0 +1,420 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>geogenie.utils.transformers &mdash; GeoGenIE 1.0.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=292eb321"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            GeoGenIE
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorial.html">GeoGenIE Tutorial</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../geogenie.html">geogenie package</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">GeoGenIE</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">geogenie.utils.transformers</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for geogenie.utils.transformers</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span> <span class="nn">logging</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">scipy.sparse</span> <span class="k">as</span> <span class="nn">sp</span>
+<span class="kn">from</span> <span class="nn">sklearn.base</span> <span class="kn">import</span> <span class="n">BaseEstimator</span><span class="p">,</span> <span class="n">TransformerMixin</span>
+<span class="kn">from</span> <span class="nn">sklearn.preprocessing</span> <span class="kn">import</span> <span class="n">OneHotEncoder</span>
+<span class="kn">from</span> <span class="nn">sklearn.utils.extmath</span> <span class="kn">import</span> <span class="n">randomized_svd</span>
+<span class="kn">from</span> <span class="nn">sklearn.utils.validation</span> <span class="kn">import</span> <span class="n">check_array</span><span class="p">,</span> <span class="n">check_is_fitted</span>
+
+
+<div class="viewcode-block" id="MCA">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.transformers.MCA">[docs]</a>
+<span class="k">class</span> <span class="nc">MCA</span><span class="p">(</span><span class="n">BaseEstimator</span><span class="p">,</span> <span class="n">TransformerMixin</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Class to perform Multiple Correspondence Analayis (MCA).</span>
+
+<span class="sd">    This class performs Multiple Correspondence Analysis (MCA) on the input data.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        n_components (int): Number of MCA components to output.</span>
+<span class="sd">        n_iter (int): Number of randomized SVD iterations to perform.</span>
+<span class="sd">        check_input (bool): Whether to check input data for conformity.</span>
+<span class="sd">        random_state (int or None): Random state for reproducibility.</span>
+<span class="sd">        one_hot (bool): Flag for one-hot encoding the input data.</span>
+<span class="sd">        categories (list): Possible categories in input features.</span>
+<span class="sd">        epsilon (float): Small value to prevent division by 0.</span>
+<span class="sd">        logger (logging.Logger): Logger object for the class</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">n_components</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+        <span class="n">n_iter</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+        <span class="n">check_input</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">random_state</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">one_hot</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">categories</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span>
+        <span class="n">epsilon</span><span class="o">=</span><span class="mf">1e-5</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Initialize the MCA class.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            n_components (int, optional): Number of MCA components to output. Defaults to 2.</span>
+<span class="sd">            n_iter (int, optional): Number of randomized SVD iterations to perform. Defaults to 10.</span>
+<span class="sd">            check_input (bool, optional): Whether to check input data for conformity. Defaults to True.</span>
+<span class="sd">            random_state (int or None, optional): Random state for reproducibility. Defaults to None.</span>
+<span class="sd">            one_hot (bool, optional): Flag for one-hot encoding the input data. Defaults to True.</span>
+<span class="sd">            categories (list, optional): Possible categories in input features. Defaults to [0, 1, 2].</span>
+<span class="sd">            epsilon (float, optional): Small value to prevent division by 0. Defaults to 1e-5.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_components</span> <span class="o">=</span> <span class="n">n_components</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_iter</span> <span class="o">=</span> <span class="n">n_iter</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">check_input</span> <span class="o">=</span> <span class="n">check_input</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">random_state</span> <span class="o">=</span> <span class="n">random_state</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">one_hot</span> <span class="o">=</span> <span class="n">one_hot</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">categories</span> <span class="o">=</span> <span class="n">categories</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">epsilon</span> <span class="o">=</span> <span class="n">epsilon</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+
+<div class="viewcode-block" id="MCA.fit">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.transformers.MCA.fit">[docs]</a>
+    <span class="k">def</span> <span class="nf">fit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">y</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Fit the input data.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            X (np.ndarray): Array to fit.</span>
+<span class="sd">            y (None, optional): Ignored. This parameter exists only for compatibility with the sklearn API.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">check_input</span><span class="p">:</span>
+            <span class="n">X</span> <span class="o">=</span> <span class="n">check_array</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">force_all_finite</span><span class="o">=</span><span class="s2">&quot;allow-nan&quot;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">categories</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;&#39;categories&#39; must be a list, got: </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">categories</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">one_hot</span><span class="p">:</span>
+            <span class="n">categories</span> <span class="o">=</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">categories</span><span class="p">)]</span> <span class="o">*</span> <span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">one_hot_encoder_</span> <span class="o">=</span> <span class="n">OneHotEncoder</span><span class="p">(</span><span class="n">categories</span><span class="o">=</span><span class="n">categories</span><span class="p">)</span>
+            <span class="n">X</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">one_hot_encoder_</span><span class="o">.</span><span class="n">fit_transform</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
+
+        <span class="c1"># Normalize and handle zero sums</span>
+        <span class="n">X</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_normalize_data</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
+
+        <span class="n">S</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_S_matrix</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
+
+        <span class="n">U</span><span class="p">,</span> <span class="n">Sigma</span><span class="p">,</span> <span class="n">VT</span> <span class="o">=</span> <span class="n">randomized_svd</span><span class="p">(</span>
+            <span class="n">S</span><span class="p">,</span>
+            <span class="n">n_components</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">n_components</span><span class="p">,</span>
+            <span class="n">n_iter</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">n_iter</span><span class="p">,</span>
+            <span class="n">random_state</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">random_state</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">U_</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">Sigma_</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">VT_</span> <span class="o">=</span> <span class="n">U</span><span class="p">,</span> <span class="n">Sigma</span><span class="p">,</span> <span class="n">VT</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_store_results</span><span class="p">()</span>
+
+        <span class="k">return</span> <span class="bp">self</span></div>
+
+
+<div class="viewcode-block" id="MCA.transform">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.transformers.MCA.transform">[docs]</a>
+    <span class="k">def</span> <span class="nf">transform</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">X</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Transform input data X using MCA.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            X (np.ndarray): Array to transform.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">check_is_fitted</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;U_&quot;</span><span class="p">,</span> <span class="s2">&quot;Sigma_&quot;</span><span class="p">,</span> <span class="s2">&quot;VT_&quot;</span><span class="p">,</span> <span class="s2">&quot;row_sums_&quot;</span><span class="p">,</span> <span class="s2">&quot;col_sums_&quot;</span><span class="p">])</span>
+
+        <span class="n">X</span> <span class="o">=</span> <span class="n">check_array</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">force_all_finite</span><span class="o">=</span><span class="s2">&quot;allow-nan&quot;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">one_hot</span><span class="p">:</span>
+            <span class="n">X</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">one_hot_encoder_</span><span class="o">.</span><span class="n">transform</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
+
+        <span class="n">X_normalized</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_normalize_data</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
+
+        <span class="c1"># Calculate inverse square root of row sums</span>
+        <span class="n">row_sums</span> <span class="o">=</span> <span class="n">X_normalized</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">row_sums_inv_sqrt</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">power</span><span class="p">(</span><span class="n">row_sums</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.5</span><span class="p">)</span>
+
+        <span class="c1"># Ensure row_sums_inv_sqrt is a 1D array</span>
+        <span class="k">if</span> <span class="n">row_sums_inv_sqrt</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">row_sums_inv_sqrt</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ravel</span><span class="p">(</span><span class="n">row_sums_inv_sqrt</span><span class="p">)</span>
+
+        <span class="c1"># Create a diagonal matrix</span>
+        <span class="n">row_inv</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">diags</span><span class="p">(</span><span class="n">row_sums_inv_sqrt</span><span class="p">)</span>
+
+        <span class="n">transformed_X</span> <span class="o">=</span> <span class="n">row_inv</span> <span class="o">@</span> <span class="n">X_normalized</span> <span class="o">@</span> <span class="bp">self</span><span class="o">.</span><span class="n">VT_</span><span class="o">.</span><span class="n">T</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;MCA Transformed X: </span><span class="si">{</span><span class="n">transformed_X</span><span class="si">}</span><span class="s2">, Shape: </span><span class="si">{</span><span class="n">transformed_X</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">transformed_X</span></div>
+
+
+<div class="viewcode-block" id="MCA._normalize_data">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.transformers.MCA._normalize_data">[docs]</a>
+    <span class="k">def</span> <span class="nf">_normalize_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">X</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Normalize the input data.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            X (np.ndarray): Array to normalize.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            np.ndarray: Normalized array.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">X_normalized</span> <span class="o">=</span> <span class="n">X</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span> <span class="o">/</span> <span class="n">X</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+        <span class="n">row_sums</span> <span class="o">=</span> <span class="n">X_normalized</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">epsilon</span>
+        <span class="n">col_sums</span> <span class="o">=</span> <span class="n">X_normalized</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">epsilon</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">row_sums_</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">col_sums_</span> <span class="o">=</span> <span class="n">row_sums</span><span class="p">,</span> <span class="n">col_sums</span>
+        <span class="k">return</span> <span class="n">X_normalized</span></div>
+
+
+<div class="viewcode-block" id="MCA._compute_S_matrix">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.transformers.MCA._compute_S_matrix">[docs]</a>
+    <span class="k">def</span> <span class="nf">_compute_S_matrix</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">X</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Compute the S matrix.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            X (np.ndarray): The input data.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            sp.spmatrix: The S matrix</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Convert row_sums_ and col_sums_ to 1D numpy arrays if they are not</span>
+        <span class="c1"># already</span>
+        <span class="n">row_sums</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">row_sums_</span><span class="p">)</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+        <span class="n">col_sums</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">col_sums_</span><span class="p">)</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+
+        <span class="c1"># Calculate inverses of square roots element-wise</span>
+        <span class="n">row_inv</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">diags</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">power</span><span class="p">(</span><span class="n">row_sums</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.5</span><span class="p">))</span>
+        <span class="n">col_inv</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">diags</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">power</span><span class="p">(</span><span class="n">col_sums</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.5</span><span class="p">))</span>
+
+        <span class="c1"># Compute the S matrix</span>
+        <span class="n">S</span> <span class="o">=</span> <span class="n">row_inv</span> <span class="o">@</span> <span class="p">(</span><span class="n">X</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">outer</span><span class="p">(</span><span class="n">row_sums</span><span class="p">,</span> <span class="n">col_sums</span><span class="p">))</span> <span class="o">@</span> <span class="n">col_inv</span>
+        <span class="k">return</span> <span class="n">S</span></div>
+
+
+<div class="viewcode-block" id="MCA._store_results">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.transformers.MCA._store_results">[docs]</a>
+    <span class="k">def</span> <span class="nf">_store_results</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Store the results of the MCA.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">eigenvalues_</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Sigma_</span><span class="p">)</span>
+        <span class="n">total_variance</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">eigenvalues_</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">explained_inertia_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">eigenvalues_</span> <span class="o">/</span> <span class="n">total_variance</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cumulative_inertia_</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">explained_inertia_</span><span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="MinMaxScalerGeo">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.transformers.MinMaxScalerGeo">[docs]</a>
+<span class="k">class</span> <span class="nc">MinMaxScalerGeo</span><span class="p">(</span><span class="n">BaseEstimator</span><span class="p">,</span> <span class="n">TransformerMixin</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Class to scale geographic coordinates to a specified range.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        lat_range (tuple): Minimum and maximum values for latitude.</span>
+<span class="sd">        lon_range (tuple): Minimum and maximum values for longitude.</span>
+<span class="sd">        scale_min (float): Minimum value of the scaled range.</span>
+<span class="sd">        scale_max (float): Maximum value of the scaled range.</span>
+<span class="sd">        logger (logging.Logger): Logger object for the class.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">lat_range</span><span class="o">=</span><span class="p">(</span><span class="o">-</span><span class="mi">90</span><span class="p">,</span> <span class="mi">90</span><span class="p">),</span> <span class="n">lon_range</span><span class="o">=</span><span class="p">(</span><span class="o">-</span><span class="mi">180</span><span class="p">,</span> <span class="mi">180</span><span class="p">),</span> <span class="n">scale_min</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">scale_max</span><span class="o">=</span><span class="mi">1</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Initialize the MinMaxScalerGeo with specified ranges.</span>
+
+<span class="sd">        This class scales geographic coordinates to a specified range.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            lat_range (tuple): Minimum and maximum values for latitude.</span>
+<span class="sd">            lon_range (tuple): Minimum and maximum values for longitude.</span>
+<span class="sd">            scale_min (float): Minimum value of the scaled range.</span>
+<span class="sd">            scale_max (float): Maximum value of the scaled range.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lat_range</span> <span class="o">=</span> <span class="n">lat_range</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lon_range</span> <span class="o">=</span> <span class="n">lon_range</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">scale_min</span> <span class="o">=</span> <span class="n">scale_min</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">scale_max</span> <span class="o">=</span> <span class="n">scale_max</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+
+<div class="viewcode-block" id="MinMaxScalerGeo.fit">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.transformers.MinMaxScalerGeo.fit">[docs]</a>
+    <span class="k">def</span> <span class="nf">fit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">y</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Fit does nothing as parameters are not data-dependent.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            X (array-like): The data to fit. Ignored. This parameter exists only for compatibility with the sklearn API.</span>
+<span class="sd">            y (None, optional): Ignored. This parameter exists only for compatibility with the sklearn API.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            self: Returns the instance itself.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span></div>
+
+
+<div class="viewcode-block" id="MinMaxScalerGeo.transform">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.transformers.MinMaxScalerGeo.transform">[docs]</a>
+    <span class="k">def</span> <span class="nf">transform</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">X</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Scale the geographic coordinates based on the provided ranges.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            X (array-like): The input coordinates to transform. Expected shape (n_samples, 2) where</span>
+<span class="sd">                            X[:, 0] should be longitude and X[:, 1] should be latitude.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            np.array: Transformed coordinates, where each feature is scaled to [scale_min, scale_max].</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Ensure input is a numpy array</span>
+        <span class="n">X</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
+
+        <span class="c1"># Unpack the ranges</span>
+        <span class="n">lon_min</span><span class="p">,</span> <span class="n">lon_max</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">lon_range</span>
+        <span class="n">lat_min</span><span class="p">,</span> <span class="n">lat_max</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">lat_range</span>
+
+        <span class="c1"># Initialize the scaled array</span>
+        <span class="n">X_scaled</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty_like</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+
+        <span class="c1"># Transform longitudes</span>
+        <span class="n">X_scaled</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">X</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="n">lon_min</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">lon_max</span> <span class="o">-</span> <span class="n">lon_min</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">scale_max</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">scale_min</span>
+        <span class="p">)</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">scale_min</span>
+
+        <span class="c1"># Transform latitudes</span>
+        <span class="n">X_scaled</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">X</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">lat_min</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">lat_max</span> <span class="o">-</span> <span class="n">lat_min</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">scale_max</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">scale_min</span>
+        <span class="p">)</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">scale_min</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Transformed Coordinates: </span><span class="si">{</span><span class="n">X_scaled</span><span class="si">}</span><span class="s2">, Shape: </span><span class="si">{</span><span class="n">X_scaled</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">X_scaled</span></div>
+
+
+<div class="viewcode-block" id="MinMaxScalerGeo.inverse_transform">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.transformers.MinMaxScalerGeo.inverse_transform">[docs]</a>
+    <span class="k">def</span> <span class="nf">inverse_transform</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">X_scaled</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Scale back the coordinates to their original range.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            X_scaled (array-like): The scaled coordinates to revert.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            np.array: Original geographic coordinates.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Ensure input is a numpy array</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">X_scaled</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">):</span>
+            <span class="n">X_scaled</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">X_scaled</span><span class="p">)</span>
+
+        <span class="c1"># Initialize the original array</span>
+        <span class="n">X_original</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty_like</span><span class="p">(</span><span class="n">X_scaled</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+
+        <span class="c1"># Unpack the ranges</span>
+        <span class="n">lon_min</span><span class="p">,</span> <span class="n">lon_max</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">lon_range</span>
+        <span class="n">lat_min</span><span class="p">,</span> <span class="n">lat_max</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">lat_range</span>
+
+        <span class="c1"># Inverse transform longitudes</span>
+        <span class="n">X_original</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">X_scaled</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">scale_min</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">scale_max</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">scale_min</span>
+        <span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">lon_max</span> <span class="o">-</span> <span class="n">lon_min</span><span class="p">)</span> <span class="o">+</span> <span class="n">lon_min</span>
+
+        <span class="c1"># Inverse transform latitudes</span>
+        <span class="n">X_original</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">X_scaled</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">scale_min</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">scale_max</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">scale_min</span>
+        <span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">lat_max</span> <span class="o">-</span> <span class="n">lat_min</span><span class="p">)</span> <span class="o">+</span> <span class="n">lat_min</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Inverse Transformed Coordinates: </span><span class="si">{</span><span class="n">X_original</span><span class="si">}</span><span class="s2">, Shape: </span><span class="si">{</span><span class="n">X_original</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">X_original</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Bradley T. Martin and Tyler K. Chafin.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

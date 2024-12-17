@@ -1,0 +1,593 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>geogenie.utils.spatial_data_processors &mdash; GeoGenIE 1.0.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=292eb321"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            GeoGenIE
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorial.html">GeoGenIE Tutorial</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../geogenie.html">geogenie package</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">GeoGenIE</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">geogenie.utils.spatial_data_processors</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for geogenie.utils.spatial_data_processors</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span> <span class="nn">warnings</span>
+<span class="kn">from</span> <span class="nn">math</span> <span class="kn">import</span> <span class="n">atan2</span><span class="p">,</span> <span class="n">cos</span><span class="p">,</span> <span class="n">degrees</span><span class="p">,</span> <span class="n">radians</span><span class="p">,</span> <span class="n">sin</span><span class="p">,</span> <span class="n">sqrt</span>
+<span class="kn">from</span> <span class="nn">pathlib</span> <span class="kn">import</span> <span class="n">Path</span>
+
+<span class="kn">import</span> <span class="nn">geopandas</span> <span class="k">as</span> <span class="nn">gpd</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+<span class="kn">import</span> <span class="nn">requests</span>
+<span class="kn">from</span> <span class="nn">geopy.distance</span> <span class="kn">import</span> <span class="n">geodesic</span>
+<span class="kn">from</span> <span class="nn">scipy.spatial</span> <span class="kn">import</span> <span class="n">cKDTree</span>
+<span class="kn">from</span> <span class="nn">sklearn.cluster</span> <span class="kn">import</span> <span class="n">DBSCAN</span>
+
+<span class="n">warnings</span><span class="o">.</span><span class="n">simplefilter</span><span class="p">(</span><span class="n">action</span><span class="o">=</span><span class="s2">&quot;ignore&quot;</span><span class="p">,</span> <span class="n">category</span><span class="o">=</span><span class="ne">FutureWarning</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="SpatialDataProcessor">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.spatial_data_processors.SpatialDataProcessor">[docs]</a>
+<span class="k">class</span> <span class="nc">SpatialDataProcessor</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Spatial data processing class.</span>
+
+<span class="sd">    This class provides a set of tools for processing spatial data, including calculating statistics, distances, and clustering.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        tmpdir (Path): Temporary directory for shapefiles.</span>
+<span class="sd">        output_dir (Path): Output directory for shapefiles.</span>
+<span class="sd">        basemap_fips (str): FIPS code for the base map.</span>
+<span class="sd">        crs (str): Coordinate reference system.</span>
+<span class="sd">        logger (logging.Logger): Logger object.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">output_dir</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">basemap_fips</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">crs</span><span class="o">=</span><span class="s2">&quot;EPSG:4326&quot;</span><span class="p">,</span> <span class="n">logger</span><span class="o">=</span><span class="kc">None</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Instantiate the SpatialDataProcessor class.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            output_dir (str, optional): Output directory for shapefiles. Defaults to None.</span>
+<span class="sd">            basemap_fips (str, optional): FIPS code for the base map. Defaults to None.</span>
+<span class="sd">            crs (str, optional): Coordinate reference system. Defaults to &quot;EPSG:4326&quot;.</span>
+<span class="sd">            logger (logging.Logger, optional): Logger object. Defaults to None.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">tmpdir</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">output_dir</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">tmpdir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="s2">&quot;./tmp_shapefiles&quot;</span><span class="p">)</span>
+            <span class="n">output_dir</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tmpdir</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">output_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">output_dir</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">output_dir</span> <span class="o">=</span> <span class="n">output_dir</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">basemap_fips</span> <span class="o">=</span> <span class="n">basemap_fips</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">crs</span> <span class="o">=</span> <span class="n">crs</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">logger</span> <span class="o">=</span> <span class="n">logger</span>
+
+<div class="viewcode-block" id="SpatialDataProcessor.extract_basemap_path_url">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.spatial_data_processors.SpatialDataProcessor.extract_basemap_path_url">[docs]</a>
+    <span class="k">def</span> <span class="nf">extract_basemap_path_url</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">url</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Extract base map from provided URL or file path.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            url (str): URL or file path to extract base map from.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            str: Extracted base map path or URL.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            ValueError: If the base map FIPS code is not provided.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">output_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="n">fn</span> <span class="o">=</span> <span class="n">url</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">dest</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">output_dir</span> <span class="o">/</span> <span class="s2">&quot;shapefile&quot;</span> <span class="o">/</span> <span class="n">fn</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c1"># Log the download attempt</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">logger</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Attempting to download file from </span><span class="si">{</span><span class="n">url</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">stream</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="n">response</span><span class="o">.</span><span class="n">raise_for_status</span><span class="p">()</span>
+            <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">dest</span><span class="p">,</span> <span class="s2">&quot;wb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">response</span><span class="o">.</span><span class="n">iter_content</span><span class="p">(</span><span class="n">chunk_size</span><span class="o">=</span><span class="mi">8192</span><span class="p">):</span>
+                    <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">chunk</span><span class="p">)</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">logger</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Successfully downloaded file to </span><span class="si">{</span><span class="n">dest</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">requests</span><span class="o">.</span><span class="n">RequestException</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Error downloading shapefile from </span><span class="si">{</span><span class="n">url</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">logger</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="n">e</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">Path</span><span class="p">(</span><span class="n">dest</span><span class="p">)</span><span class="o">.</span><span class="n">is_file</span><span class="p">():</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Could not find shapefile in provided path: </span><span class="si">{</span><span class="n">dest</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">logger</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">Path</span><span class="p">(</span><span class="n">dest</span><span class="p">)</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+            <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Expected file does not exist: </span><span class="si">{</span><span class="n">dest</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">fn</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;.zip&quot;</span><span class="p">):</span>
+                <span class="n">mapdata</span> <span class="o">=</span> <span class="n">gpd</span><span class="o">.</span><span class="n">read_file</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;zip://</span><span class="si">{</span><span class="n">dest</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">mapdata</span> <span class="o">=</span> <span class="n">gpd</span><span class="o">.</span><span class="n">read_file</span><span class="p">(</span><span class="n">dest</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">mapdata</span><span class="o">.</span><span class="n">to_crs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">crs</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">logger</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;Could not read map file </span><span class="si">{</span><span class="n">dest</span><span class="si">}</span><span class="s2"> from </span><span class="si">{</span><span class="n">url</span><span class="si">}</span><span class="s2">. Error: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span>
+                <span class="p">)</span>
+            <span class="k">raise</span> <span class="n">e</span></div>
+
+
+<div class="viewcode-block" id="SpatialDataProcessor.to_pandas">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.spatial_data_processors.SpatialDataProcessor.to_pandas">[docs]</a>
+    <span class="k">def</span> <span class="nf">to_pandas</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gdf</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Convert GeoPandas GeoDataFrame to Pandas DataFrame.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            gdf (geopandas.GeoDataFrame): GeoDataFrame to convert to pandas.DataFrame.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            pandas.DataFrame: pandas DataFrame object.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">gdf</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ensure_is_gdf</span><span class="p">(</span><span class="n">gdf</span><span class="p">)</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">gdf</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="n">columns</span><span class="o">=</span><span class="s2">&quot;geometry&quot;</span><span class="p">))</span>
+        <span class="n">df</span><span class="p">[</span><span class="s2">&quot;x&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">gdf</span><span class="o">.</span><span class="n">geometry</span><span class="o">.</span><span class="n">x</span>
+        <span class="n">df</span><span class="p">[</span><span class="s2">&quot;y&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">gdf</span><span class="o">.</span><span class="n">geometry</span><span class="o">.</span><span class="n">y</span>
+        <span class="k">return</span> <span class="n">df</span></div>
+
+
+<div class="viewcode-block" id="SpatialDataProcessor.to_numpy">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.spatial_data_processors.SpatialDataProcessor.to_numpy">[docs]</a>
+    <span class="k">def</span> <span class="nf">to_numpy</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gdf</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Convert GeoPandas GeoDataFrame to NumPy array.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            gdf (geopandas.GeoDataFrame): GeoDataFrame to convert to numpy.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            numpy.ndarray: Converted numpy array.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">gdf</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ensure_is_gdf</span><span class="p">(</span><span class="n">gdf</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">gdf</span><span class="o">.</span><span class="n">geometry</span><span class="o">.</span><span class="n">x</span><span class="p">,</span> <span class="n">gdf</span><span class="o">.</span><span class="n">geometry</span><span class="o">.</span><span class="n">y</span><span class="p">])</span><span class="o">.</span><span class="n">T</span></div>
+
+
+<div class="viewcode-block" id="SpatialDataProcessor.to_geopandas">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.spatial_data_processors.SpatialDataProcessor.to_geopandas">[docs]</a>
+    <span class="k">def</span> <span class="nf">to_geopandas</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">df</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Convert DataFrame to GeoPandas GeoDataFrame with proper CRS.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            df (pandas.DataFrame): DataFrame to convert to geopandas.GeoDataFrame.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            geopandas.GeoDataFrame: Converted GeoDataFrame object.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ensure_is_pandas</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
+
+        <span class="n">gdf</span> <span class="o">=</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">geometry</span><span class="o">=</span><span class="n">gpd</span><span class="o">.</span><span class="n">points_from_xy</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">&quot;x&quot;</span><span class="p">],</span> <span class="n">df</span><span class="p">[</span><span class="s2">&quot;y&quot;</span><span class="p">]))</span>
+        <span class="n">gdf</span> <span class="o">=</span> <span class="n">gdf</span><span class="o">.</span><span class="n">set_crs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">crs</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">gdf</span></div>
+
+
+<div class="viewcode-block" id="SpatialDataProcessor._ensure_is_pandas">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.spatial_data_processors.SpatialDataProcessor._ensure_is_pandas">[docs]</a>
+    <span class="k">def</span> <span class="nf">_ensure_is_pandas</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">df</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Ensure the data is a Pandas DataFrame.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            df (pandas.DataFrame): Data to validate.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            pandas.DataFrame: Validated DataFrame.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            TypeError: If the data is not a valid format.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">):</span>
+            <span class="k">if</span> <span class="s2">&quot;x&quot;</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span> <span class="ow">and</span> <span class="s2">&quot;y&quot;</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">df</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;geopandas.GeoDataFrame object missing &#39;x&#39; and/ or &#39;y&#39; column(s). Invalid format provided to SpatialDataProcessing.&quot;</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+                <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="ow">and</span> <span class="n">df</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="s2">&quot;y&quot;</span><span class="p">])</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">to_pandas</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Invalid data structure provided to SpatialDataProcessor: </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">df</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="SpatialDataProcessor._ensure_is_numpy">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.spatial_data_processors.SpatialDataProcessor._ensure_is_numpy">[docs]</a>
+    <span class="k">def</span> <span class="nf">_ensure_is_numpy</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">X</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Ensure the data is a NumPy array.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            X (np.ndarray): Data to validate.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            np.ndarray: Validated NumPy array.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            TypeError: If the data is not a valid format.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">X</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="ow">and</span> <span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">X</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Invalid data structure provided to SpatialDataProcessor: </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">X</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="SpatialDataProcessor._ensure_is_gdf">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.spatial_data_processors.SpatialDataProcessor._ensure_is_gdf">[docs]</a>
+    <span class="k">def</span> <span class="nf">_ensure_is_gdf</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gdf</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Ensure the data is a GeoPandas GeoDataFrame.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            gdf (geopandas.GeoDataFrame): GeoDataFrame to validate.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            geopandas.GeoDataFrame: Validated GeoDataFrame.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            TypeError: If the data is not a valid format.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">gdf</span><span class="p">,</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">):</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">gdf</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="ow">and</span> <span class="n">gdf</span><span class="o">.</span><span class="n">shape</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">to_geopandas</span><span class="p">(</span><span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">gdf</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="s2">&quot;y&quot;</span><span class="p">]))</span>
+            <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">gdf</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">):</span>
+                <span class="k">if</span> <span class="s2">&quot;x&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">gdf</span><span class="o">.</span><span class="n">columns</span> <span class="ow">or</span> <span class="s2">&quot;y&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">gdf</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+                    <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;geopandas.GeoDataFrame object missing &#39;x&#39; and/ or &#39;y&#39; column(s). Invalid format provided to SpatialDataProcessing.&quot;</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+                    <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">to_geopandas</span><span class="p">(</span><span class="n">gdf</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Invalid data structure provided to SpatialDataProcessor: </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">gdf</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+                <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">gdf</span></div>
+
+
+<div class="viewcode-block" id="SpatialDataProcessor.haversine_distance">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.spatial_data_processors.SpatialDataProcessor.haversine_distance">[docs]</a>
+    <span class="k">def</span> <span class="nf">haversine_distance</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">coords1</span><span class="p">,</span> <span class="n">coords2</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Calculate haversine distance between two sets of points.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            coords1 (np.ndarray): First set of coordinates.</span>
+<span class="sd">            coords2 (np.ndarray): Second set of coordinates.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            np.ndarray: Haversine distance between coords1 and coords2.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">c1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ensure_is_numpy</span><span class="p">(</span><span class="n">coords1</span><span class="p">)</span>
+        <span class="n">c2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ensure_is_numpy</span><span class="p">(</span><span class="n">coords2</span><span class="p">)</span>
+
+        <span class="n">R</span> <span class="o">=</span> <span class="mf">6371.0</span>  <span class="c1"># Earth&#39;s radius in kilometers</span>
+        <span class="n">lat1</span><span class="p">,</span> <span class="n">lon1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">radians</span><span class="p">(</span><span class="n">c1</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]),</span> <span class="n">np</span><span class="o">.</span><span class="n">radians</span><span class="p">(</span><span class="n">c1</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">])</span>
+        <span class="n">lat2</span><span class="p">,</span> <span class="n">lon2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">radians</span><span class="p">(</span><span class="n">c2</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]),</span> <span class="n">np</span><span class="o">.</span><span class="n">radians</span><span class="p">(</span><span class="n">c2</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">])</span>
+        <span class="n">dlat</span> <span class="o">=</span> <span class="n">lat2</span> <span class="o">-</span> <span class="n">lat1</span>
+        <span class="n">dlon</span> <span class="o">=</span> <span class="n">lon2</span> <span class="o">-</span> <span class="n">lon1</span>
+        <span class="n">a</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">dlat</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">lat1</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">lat2</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">dlon</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span>
+        <span class="n">c</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">arctan2</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">a</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">a</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">R</span> <span class="o">*</span> <span class="n">c</span></div>
+
+
+<div class="viewcode-block" id="SpatialDataProcessor.haversine_error">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.spatial_data_processors.SpatialDataProcessor.haversine_error">[docs]</a>
+    <span class="k">def</span> <span class="nf">haversine_error</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">point1</span><span class="p">,</span> <span class="n">point2</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Calculate the haversine error between two geographic points.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            point1 (float): First point to calculate error from.</span>
+<span class="sd">            point2 (float): Second point to calculate error from.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            np.ndarray: Haversine error between points 1 and 2.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">haversine_distance</span><span class="p">(</span><span class="n">point1</span><span class="o">.</span><span class="n">y</span><span class="p">,</span> <span class="n">point1</span><span class="o">.</span><span class="n">x</span><span class="p">,</span> <span class="n">point2</span><span class="o">.</span><span class="n">y</span><span class="p">,</span> <span class="n">point2</span><span class="o">.</span><span class="n">x</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="SpatialDataProcessor.calculate_statistics">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.spatial_data_processors.SpatialDataProcessor.calculate_statistics">[docs]</a>
+    <span class="k">def</span> <span class="nf">calculate_statistics</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gdf</span><span class="p">,</span> <span class="n">max_boots</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">known_coords</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Calculate statistics on properly projected data.&quot;&quot;&quot;</span>
+
+        <span class="n">gdf</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ensure_is_gdf</span><span class="p">(</span><span class="n">gdf</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">sample_id</span><span class="p">,</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">gdf</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s2">&quot;sampleID&quot;</span><span class="p">):</span>
+            <span class="c1"># Centroid calculations.</span>
+            <span class="n">mean_lon</span> <span class="o">=</span> <span class="n">group</span><span class="o">.</span><span class="n">dissolve</span><span class="p">()</span><span class="o">.</span><span class="n">centroid</span><span class="o">.</span><span class="n">x</span>
+            <span class="n">mean_lat</span> <span class="o">=</span> <span class="n">group</span><span class="o">.</span><span class="n">dissolve</span><span class="p">()</span><span class="o">.</span><span class="n">centroid</span><span class="o">.</span><span class="n">y</span>
+
+            <span class="n">median_lon</span> <span class="o">=</span> <span class="n">group</span><span class="o">.</span><span class="n">dissolve</span><span class="p">(</span><span class="n">aggfunc</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;x&quot;</span><span class="p">:</span> <span class="s2">&quot;median&quot;</span><span class="p">})</span><span class="o">.</span><span class="n">centroid</span><span class="o">.</span><span class="n">x</span>
+            <span class="n">median_lat</span> <span class="o">=</span> <span class="n">group</span><span class="o">.</span><span class="n">dissolve</span><span class="p">(</span><span class="n">aggfunc</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;y&quot;</span><span class="p">:</span> <span class="s2">&quot;median&quot;</span><span class="p">})</span><span class="o">.</span><span class="n">centroid</span><span class="o">.</span><span class="n">y</span>
+
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">mean_lat</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">):</span>
+                <span class="n">mean_lat</span> <span class="o">=</span> <span class="n">mean_lat</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">mean_lon</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">):</span>
+                <span class="n">mean_lon</span> <span class="o">=</span> <span class="n">mean_lon</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">median_lat</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">):</span>
+                <span class="n">median_lat</span> <span class="o">=</span> <span class="n">median_lat</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">median_lon</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">):</span>
+                <span class="n">median_lon</span> <span class="o">=</span> <span class="n">median_lon</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+            <span class="n">std_dev_x</span><span class="p">,</span> <span class="n">std_dev_y</span> <span class="o">=</span> <span class="n">group</span><span class="o">.</span><span class="n">geometry</span><span class="o">.</span><span class="n">x</span><span class="o">.</span><span class="n">std</span><span class="p">(),</span> <span class="n">group</span><span class="o">.</span><span class="n">geometry</span><span class="o">.</span><span class="n">y</span><span class="o">.</span><span class="n">std</span><span class="p">()</span>
+
+            <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">group</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">max_boots</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">n</span> <span class="o">&gt;</span> <span class="n">max_boots</span><span class="p">:</span>
+                <span class="n">group</span> <span class="o">=</span> <span class="n">group</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">n</span><span class="o">=</span><span class="n">max_boots</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="n">seed</span><span class="p">)</span>
+
+            <span class="n">ci_95_x</span> <span class="o">=</span> <span class="mf">1.96</span> <span class="o">*</span> <span class="n">std_dev_x</span> <span class="o">/</span> <span class="n">sqrt</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+            <span class="n">ci_95_y</span> <span class="o">=</span> <span class="mf">1.96</span> <span class="o">*</span> <span class="n">std_dev_y</span> <span class="o">/</span> <span class="n">sqrt</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+
+            <span class="n">se_x</span> <span class="o">=</span> <span class="mf">1.96</span> <span class="o">*</span> <span class="n">std_dev_x</span>
+            <span class="n">se_y</span> <span class="o">=</span> <span class="mf">1.96</span> <span class="o">*</span> <span class="n">std_dev_y</span>
+            <span class="n">drms</span> <span class="o">=</span> <span class="n">sqrt</span><span class="p">(</span><span class="n">std_dev_x</span><span class="o">**</span><span class="mi">2</span> <span class="o">+</span> <span class="n">std_dev_y</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
+
+            <span class="n">resd</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="s2">&quot;sampleID&quot;</span><span class="p">:</span> <span class="n">sample_id</span><span class="p">,</span>
+                <span class="s2">&quot;x_mean&quot;</span><span class="p">:</span> <span class="n">mean_lon</span><span class="p">,</span>
+                <span class="s2">&quot;y_mean&quot;</span><span class="p">:</span> <span class="n">mean_lat</span><span class="p">,</span>
+                <span class="s2">&quot;x_median&quot;</span><span class="p">:</span> <span class="n">median_lon</span><span class="p">,</span>
+                <span class="s2">&quot;y_median&quot;</span><span class="p">:</span> <span class="n">median_lat</span><span class="p">,</span>
+                <span class="s2">&quot;std_dev_x&quot;</span><span class="p">:</span> <span class="n">std_dev_x</span><span class="p">,</span>
+                <span class="s2">&quot;std_dev_y&quot;</span><span class="p">:</span> <span class="n">std_dev_y</span><span class="p">,</span>
+                <span class="s2">&quot;ci_95_x&quot;</span><span class="p">:</span> <span class="n">ci_95_x</span><span class="p">,</span>
+                <span class="s2">&quot;ci_95_y&quot;</span><span class="p">:</span> <span class="n">ci_95_y</span><span class="p">,</span>
+                <span class="s2">&quot;se_x&quot;</span><span class="p">:</span> <span class="n">se_x</span><span class="p">,</span>
+                <span class="s2">&quot;se_y&quot;</span><span class="p">:</span> <span class="n">se_y</span><span class="p">,</span>
+                <span class="s2">&quot;drms&quot;</span><span class="p">:</span> <span class="n">drms</span><span class="p">,</span>
+            <span class="p">}</span>
+
+            <span class="n">dfk</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="k">if</span> <span class="n">known_coords</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">gdfk</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">to_geopandas</span><span class="p">(</span><span class="n">known_coords</span><span class="p">)</span>
+                <span class="n">gdfk</span> <span class="o">=</span> <span class="n">gdfk</span><span class="p">[</span><span class="n">gdfk</span><span class="p">[</span><span class="s2">&quot;sampleID&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="n">sample_id</span><span class="p">]</span>
+
+                <span class="k">if</span> <span class="n">gdfk</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+                        <span class="sa">f</span><span class="s2">&quot;Duplicate sampleIDs found in known coordinates file.&quot;</span>
+                    <span class="p">)</span>
+                    <span class="n">known_lat</span> <span class="o">=</span> <span class="n">gdfk</span><span class="o">.</span><span class="n">dissolve</span><span class="p">()</span><span class="o">.</span><span class="n">centroid</span><span class="o">.</span><span class="n">y</span>
+                    <span class="n">known_lon</span> <span class="o">=</span> <span class="n">gdfk</span><span class="o">.</span><span class="n">dissolve</span><span class="p">()</span><span class="o">.</span><span class="n">centroid</span><span class="o">.</span><span class="n">x</span>
+                <span class="k">elif</span> <span class="ow">not</span> <span class="n">gdfk</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
+                    <span class="n">known_lat</span> <span class="o">=</span> <span class="n">gdfk</span><span class="o">.</span><span class="n">geometry</span><span class="o">.</span><span class="n">y</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                    <span class="n">known_lon</span> <span class="o">=</span> <span class="n">gdfk</span><span class="o">.</span><span class="n">geometry</span><span class="o">.</span><span class="n">x</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+                        <span class="sa">f</span><span class="s2">&quot;Known coordinates missing for sample </span><span class="si">{</span><span class="n">sample_id</span><span class="si">}</span><span class="s2">, though they were expected.&quot;</span>
+                    <span class="p">)</span>
+                    <span class="n">gdfk</span> <span class="o">=</span> <span class="kc">None</span>
+
+                <span class="k">if</span> <span class="n">gdfk</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">dfk</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">to_pandas</span><span class="p">(</span><span class="n">gdfk</span><span class="p">)</span>
+
+                    <span class="n">haversine_err</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">haversine_distance</span><span class="p">(</span>
+                        <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="n">mean_lat</span><span class="p">,</span> <span class="n">mean_lon</span><span class="p">]]),</span>
+                        <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="n">known_lat</span><span class="p">,</span> <span class="n">known_lon</span><span class="p">]]),</span>
+                    <span class="p">)</span>
+                    <span class="n">geodesic_err</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">geodesic_distance</span><span class="p">(</span>
+                        <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="n">mean_lat</span><span class="p">,</span> <span class="n">mean_lon</span><span class="p">]]),</span>
+                        <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="n">known_lat</span><span class="p">,</span> <span class="n">known_lon</span><span class="p">]]),</span>
+                    <span class="p">)</span>
+
+                    <span class="n">haversine_err</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_validate_dists</span><span class="p">(</span><span class="n">haversine_err</span><span class="p">)</span>
+                    <span class="n">geodesic_err</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_validate_dists</span><span class="p">(</span><span class="n">geodesic_err</span><span class="p">)</span>
+                    <span class="n">resd</span><span class="p">[</span><span class="s2">&quot;haversine_error&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">haversine_err</span>
+                    <span class="n">resd</span><span class="p">[</span><span class="s2">&quot;geodesic_error&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">geodesic_err</span>
+
+            <span class="k">yield</span> <span class="n">group</span><span class="p">,</span> <span class="n">sample_id</span><span class="p">,</span> <span class="n">dfk</span><span class="p">,</span> <span class="n">resd</span></div>
+
+
+<div class="viewcode-block" id="SpatialDataProcessor._validate_dists">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.spatial_data_processors.SpatialDataProcessor._validate_dists">[docs]</a>
+    <span class="k">def</span> <span class="nf">_validate_dists</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">err</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">err</span><span class="p">,</span> <span class="p">(</span><span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)):</span>
+            <span class="k">if</span> <span class="n">err</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">err</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">err</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">):</span>
+                        <span class="n">err</span> <span class="o">=</span> <span class="n">err</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">err</span> <span class="o">=</span> <span class="n">err</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Distances are in invalid shape: </span><span class="si">{</span><span class="n">err</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">err</span><span class="p">,</span> <span class="nb">float</span><span class="p">):</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">err</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="n">err</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">err</span><span class="p">)</span>
+                <span class="n">err</span> <span class="o">=</span> <span class="n">err</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">err</span></div>
+
+
+<div class="viewcode-block" id="SpatialDataProcessor.spherical_mean">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.spatial_data_processors.SpatialDataProcessor.spherical_mean">[docs]</a>
+    <span class="k">def</span> <span class="nf">spherical_mean</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gdf</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Calculate spherical mean of geographic points.&quot;&quot;&quot;</span>
+
+        <span class="n">gdf</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ensure_is_gdf</span><span class="p">(</span><span class="n">gdf</span><span class="p">)</span>
+
+        <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">z</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">point</span> <span class="ow">in</span> <span class="n">gdf</span><span class="o">.</span><span class="n">geometry</span><span class="p">:</span>
+            <span class="n">lat</span><span class="p">,</span> <span class="n">lon</span> <span class="o">=</span> <span class="n">radians</span><span class="p">(</span><span class="n">point</span><span class="o">.</span><span class="n">y</span><span class="p">),</span> <span class="n">radians</span><span class="p">(</span><span class="n">point</span><span class="o">.</span><span class="n">x</span><span class="p">)</span>
+            <span class="n">x</span> <span class="o">+=</span> <span class="n">cos</span><span class="p">(</span><span class="n">lat</span><span class="p">)</span> <span class="o">*</span> <span class="n">cos</span><span class="p">(</span><span class="n">lon</span><span class="p">)</span>
+            <span class="n">y</span> <span class="o">+=</span> <span class="n">cos</span><span class="p">(</span><span class="n">lat</span><span class="p">)</span> <span class="o">*</span> <span class="n">sin</span><span class="p">(</span><span class="n">lon</span><span class="p">)</span>
+            <span class="n">z</span> <span class="o">+=</span> <span class="n">sin</span><span class="p">(</span><span class="n">lat</span><span class="p">)</span>
+
+        <span class="n">total</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">gdf</span><span class="p">)</span>
+        <span class="n">x</span> <span class="o">/=</span> <span class="n">total</span>
+        <span class="n">y</span> <span class="o">/=</span> <span class="n">total</span>
+        <span class="n">z</span> <span class="o">/=</span> <span class="n">total</span>
+
+        <span class="n">lon</span> <span class="o">=</span> <span class="n">atan2</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">x</span><span class="p">)</span>
+        <span class="n">hyp</span> <span class="o">=</span> <span class="n">sqrt</span><span class="p">(</span><span class="n">x</span> <span class="o">*</span> <span class="n">x</span> <span class="o">+</span> <span class="n">y</span> <span class="o">*</span> <span class="n">y</span><span class="p">)</span>
+        <span class="n">lat</span> <span class="o">=</span> <span class="n">atan2</span><span class="p">(</span><span class="n">z</span><span class="p">,</span> <span class="n">hyp</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">degrees</span><span class="p">(</span><span class="n">lat</span><span class="p">),</span> <span class="n">degrees</span><span class="p">(</span><span class="n">lon</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="SpatialDataProcessor.calculate_bounding_box">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.spatial_data_processors.SpatialDataProcessor.calculate_bounding_box">[docs]</a>
+    <span class="k">def</span> <span class="nf">calculate_bounding_box</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gdf</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Calculate the bounding box for the dataset.&quot;&quot;&quot;</span>
+        <span class="n">gdf</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ensure_is_gdf</span><span class="p">(</span><span class="n">gdf</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">gdf</span><span class="o">.</span><span class="n">total_bounds</span></div>
+
+
+<div class="viewcode-block" id="SpatialDataProcessor.nearest_neighbor">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.spatial_data_processors.SpatialDataProcessor.nearest_neighbor">[docs]</a>
+    <span class="k">def</span> <span class="nf">nearest_neighbor</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gdf</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Calculate the nearest neighbor for each point.&quot;&quot;&quot;</span>
+        <span class="n">gdf</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ensure_is_gdf</span><span class="p">(</span><span class="n">gdf</span><span class="p">)</span>
+        <span class="n">points</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">gdf</span><span class="o">.</span><span class="n">geometry</span><span class="o">.</span><span class="n">x</span><span class="p">,</span> <span class="n">gdf</span><span class="o">.</span><span class="n">geometry</span><span class="o">.</span><span class="n">y</span><span class="p">])</span><span class="o">.</span><span class="n">T</span>
+        <span class="n">tree</span> <span class="o">=</span> <span class="n">cKDTree</span><span class="p">(</span><span class="n">points</span><span class="p">)</span>
+        <span class="n">distances</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">tree</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="n">points</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+        <span class="n">nearest</span> <span class="o">=</span> <span class="n">distances</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">nearest</span></div>
+
+
+<div class="viewcode-block" id="SpatialDataProcessor.calculate_convex_hull">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.spatial_data_processors.SpatialDataProcessor.calculate_convex_hull">[docs]</a>
+    <span class="k">def</span> <span class="nf">calculate_convex_hull</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gdf</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Calculate the convex hull of all points.&quot;&quot;&quot;</span>
+        <span class="n">gdf</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ensure_is_gdf</span><span class="p">(</span><span class="n">gdf</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">gdf</span><span class="o">.</span><span class="n">unary_union</span><span class="o">.</span><span class="n">convex_hull</span></div>
+
+
+<div class="viewcode-block" id="SpatialDataProcessor.detect_clusters">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.spatial_data_processors.SpatialDataProcessor.detect_clusters">[docs]</a>
+    <span class="k">def</span> <span class="nf">detect_clusters</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gdf</span><span class="p">,</span> <span class="n">eps</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">min_samples</span><span class="o">=</span><span class="mi">5</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Detect clusters using DBSCAN.&quot;&quot;&quot;</span>
+        <span class="n">gdf</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ensure_is_gdf</span><span class="p">(</span><span class="n">gdf</span><span class="p">)</span>
+        <span class="n">coords</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">gdf</span><span class="o">.</span><span class="n">geometry</span><span class="o">.</span><span class="n">x</span><span class="p">,</span> <span class="n">gdf</span><span class="o">.</span><span class="n">geometry</span><span class="o">.</span><span class="n">y</span><span class="p">])</span><span class="o">.</span><span class="n">T</span>
+        <span class="n">clustering</span> <span class="o">=</span> <span class="n">DBSCAN</span><span class="p">(</span><span class="n">eps</span><span class="o">=</span><span class="n">eps</span><span class="p">,</span> <span class="n">min_samples</span><span class="o">=</span><span class="n">min_samples</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">coords</span><span class="p">)</span>
+        <span class="n">gdf</span><span class="p">[</span><span class="s2">&quot;cluster&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">clustering</span><span class="o">.</span><span class="n">labels_</span>
+        <span class="k">return</span> <span class="n">gdf</span></div>
+
+
+<div class="viewcode-block" id="SpatialDataProcessor.detect_outliers">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.spatial_data_processors.SpatialDataProcessor.detect_outliers">[docs]</a>
+    <span class="k">def</span> <span class="nf">detect_outliers</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gdf</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="mi">2</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Identify outliers based on distance from the mean.&quot;&quot;&quot;</span>
+        <span class="n">gdf</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ensure_is_gdf</span><span class="p">(</span><span class="n">gdf</span><span class="p">)</span>
+        <span class="n">mean_point</span> <span class="o">=</span> <span class="n">gdf</span><span class="o">.</span><span class="n">geometry</span><span class="o">.</span><span class="n">unary_union</span><span class="o">.</span><span class="n">centroid</span>
+        <span class="n">distances</span> <span class="o">=</span> <span class="n">gdf</span><span class="o">.</span><span class="n">geometry</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="k">lambda</span> <span class="n">p</span><span class="p">:</span> <span class="n">mean_point</span><span class="o">.</span><span class="n">distance</span><span class="p">(</span><span class="n">p</span><span class="p">))</span>
+        <span class="n">gdf</span><span class="p">[</span><span class="s2">&quot;is_outlier&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">distances</span> <span class="o">&gt;</span> <span class="n">distances</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span> <span class="o">+</span> <span class="n">threshold</span> <span class="o">*</span> <span class="n">distances</span><span class="o">.</span><span class="n">std</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">gdf</span></div>
+
+
+<div class="viewcode-block" id="SpatialDataProcessor.geodesic_distance">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.spatial_data_processors.SpatialDataProcessor.geodesic_distance">[docs]</a>
+    <span class="k">def</span> <span class="nf">geodesic_distance</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">coords1</span><span class="p">,</span> <span class="n">coords2</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Calculate geodesic distance between two sets of coordinates.&quot;&quot;&quot;</span>
+        <span class="n">distances</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">geodesic</span><span class="p">(</span><span class="nb">tuple</span><span class="p">(</span><span class="n">coords1</span><span class="p">[</span><span class="n">i</span><span class="p">]),</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">coords2</span><span class="p">[</span><span class="n">i</span><span class="p">]))</span><span class="o">.</span><span class="n">km</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">coords1</span><span class="p">))</span>
+        <span class="p">]</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">distances</span><span class="p">)</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Bradley T. Martin and Tyler K. Chafin.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

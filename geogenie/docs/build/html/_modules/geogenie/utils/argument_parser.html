@@ -1,0 +1,999 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>geogenie.utils.argument_parser &mdash; GeoGenIE 1.0.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=292eb321"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            GeoGenIE
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorial.html">GeoGenIE Tutorial</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../geogenie.html">geogenie package</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">GeoGenIE</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">geogenie.utils.argument_parser</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for geogenie.utils.argument_parser</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span> <span class="nn">argparse</span>
+<span class="kn">import</span> <span class="nn">ast</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">warnings</span>
+
+<span class="kn">import</span> <span class="nn">yaml</span>
+<span class="kn">from</span> <span class="nn">torch.cuda</span> <span class="kn">import</span> <span class="n">is_available</span>
+
+<span class="kn">from</span> <span class="nn">geogenie.utils.exceptions</span> <span class="kn">import</span> <span class="n">GPUUnavailableError</span><span class="p">,</span> <span class="n">ResourceAllocationError</span>
+
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="load_config">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.argument_parser.load_config">[docs]</a>
+<span class="k">def</span> <span class="nf">load_config</span><span class="p">(</span><span class="n">config_path</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Load the YAML configuration file.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        config_path (str): Path to configuration file.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        dict: Configuration arguments.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">config_path</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">config</span> <span class="o">=</span> <span class="n">yaml</span><span class="o">.</span><span class="n">safe_load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">config</span></div>
+
+
+
+<div class="viewcode-block" id="EvaluateAction">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.argument_parser.EvaluateAction">[docs]</a>
+<span class="k">class</span> <span class="nc">EvaluateAction</span><span class="p">(</span><span class="n">argparse</span><span class="o">.</span><span class="n">Action</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Custom action for evaluating complex arguments as Python literal structures.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">parser</span><span class="p">,</span> <span class="n">namespace</span><span class="p">,</span> <span class="n">values</span><span class="p">,</span> <span class="n">option_string</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="n">ast</span><span class="o">.</span><span class="n">literal_eval</span><span class="p">(</span><span class="n">values</span><span class="p">)</span>
+            <span class="nb">setattr</span><span class="p">(</span><span class="n">namespace</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">dest</span><span class="p">,</span> <span class="n">result</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentTypeError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;Couldn&#39;t parse &#39;</span><span class="si">{</span><span class="n">values</span><span class="si">}</span><span class="s2">&#39; as a Python literal.&quot;</span>
+            <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="validate_positive_int">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.argument_parser.validate_positive_int">[docs]</a>
+<span class="k">def</span> <span class="nf">validate_positive_int</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate that the provided value is a positive integer.&quot;&quot;&quot;</span>
+    <span class="n">ivalue</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">ivalue</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentTypeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">value</span><span class="si">}</span><span class="s2"> must be a positive integer.&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">ivalue</span></div>
+
+
+
+<div class="viewcode-block" id="validate_positive_float">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.argument_parser.validate_positive_float">[docs]</a>
+<span class="k">def</span> <span class="nf">validate_positive_float</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate that the provided value is a positive float.&quot;&quot;&quot;</span>
+    <span class="n">fvalue</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">fvalue</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentTypeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">value</span><span class="si">}</span><span class="s2"> must be a positive float.&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">fvalue</span></div>
+
+
+
+<div class="viewcode-block" id="validate_gpu_number">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.argument_parser.validate_gpu_number">[docs]</a>
+<span class="k">def</span> <span class="nf">validate_gpu_number</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Validate the provided GPU number.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        value (str): The GPU number provided as a command-line argument.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        int: The validated GPU number.</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        argparse.ArgumentTypeError: If the GPU number is invalid.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Placeholder validation logic - replace with actual checks as needed</span>
+    <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">gpu_number</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">gpu_number</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;&#39;gpu_number&#39; must be &gt;= 0&quot;</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentTypeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">value</span><span class="si">}</span><span class="s2"> is not a valid GPU number.&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">is_available</span><span class="p">():</span>
+            <span class="k">raise</span> <span class="n">GPUUnavailableError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Specified GPU </span><span class="si">{</span><span class="n">gpu_number</span><span class="si">}</span><span class="s2"> is not available.&quot;</span><span class="p">)</span>
+
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">gpu_number</span> <span class="o">=</span> <span class="n">value</span>  <span class="c1"># None, if no GPU is used</span>
+    <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">gpu_number</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="validate_n_jobs">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.argument_parser.validate_n_jobs">[docs]</a>
+<span class="k">def</span> <span class="nf">validate_n_jobs</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate the provided n_jobs parameter.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        value (int): the number of jobs to use.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        int: The validated n_jobs parameter.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">n_jobs</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">n_jobs</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">n_jobs</span> <span class="o">&lt;</span> <span class="o">-</span><span class="mi">1</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">ResourceAllocationError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;&#39;n_jobs&#39; must be &gt; 0 or -1, but got </span><span class="si">{</span><span class="n">n_jobs</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+    <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">ResourceAllocationError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Invalid &#39;n_jobs&#39; parameter provided: </span><span class="si">{</span><span class="n">n_jobs</span><span class="si">}</span><span class="s2">; parameter must be &gt; 0 or -1.&quot;</span>
+        <span class="p">)</span>
+    <span class="k">return</span> <span class="n">n_jobs</span></div>
+
+
+
+<div class="viewcode-block" id="validate_split">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.argument_parser.validate_split">[docs]</a>
+<span class="k">def</span> <span class="nf">validate_split</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">split</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">split</span> <span class="o">&lt;=</span> <span class="mf">0.0</span> <span class="ow">or</span> <span class="n">split</span> <span class="o">&gt;=</span> <span class="mf">1.0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;&#39;train_split&#39; and &#39;val_split&#39; must be &gt; 0.0 and &lt; 1.0: </span><span class="si">{</span><span class="n">split</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+    <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;&#39;train_split&#39; and &#39;val_split&#39; must be &gt; 0 and &lt; 1.0: </span><span class="si">{</span><span class="n">split</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+    <span class="k">return</span> <span class="n">split</span></div>
+
+
+
+<div class="viewcode-block" id="validate_verbosity">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.argument_parser.validate_verbosity">[docs]</a>
+<span class="k">def</span> <span class="nf">validate_verbosity</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">verb</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">verb</span> <span class="o">&lt;</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">verb</span> <span class="o">&gt;</span> <span class="mi">3</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;&#39;verbose&#39; must &gt;= 0 and &lt;= 3: </span><span class="si">{</span><span class="n">verb</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;&#39;verbose&#39; must &gt;= 0 and &lt;= 3: </span><span class="si">{</span><span class="n">value</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">verb</span></div>
+
+
+
+<div class="viewcode-block" id="validate_seed">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.argument_parser.validate_seed">[docs]</a>
+<span class="k">def</span> <span class="nf">validate_seed</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">seed</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">seed</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;&#39;seed&#39; must &gt; 0: </span><span class="si">{</span><span class="n">seed</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;&#39;seed&#39; must &gt; 0: </span><span class="si">{</span><span class="n">seed</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">return</span> <span class="n">seed</span></div>
+
+
+
+<div class="viewcode-block" id="validate_lower_str">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.argument_parser.validate_lower_str">[docs]</a>
+<span class="k">def</span> <span class="nf">validate_lower_str</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">value</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">TypeError</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Could not convert </span><span class="si">{</span><span class="n">value</span><span class="si">}</span><span class="s2"> to a string.&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">value</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span></div>
+
+
+
+<div class="viewcode-block" id="setup_parser">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.argument_parser.setup_parser">[docs]</a>
+<span class="k">def</span> <span class="nf">setup_parser</span><span class="p">(</span><span class="n">test_mode</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Parse command-line arguments.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        argparse.Namespace: Parsed command line arguments.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">(</span>
+        <span class="n">prog</span><span class="o">=</span><span class="s2">&quot;GeoGenIE&quot;</span><span class="p">,</span>
+        <span class="n">description</span><span class="o">=</span><span class="s2">&quot;Predict geographic coordinates from genome-wide SNPs using deep learning.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Optional argument for the configuration file</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--config&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Path to the configuration YAML file.&quot;</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Data Input and Preprocessing Arguments</span>
+    <span class="n">aln_group</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span>
+        <span class="s2">&quot;Alignment Input (VCF File)&quot;</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s2">&quot;Input VCF file alignment to use.&quot;</span>
+    <span class="p">)</span>
+    <span class="n">aln_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--vcf&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Path to the VCF file with SNPs. Format: filename.vcf. Can be compressed with bgzip or uncompressed.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Data Input and Preprocessing</span>
+    <span class="n">data_group</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span>
+        <span class="s2">&quot;Data Input and Preprocessing&quot;</span><span class="p">,</span>
+        <span class="n">description</span><span class="o">=</span><span class="s2">&quot;Input files and input preprocessing options&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">data_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--sample_data&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Tab-delimited file with &#39;sampleID&#39;, &#39;x&#39;, &#39;y&#39;. Align SampleIDs with VCF&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">data_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--known_sample_data&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Same as sample_data. This is redundant, and may be removed in future versions, but is currently required if you want the recorded localities present on the CI plots. Default: None (no recorded localities shown)&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">data_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--min_mac&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_positive_int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Minimum minor allele count (MAC) to retain SNPs. Default: 2.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">data_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--max_SNPs&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Max number of SNPs to randomly subset. Default: None (Use all SNPs).&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">data_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--prop_unknowns&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_positive_float</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Proportion of samples to randomly select for the &#39;unknown prediction&#39; dataset if unknowns are not present in the &#39;--sample_data&#39; file. This setting only gets used if the &#39;--sample_data&#39; file contains no &#39;nan&#39; values in place of coordinates. Default: 0.1&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Embedding settings.</span>
+    <span class="n">embed_group</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span>
+        <span class="s2">&quot;Embedding settings.&quot;</span><span class="p">,</span>
+        <span class="n">description</span><span class="o">=</span><span class="s2">&quot;Settings for embedding the input features.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">embed_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--embedding_type&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_lower_str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;none&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Embedding to use with input SNP dataset. Supported options are: &#39;pca&#39;, &#39;kernelpca&#39;, &#39;nmf&#39;, &#39;lle&#39;, &#39;mca&#39;, &#39;mds&#39;, &#39;polynomial&#39;, &#39;tsne&#39;, and &#39;none&#39; (no embedding). Default: &#39;none&#39; (no embedding).&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">embed_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--n_components&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of components to use with &#39;pca&#39; or &#39;tsne&#39; embeddings. If not specified, then &#39;n_components&#39; will be optimized if using PCA, otherwise a value is required.&#39;. Default: Search for optimal &#39;n_components.&#39; parameter. Default: None (Search optimal components).&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">embed_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--embedding_sensitivity&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_positive_float</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Sensitivity setting for selecting optimal number of components with &#39;mca&#39; and &#39;pca&#39;. Set lower than 0 if you want fewer components, and higher than 0 for more components. Default: 1.0.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">embed_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--tsne_perplexity&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_positive_int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Perplexity setting if using T-SNE embedding. Default: 30.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">embed_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--polynomial_degree&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_positive_int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Polynomial degree to use with &#39;polynomial&#39; embedding. WARNING: Setting this higher than 2 adds heavy computational overhead!!! Default: 2&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">embed_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--n_init&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_positive_int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of initialization runs to use with Multi Dimensional Scaling embedding. Default: 4.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Model Configuration Arguments</span>
+    <span class="n">model_group</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span>
+        <span class="s2">&quot;Model Configuration&quot;</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s2">&quot;Model configuration arguments.&quot;</span>
+    <span class="p">)</span>
+    <span class="n">model_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--nlayers&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_positive_int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of hidden layers in the network. Increase for underfitting. Default: 10.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">model_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--width&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_positive_int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">256</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of neurons per layer. If `--factor` is less than 1.0, then `width` will be reduced with each successive hidden layer, and `width` would represent the initial width. Default: 256.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">model_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--dropout_prop&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_positive_float</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">0.25</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Dropout rate (0-1) to prevent overfitting. Default: 0.2.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">model_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--criterion&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_lower_str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;rmse&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;Model loss criterion to use. Valid options include: &#39;rmse&#39;, &#39;huber&#39;, and &#39;drms&#39;. RMSE is Root Mean Squared Error (i.e., euclidean distance) and &#39;drms&#39; is Distance Root Mean Square. &#39;huber&#39; is Huber loss. All criteria are weighted if using the &#39;--use_weighted&#39; argument with &#39;loss&#39;, &#39;sampler&#39;, or &#39;both&#39;.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">model_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--load_best_params&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Specify filename to load best paramseters from previous Optuna parameter search Should be a .json file. Can be found in &#39;&lt;output_dir&gt;/optimize/&lt;prefix&gt;_best_params.json&#39;. Default: None (don&#39;t load best parameters).&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">model_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--use_gradient_boosting&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Whether to use Gradient Boosting model instead of deep learning model. This method is deprecated and may be removed in a future version. Non-functional. Default: False (use deep learning model).&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">model_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--dtype&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_lower_str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;float32&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;PyTorch data type to use. Supported options include: &#39;float32 and &#39;float64&#39;. &#39;float64&#39; is more accurate, but uses more memory and also is not supported with GPUs. Default: &#39;float32&#39;.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Training Parameters</span>
+    <span class="n">training_group</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span>
+        <span class="s2">&quot;Training Parameters&quot;</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s2">&quot;Define model training parameters.&quot;</span>
+    <span class="p">)</span>
+    <span class="n">training_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--batch_size&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_positive_int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">32</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Training batch size. Default: 32.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">training_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--max_epochs&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_positive_int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">5000</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;`--max_epochs`: Maximum training epochs. An early stopping mechanism is implemented, so it is advisable to set this to a very high number and let the early stopping mechanism determine when to stop training. Default: 5000.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">training_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--learning_rate&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_positive_float</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">1e-3</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;`--learning_rate`: Learning rate for optimizer. Subject to a learning rate scheduler that reduces the learning rate with no improvement after `lr_scheduler_patience` epochs. Default: 0.001.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">training_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--l2_reg&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_positive_float</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;`--l2_reg`: L2 regularization weight. Can help to reduce overfitting. Default: 0.0 (no regularization).&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">training_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--early_stop_patience&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_positive_int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">48</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Epochs to wait after no improvement before activating early stopping mechanism. Default: 100.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">training_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--train_split&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_split</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Training data proportion. `--val_split` + `--train_split` must sum to 1.0. NOTE: `--train_split` will be further reduced by `--train_split - `--val_split` to create a &#39;test sample&#39; hold-out subset. Default: 0.8&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">training_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--val_split&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_split</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;--val_split`: Validation data proportion. `--val_split` + `--train_split` must sum to 1.0. Default: 0.2.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">training_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--do_bootstrap&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Enable bootstrap replicates. Default: False.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">training_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--nboots&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_positive_int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;`--nboots`: Number of bootstrap replicates. Has no effect if `--do_bootstrap` is disabled. Default: 100.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">training_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--do_gridsearch&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Perform Optuna parameter search to optimize model parameters. Default: False.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">training_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--n_iter&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_positive_int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Iterations for parameter optimization. Used with &#39;do_gridsearch&#39;. Optuna recommends between 100-1000. Default: 100.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">training_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--lr_scheduler_patience&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">16</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_positive_int</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Learning rate scheduler patience.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">training_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--lr_scheduler_factor&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_positive_float</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Factor to reduce learning rate when learning rate scheduler is triggered. Default: 0.5.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">training_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--factor&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_positive_float</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Factor to scale neural network widths with each successive hidden layer. Default: 1.0 (no width reduction).&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">training_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--grad_clip&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Enable gradient clipping, which can reduce the effect of explosive gradients. Default: False.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Geographic Density Sampler Arguments</span>
+    <span class="n">geo_sampler_group</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span><span class="s2">&quot;Geographic Density Sampler&quot;</span><span class="p">)</span>
+    <span class="n">geo_sampler_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--use_weighted&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_lower_str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;none&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Use inverse-weighted probability sampling to calculate sample weights based on sampling density; use the sample weights in the loss function, or both. Valid options include: &#39;loss&#39; or &#39;none&#39;. Default: &#39;none&#39;.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">geo_sampler_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--oversample_method&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_lower_str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;none&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Synthetic oversampling/ undersampling method to use. Valid options include &#39;kmeans&#39; or &#39;none&#39;. Default: &#39;none&#39; (no oversampling).&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">geo_sampler_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--oversample_neighbors&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_positive_int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of nearest neighbors to use with oversampling method. Default: 5.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">geo_sampler_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--n_bins&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_positive_int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of KMeans bins (i.e., K clusters) to use with synthetic resampling.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">geo_sampler_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--use_kmeans&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Use KMeans clustering to calculate sample weights. Default: False&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">geo_sampler_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--use_kde&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Use Kernel Density Estimation (KDE) in to calculate sample weights. Default: False.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">geo_sampler_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--use_dbscan&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Use DBSCAN clustering to calculate sample weights. This method is still experimental. Use with caution. Default: False.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">geo_sampler_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--w_power&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_positive_float</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Exponential Power for inverse density weighting. Set this to a larger value if the sampling densities are not differentiated enough. Default: 1.0.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">geo_sampler_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--max_clusters&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_positive_int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Maximum number of clusters for KMeans when used with the to calculate sample weights. Default: 10&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">geo_sampler_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--max_neighbors&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_positive_int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Maximum number of nearest neighbors for adaptive bandwidth when doing geographic density sampling. Argument is deprecated nad will be removed in a future version. Default: 50&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">geo_sampler_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--focus_regions&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="n">EvaluateAction</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Specify geographic regions of interest using minimum and maximum longitude and latitude coordinates for sampling density weights. Should be in the format: `[(lon_min1, lon_max1, lat_min1, lat_max1), (&lt;region2&gt;), (...), (&lt;regionN&gt;)]`. Multiple regions can be specified.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">geo_sampler_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--normalize_sample_weights&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Whether to normalize density-based sample weights from 0 to 1. Default: False (no normalization).&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">outlier_detection_group</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span>
+        <span class="s2">&quot;Arguments for outlier detection based on IBD.&quot;</span><span class="p">,</span>
+        <span class="n">description</span><span class="o">=</span><span class="s2">&quot;Parameters to adjust for the &#39;outlier_detection_group. This will perform outlier detection and remove significant outliers from the data prior to training.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">outlier_detection_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--detect_outliers&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Enable outlier detection to remove geographic and/ or genetic outliers. Default: False.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">outlier_detection_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--min_nn_dist&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_positive_int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Minimum required distance betewen nearest neighbors to consider outliers. This allows fine-tuning of outlier detection to exclude samples with geographic coordinates in very close proximity. Units are in meters. Default: 1000 (meters).&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">outlier_detection_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--scale_factor&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_positive_int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Factor to scale geographic distance by. Helps with preventing errors with the Maximum Likelihood Estmiation when inferring the null gamma distribution to estimate p-values. Default: 100&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">outlier_detection_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--significance_level&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_positive_float</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Adjust the significance level (alpha) for P-values to determine significant outliers. Outliers &lt;= &#39;significance_level&#39; are removed. Must be in the range (0, 1). Default: 0.05.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">outlier_detection_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--maxk&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_positive_int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Maximum number of nearest neighbors (K) for outlier detection. K will be optimized between (2, maxk + 1). Default: 50.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="c1"># Output and Miscellaneous Arguments</span>
+    <span class="n">output_group</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span>
+        <span class="s2">&quot;Output and Miscellaneous&quot;</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s2">&quot;Output and miscellaneous arguments.&quot;</span>
+    <span class="p">)</span>
+    <span class="n">output_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--prefix&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;output&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Output file prefix. Used for all output files and plots. Default: &#39;output&#39;.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">output_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--sqldb&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;SQLite3 database directory to use with Optuna parameeter optimization. Allows parameter tuning to be resumed. Default: None (no database, with Optuna non-resumeable).&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">output_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--output_dir&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;./output&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Directory to store output files and plots. Default: &#39;./output&#39;.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">output_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--seed&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_seed</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Random seed for reproducibility. Default: Random.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">output_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--gpu_number&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_gpu_number</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;GPU number for computation. If not specified, no GPU is used. Default: CPU usage (no GPU).&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">output_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--n_jobs&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_n_jobs</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of CPU jobs to use. Default: -1 (use all CPUs).&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">output_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--verbose&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_verbosity</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Enable detailed logging. Verbosity level: 0 (non-verbose) to 3 (most verbose). Default: 1.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">output_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--debug&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Toggles on debug mode, which adds many debug statements to the logs. Default: False (no debug mode)&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">plotting_group</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span>
+        <span class="s2">&quot;Plot Settings&quot;</span><span class="p">,</span>
+        <span class="n">description</span><span class="o">=</span><span class="s2">&quot;Set plotting parameters to customize the visualizations.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">plotting_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--show_plots&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;If True, then shows in-line plots. Useful if rendered in jupyter notebooks. Either way, the plots get saved to disk. Default: False (do not show in-line).&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">plotting_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--fontsize&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_positive_int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">24</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Font size for plot axis labels, ticks, and titles. Default: 24.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">plotting_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--filetype&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_lower_str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;png&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;File type to use for plotting. Valid options include any that &#39;matplotlib.pyplot.savefig&#39; supports. Most common options include &#39;png&#39; or &#39;pdf&#39;, but the following are supported: (eps, jpeg, jpg, pdf, pgf, png, ps, raw, rgba, svg, svgz, tif, tiff, webp). Do not prepend a &#39;.&#39; character to the string. Default: &#39;png&#39;.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">plotting_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--plot_dpi&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_positive_int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">300</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;DPI to use for plots that are in raster format, such as &#39;png&#39;. Default: 300.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">plotting_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--remove_splines&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Remove axis splines from map plots. Defaults to False (don&#39;t remoe splines).&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">plotting_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--shapefile&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;https://www2.census.gov/geo/tiger/GENZ2018/shp/cb_2018_us_county_500k.zip&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;URL or file path for shapefile used when plotting prediction error. The default is a map of the continental USA, so if you need a different base map, you can supply your own URL or zipped shapefile here. Note that if &#39;--basemap_fips_code is not provided, then the map will be zoomed to the bounding box of the samples. plus &#39;--bbox_buffer. Default: Continental USA basemap, downloaded from census.gov URL.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">plotting_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--basemap_fips&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;FIPS code for basemap. If provided, the bsae map will be of the US state for the provided FIPS code. If no FIPS code is provided, then the base map will be zoomed to the sampling bounding box, plus &#39;--bbox_buffer&#39;. Default: Do not use FIPS code.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">plotting_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--highlight_basemap_counties&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Comma-separated string of county names to use with the base map. Provided counties will be highlighted in gray on the base map. If not provided, then no counties are highlighted. Default: Do not highlight any counties.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">plotting_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--samples_to_plot&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Comma-separated string of sampleIDs to plot contour predictions for. Provided sampleIDs will be plotted over a base map with contours signifying 90, 70, and 50 percent of the bootstrap density (i.e., density of all predicted localities from the bootstrap replicates). If not provided, then all samples are plotted in separate plots. If set to an integer, then it will select &#39;--samples_to_plot&#39; random samples to plot. Default: None (Plot all samples).&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">plotting_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--n_contour_levels&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_positive_int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of contour levels to use in the plot that interpolates the prediction error on a spatial map (i.e., Kriging plot). Increase the for a more continuous distribution of contours, decrease it to visualize more discrete contour levels. Default: 20.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">plotting_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--min_colorscale&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Minimum colorbar value for the Kriging plot. Default: 0.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">plotting_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--max_colorscale&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_positive_int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">300</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Maximum value to use on the Kriging plot&#39;s colorbar. If your error distribution is higher than this value or you are getting uncontoured areas, increase this value. Default: 300.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">plotting_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--sample_point_scale&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_positive_int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Scale factor for sample point size on Kriging plot. If the sample points are too large or do not appear, decrease or increase this value, respectively. Default: 3.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">plotting_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--bbox_buffer&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">validate_positive_float</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Buffer to add to the sampling bounding box on map visualizations. Adjust to your liking. Default: 0.1.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">use_gradient_boosting</span><span class="p">:</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;Gradient Boosting is currently not supported. Please use the deep learning model. This feature may be removed in a future version.&quot;</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+    <span class="c1"># Load and apply configuration file if provided</span>
+    <span class="n">validate_inputs</span><span class="p">(</span><span class="n">parser</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">test_mode</span><span class="o">=</span><span class="n">test_mode</span><span class="p">)</span>
+    <span class="n">validate_significance_levels</span><span class="p">(</span><span class="n">parser</span><span class="p">,</span> <span class="n">args</span><span class="p">)</span>
+    <span class="n">validate_max_neighbors</span><span class="p">(</span><span class="n">parser</span><span class="p">,</span> <span class="n">args</span><span class="p">)</span>
+    <span class="n">validate_embeddings</span><span class="p">(</span><span class="n">parser</span><span class="p">,</span> <span class="n">args</span><span class="p">)</span>
+    <span class="n">validate_seed</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">seed</span><span class="p">)</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">validate_weighted_opts</span><span class="p">(</span><span class="n">parser</span><span class="p">,</span> <span class="n">args</span><span class="p">)</span>
+    <span class="n">validate_colorscale</span><span class="p">(</span><span class="n">parser</span><span class="p">,</span> <span class="n">args</span><span class="p">)</span>
+    <span class="n">validate_smote</span><span class="p">(</span><span class="n">parser</span><span class="p">,</span> <span class="n">args</span><span class="p">)</span>
+    <span class="c1"># validate_gb_params(parser, args)</span>
+    <span class="n">validate_dtype</span><span class="p">(</span><span class="n">parser</span><span class="p">,</span> <span class="n">args</span><span class="p">)</span>
+    <span class="n">args</span><span class="o">.</span><span class="n">samples_to_plot</span> <span class="o">=</span> <span class="n">validate_str2list</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">samples_to_plot</span><span class="p">)</span>
+    <span class="n">args</span><span class="o">.</span><span class="n">highlight_basemap_counties</span> <span class="o">=</span> <span class="n">validate_str2list</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">highlight_basemap_counties</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">debug</span><span class="p">:</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">verbose</span> <span class="o">=</span> <span class="mi">2</span>
+
+    <span class="k">return</span> <span class="n">args</span></div>
+
+
+
+<div class="viewcode-block" id="validate_str2list">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.argument_parser.validate_str2list">[docs]</a>
+<span class="k">def</span> <span class="nf">validate_str2list</span><span class="p">(</span><span class="n">arg</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">arg</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">arg</span><span class="o">.</span><span class="n">isdigit</span><span class="p">():</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">arg</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+                <span class="n">s</span> <span class="o">=</span> <span class="n">arg</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+                <span class="n">l</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">)</span>
+                <span class="n">l</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">l</span><span class="p">]</span>
+                <span class="k">return</span> <span class="n">l</span>
+    <span class="k">return</span> <span class="n">arg</span></div>
+
+
+
+<div class="viewcode-block" id="validate_dtype">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.argument_parser.validate_dtype">[docs]</a>
+<span class="k">def</span> <span class="nf">validate_dtype</span><span class="p">(</span><span class="n">parser</span><span class="p">,</span> <span class="n">args</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">dtype</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;float64&quot;</span><span class="p">,</span> <span class="s2">&quot;float32&quot;</span><span class="p">]:</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;&#39;--dtype&#39; argument must be either &#39;float64&#39; or &#39;float32&#39;, but got: </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">dtype</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="validate_gb_params">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.argument_parser.validate_gb_params">[docs]</a>
+<span class="k">def</span> <span class="nf">validate_gb_params</span><span class="p">(</span><span class="n">parser</span><span class="p">,</span> <span class="n">args</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">gb_objective</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span>
+        <span class="s2">&quot;reg:squarederror&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;reg:squaredlogerror&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;reg:absoluteerror&quot;</span><span class="p">,</span>
+    <span class="p">]:</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Invalid &#39;gb_objective&#39; parameter provided. Supported options include: &#39;reg:squarederror&#39;, &#39;reg:squaredlogerror&#39;, &#39;reg:absoluteerror&#39;, but got: </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">gb_objective</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">gb_eval_metric</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span>
+        <span class="s2">&quot;rmse&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;rmsle&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;mae&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;mape&quot;</span><span class="p">,</span>
+    <span class="p">]:</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Invalid parameter provided to &#39;gb_eval_metric&#39;. Supported options include: &#39;rmse&#39;, &#39;rmsle&#39;, &#39;mae&#39;, &#39;mape&#39;, but got: </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">gb_eval_metric</span><span class="si">}</span><span class="s2">.&quot;</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">gb_multi_strategy</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;one_output_per_tree&quot;</span><span class="p">,</span> <span class="s2">&quot;multi_output_tree&quot;</span><span class="p">]:</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Invalid parameter provided to &#39;gb_multi_strategy&#39;. Supported options include &#39;one_output_per_tree&#39; or &#39;multi_output_tree&#39;, but got: </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">gb_multi_strategy</span><span class="si">}</span><span class="s2">.&quot;</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">gb_subsample</span> <span class="o">&gt;</span> <span class="mf">1.0</span> <span class="ow">or</span> <span class="n">args</span><span class="o">.</span><span class="n">gb_subsample</span> <span class="o">&lt;=</span> <span class="mf">0.0</span><span class="p">:</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Invalid value provided for &#39;gb_subsample&#39;. Values must be &gt; 0.0 and &lt;= 1.0, but got: </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">gb_subsample</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="validate_weighted_opts">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.argument_parser.validate_weighted_opts">[docs]</a>
+<span class="k">def</span> <span class="nf">validate_weighted_opts</span><span class="p">(</span><span class="n">parser</span><span class="p">,</span> <span class="n">args</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">use_weighted</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">&quot;loss&quot;</span><span class="p">,</span> <span class="s2">&quot;none&quot;</span><span class="p">}:</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Invalid option passed to &#39;use_weighted&#39;: </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">use_weighted</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">args</span></div>
+
+
+
+<div class="viewcode-block" id="validate_colorscale">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.argument_parser.validate_colorscale">[docs]</a>
+<span class="k">def</span> <span class="nf">validate_colorscale</span><span class="p">(</span><span class="n">parser</span><span class="p">,</span> <span class="n">args</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">min_colorscale</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;&#39;--min_colorscale&#39; must be &gt;= 0: </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">min_colorscale</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">max_colorscale</span> <span class="o">&lt;=</span> <span class="n">args</span><span class="o">.</span><span class="n">min_colorscale</span><span class="p">:</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;&#39;--max_colorscale must be &gt; --min_colorscale&#39;, but got: </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">min_colorscale</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">max_colorscale</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="validate_smote">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.argument_parser.validate_smote">[docs]</a>
+<span class="k">def</span> <span class="nf">validate_smote</span><span class="p">(</span><span class="n">parser</span><span class="p">,</span> <span class="n">args</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">oversample_method</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span>
+        <span class="s2">&quot;kmeans&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;kerneldensity&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;none&quot;</span><span class="p">,</span>
+    <span class="p">]:</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;&#39;--oversample_method&#39; value must be one of &#39;kmeans&#39;, &#39;kerneldensity&#39;, or &#39;none&#39;, but got: </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">oversample_method</span><span class="si">}</span><span class="s2">&#39;&quot;</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="validate_embeddings">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.argument_parser.validate_embeddings">[docs]</a>
+<span class="k">def</span> <span class="nf">validate_embeddings</span><span class="p">(</span><span class="n">parser</span><span class="p">,</span> <span class="n">args</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">embedding_type</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span>
+        <span class="s2">&quot;pca&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;tsne&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;mds&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;lle&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;polynomial&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;none&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;kernelpca&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;nmf&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;mca&quot;</span><span class="p">,</span>
+    <span class="p">]:</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Invalid value supplied to &#39;--embedding_type&#39;. Supported options include: &#39;pca&#39;, &#39;tsne&#39;, &#39;mds&#39;, &#39;mca&#39;, &#39;polynomial&#39;, &#39;lle&#39;, &#39;kernelpca&#39;, &#39;nmf&#39;, or &#39;none&#39;, but got: </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">embedding_type</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">embedding_type</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s2">&quot;polynomial&quot;</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">polynomial_degree</span> <span class="o">&gt;</span> <span class="mi">3</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;&#39;polynomial_degree&#39; was set to </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">polynomial_degree</span><span class="si">}</span><span class="s2">. Anything above 3 can add very large computational overhead!!! Use at your own risk!!!&quot;</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">n_components</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">n_components</span> <span class="o">&gt;</span> <span class="mi">3</span> <span class="ow">and</span> <span class="n">args</span><span class="o">.</span><span class="n">embedding_type</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;tsne&quot;</span><span class="p">,</span> <span class="s2">&quot;mds&quot;</span><span class="p">]:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;n_components must set to 2 or 3 to use &#39;tsne&#39; and &#39;mds&#39;, but got: </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">n_components</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+            <span class="n">parser</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">n_components</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">args</span><span class="o">.</span><span class="n">embedding_type</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;tsne&quot;</span><span class="p">,</span> <span class="s2">&quot;mds&quot;</span><span class="p">]:</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;n_components must either be 2 or 3 if using &#39;tsne&#39; or &#39;mds&#39;, but got NoneType.&quot;</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="validate_max_neighbors">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.argument_parser.validate_max_neighbors">[docs]</a>
+<span class="k">def</span> <span class="nf">validate_max_neighbors</span><span class="p">(</span><span class="n">parser</span><span class="p">,</span> <span class="n">args</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">max_neighbors</span> <span class="o">&lt;=</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;max_neighbors must be &gt; 1: </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">max_neighbors</span><span class="si">}</span><span class="s2">.&quot;</span><span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;max_neighbors must be &gt; 1: </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">max_neighbors</span><span class="si">}</span><span class="s2">.&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">maxk</span> <span class="o">&lt;=</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;max_neighbors must be &gt; 1: </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">maxk</span><span class="si">}</span><span class="s2">.&quot;</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="validate_significance_levels">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.argument_parser.validate_significance_levels">[docs]</a>
+<span class="k">def</span> <span class="nf">validate_significance_levels</span><span class="p">(</span><span class="n">parser</span><span class="p">,</span> <span class="n">args</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">significance_level</span> <span class="o">&gt;=</span> <span class="mf">1.0</span> <span class="ow">or</span> <span class="n">args</span><span class="o">.</span><span class="n">significance_level</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;&#39;significance_level&#39; must be between 0 and 1: </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">significance_level</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">significance_level</span> <span class="o">&gt;=</span> <span class="mf">0.5</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;&#39;significance_level&#39; was set to a high number: </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">significance_level</span><span class="si">}</span><span class="s2">. Outliers are removed if the P-values are &lt;= &#39;significance_level&#39; (e.g., if P &lt;= 0.05). Are you sure this is what you want?&quot;</span>
+        <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="validate_inputs">
+<a class="viewcode-back" href="../../../geogenie.utils.html#geogenie.utils.argument_parser.validate_inputs">[docs]</a>
+<span class="k">def</span> <span class="nf">validate_inputs</span><span class="p">(</span><span class="n">parser</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">test_mode</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">config</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">config</span><span class="p">):</span>
+            <span class="n">parser</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Configuration file not found: </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">config</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">config</span> <span class="o">=</span> <span class="n">load_config</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">config</span><span class="p">)</span>
+
+        <span class="c1"># Update default values based on the configuration file</span>
+        <span class="k">for</span> <span class="n">arg</span> <span class="ow">in</span> <span class="nb">vars</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">arg</span> <span class="ow">in</span> <span class="n">config</span><span class="p">:</span>
+                <span class="nb">setattr</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="n">arg</span><span class="p">,</span> <span class="n">config</span><span class="p">[</span><span class="n">arg</span><span class="p">])</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">sample_data</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">test_mode</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="s2">&quot;--sample_data argument is required.&quot;</span><span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="s2">&quot;--sample_data argument is required.&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">vcf</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="s2">&quot;--vcf argument is required.&quot;</span><span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="s2">&quot;--vcf argument is required.&quot;</span><span class="p">)</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Bradley T. Martin and Tyler K. Chafin.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -8,11 +8,6 @@ class CustomDataset(Dataset):
     This class defines a custom PyTorch Dataset that incorporates sample weighting and sample IDs.
 
     Attributes:
-        features (torch.Tensor): Input features.
-        labels (torch.Tensor): Labels corresponding to the features.
-        sample_weights (torch.Tensor): Weights for each sample.
-        sample_ids (list): Unique identifiers for each sample.
-        dtype (torch.dtype): Data type to use with PyTorch.
         tensors (tuple): Tuple consisting of (features, labels, sample_weights, sample_ids).
     """
 

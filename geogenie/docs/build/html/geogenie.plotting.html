@@ -1,0 +1,866 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>geogenie.plotting package &mdash; GeoGenIE 1.0.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=292eb321"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="geogenie.utils package" href="geogenie.utils.html" />
+    <link rel="prev" title="geogenie.outliers package" href="geogenie.outliers.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            GeoGenIE
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="tutorial.html">GeoGenIE Tutorial</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="geogenie.html">geogenie package</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="geogenie.html#subpackages">Subpackages</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="geogenie.models.html">geogenie.models package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="geogenie.outliers.html">geogenie.outliers package</a></li>
+<li class="toctree-l3 current"><a class="current reference internal" href="#">geogenie.plotting package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#module-geogenie.plotting.plotting">geogenie.plotting.plotting module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#module-geogenie.plotting">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="geogenie.utils.html">geogenie.utils package</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="geogenie.html#submodules">Submodules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geogenie.html#module-geogenie.cli">geogenie.cli module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geogenie.html#module-geogenie.geogenie">geogenie.geogenie module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geogenie.html#module-geogenie">Module contents</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">GeoGenIE</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="geogenie.html">geogenie package</a></li>
+      <li class="breadcrumb-item active">geogenie.plotting package</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/geogenie.plotting.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="geogenie-plotting-package">
+<h1>geogenie.plotting package<a class="headerlink" href="#geogenie-plotting-package" title="Link to this heading"></a></h1>
+<section id="submodules">
+<h2>Submodules<a class="headerlink" href="#submodules" title="Link to this heading"></a></h2>
+</section>
+<section id="module-geogenie.plotting.plotting">
+<span id="geogenie-plotting-plotting-module"></span><h2>geogenie.plotting.plotting module<a class="headerlink" href="#module-geogenie.plotting.plotting" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">geogenie.plotting.plotting.</span></span><span class="sig-name descname"><span class="pre">PlotGenIE</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">device</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prefix</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">basemap_fips</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">basemap_highlights</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">url</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">show_plots</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fontsize</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">18</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filetype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'png'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dpi</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">300</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">remove_splines</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/plotting/plotting.html#PlotGenIE"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>A class dedicated to generating and managing plots for data visualization.</p>
+<p>This class is designed to generate a variety of plots for visualizing data, including geographical data, model training times, and model performance metrics. It provides methods for creating plots, saving them to disk, and displaying them inline.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE.device">
+<span class="sig-name descname"><span class="pre">device</span></span><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE.device" title="Link to this definition"></a></dt>
+<dd><p>The device used for plotting, typically ‘cpu’ or ‘cuda’.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE.output_dir">
+<span class="sig-name descname"><span class="pre">output_dir</span></span><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE.output_dir" title="Link to this definition"></a></dt>
+<dd><p>The directory where plots will be saved.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE.prefix">
+<span class="sig-name descname"><span class="pre">prefix</span></span><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE.prefix" title="Link to this definition"></a></dt>
+<dd><p>A prefix added to the names of saved plot files.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE.basemap_fips">
+<span class="sig-name descname"><span class="pre">basemap_fips</span></span><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE.basemap_fips" title="Link to this definition"></a></dt>
+<dd><p>FIPS code for base map.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE.basemap_highlights">
+<span class="sig-name descname"><span class="pre">basemap_highlights</span></span><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE.basemap_highlights" title="Link to this definition"></a></dt>
+<dd><p>List of counties to highlight gray on base map.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE.show_plots">
+<span class="sig-name descname"><span class="pre">show_plots</span></span><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE.show_plots" title="Link to this definition"></a></dt>
+<dd><p>Flag to determine if plots should be displayed inline. Defaults to False.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bool</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE.fontsize">
+<span class="sig-name descname"><span class="pre">fontsize</span></span><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE.fontsize" title="Link to this definition"></a></dt>
+<dd><p>Font size used in plots. Defaults to 18.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE.filetype">
+<span class="sig-name descname"><span class="pre">filetype</span></span><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE.filetype" title="Link to this definition"></a></dt>
+<dd><p>File type/format</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE._fill_kde_with_gradient">
+<span class="sig-name descname"><span class="pre">_fill_kde_with_gradient</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">xdata</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cmap</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">norm</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ax</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ydata</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/plotting/plotting.html#PlotGenIE._fill_kde_with_gradient"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE._fill_kde_with_gradient" title="Link to this definition"></a></dt>
+<dd><p>Fill a KDE plot with a gradient following the X-axis values.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>xdata</strong> (<em>np.ndarray</em>) – X-axis values to plot.</p></li>
+<li><p><strong>cmap</strong> (<em>matplotlib.colors.cmap</em>) – Matplotlib colormap to use.</p></li>
+<li><p><strong>norm</strong> (<em>matplotlob.colors.Normalize</em>) – Normalizer for color gradient.</p></li>
+<li><p><strong>ax</strong> (<em>matplotlib.pyplot.Axes</em><em> or </em><em>None</em>) – Matplotlib axis to use. If ydata is None, then ax must be provided. Defaults to None.</p></li>
+<li><p><strong>ydata</strong> (<em>np.ndarray</em>) – Y-axis values to plot. If None, then gets the y-axis values from the provided <cite>ax</cite> object. Defaults to None.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>TypeError</strong> – If ydata is None and ax is not provided.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE._highlight_counties">
+<span class="sig-name descname"><span class="pre">_highlight_counties</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">gray_counties</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gdf</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ax</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/plotting/plotting.html#PlotGenIE._highlight_counties"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE._highlight_counties" title="Link to this definition"></a></dt>
+<dd><p>Highlight specific counties in the basemap.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>gray_counties</strong> (<em>list</em>) – List of counties to highlight.</p></li>
+<li><p><strong>gdf</strong> (<em>geopandas.GeoDataFrame</em>) – GeoDataFrame of the basemap.</p></li>
+<li><p><strong>ax</strong> (<em>matplotlib.pyplot.Axes</em>) – Matplotlib axis to use. Defaults to None.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>GeoDataFrame of the highlighted counties.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>geopandas.GeoDataFrame</p>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<ul class="simple">
+<li><p>This method highlights specific counties in the basemap by coloring them gray.</p></li>
+</ul>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE._make_colorbar">
+<span class="sig-name descname"><span class="pre">_make_colorbar</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">min_colorscale</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_colorscale</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_contour_levels</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ax</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">contour</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/plotting/plotting.html#PlotGenIE._make_colorbar"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE._make_colorbar" title="Link to this definition"></a></dt>
+<dd><p>Creates and configures a colorbar for contour plots.</p>
+<p>This method generates a colorbar for contour plots with specified min and max values, and a defined number of levels.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>min_colorscale</strong> (<em>int</em>) – Minimum value for the color scale.</p></li>
+<li><p><strong>max_colorscale</strong> (<em>int</em>) – Maximum value for the color scale.</p></li>
+<li><p><strong>n_contour_levels</strong> (<em>int</em>) – Number of contour levels in the plot.</p></li>
+<li><p><strong>ax</strong> (<em>matplotlib.axes.Axes</em>) – The matplotlib Axes object for the plot.</p></li>
+<li><p><strong>contour</strong> (<em>matplotlib.contour.QuadContourSet</em>) – The contour plot object.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The colorbar object.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>matplotlib.colorbar.Colorbar</p>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<ul class="simple">
+<li><p>This method sets up a colorbar with specified min and max values, and a defined number of levels.</p></li>
+</ul>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE._plot_scatter_map">
+<span class="sig-name descname"><span class="pre">_plot_scatter_map</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dataset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ax</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">coords</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exp_factor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mult_factor</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'Samples'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">color</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'blue'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/plotting/plotting.html#PlotGenIE._plot_scatter_map"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE._plot_scatter_map" title="Link to this definition"></a></dt>
+<dd><p>Plots a scatter map of coordinates, with the size of each point representing a certain attribute (e.g., sample weight).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>dataset</strong> (<em>str</em>) – Name of the dataset being used.</p></li>
+<li><p><strong>ax</strong> (<em>matplotlib.axes.Axes</em>) – The matplotlib Axes object for the plot.</p></li>
+<li><p><strong>coords</strong> (<em>np.array</em>) – Array of coordinates to be plotted.</p></li>
+<li><p><strong>exp_factor</strong> (<em>int</em>) – Exponent factor for scaling the size of the markers.</p></li>
+<li><p><strong>mult_factor</strong> (<em>float</em><em>, </em><em>optional</em>) – Multiplicative factor for marker size. Defaults to 1.0.</p></li>
+<li><p><strong>label</strong> (<em>str</em><em>, </em><em>optional</em>) – Label for the plotted points. Defaults to “Samples”.</p></li>
+<li><p><strong>alpha</strong> (<em>float</em><em>, </em><em>optional</em>) – Alpha transparency for the markers. Defaults to 0.5.</p></li>
+<li><p><strong>color</strong> (<em>str</em><em>, </em><em>optional</em>) – Color of the markers. Defaults to “darkorchid”.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The scatter plot object.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>matplotlib.collections.PathCollection</p>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<ul class="simple">
+<li><p>This method is used for creating scatter plots on geographical maps with customizable marker sizes and colors.</p></li>
+</ul>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE._plot_smote_scatter">
+<span class="sig-name descname"><span class="pre">_plot_smote_scatter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bins</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ax</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">title</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">loc</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/plotting/plotting.html#PlotGenIE._plot_smote_scatter"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE._plot_smote_scatter" title="Link to this definition"></a></dt>
+<dd><p>Creates a scatter plot for visualizing data points with their associated bin labels.</p>
+<p>This method is used internally by <cite>plot_smote_bins</cite> to generate individual scatter plots.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>df</strong> (<em>pandas DataFrame</em>) – DataFrame containing the data to be plotted.</p></li>
+<li><p><strong>bins</strong> (<em>array-like</em>) – Array of bin labels for the data.</p></li>
+<li><p><strong>ax</strong> (<em>matplotlib.axes.Axes</em>) – The matplotlib Axes object where the plot will be drawn.</p></li>
+<li><p><strong>title</strong> (<em>str</em>) – Title of the scatter plot.</p></li>
+<li><p><strong>loc</strong> (<em>str</em>) – Location of the legend in the plot.</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<ul class="simple">
+<li><p>This function is a helper method and is not intended to be called directly.</p></li>
+<li><p>It adds a scatter plot to the provided Axes object, with data points colored by their bin labels.</p></li>
+</ul>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE._remove_spines">
+<span class="sig-name descname"><span class="pre">_remove_spines</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ax</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/plotting/plotting.html#PlotGenIE._remove_spines"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE._remove_spines" title="Link to this definition"></a></dt>
+<dd><p>Remove spines from a plot.</p>
+<p>This method removes spines from a plot, ensuring that only the top and right spines are included.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ax</strong> (<em>matplotlib.axes.Axes</em>) – The matplotlib Axes object where the plot will be drawn.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The Axes object with spines removed.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>matplotlib.axes.Axes</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE._run_kriging">
+<span class="sig-name descname"><span class="pre">_run_kriging</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">actual_coords</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">haversine_errors</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xmin</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ymin</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xmax</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ymax</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">buffer</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/plotting/plotting.html#PlotGenIE._run_kriging"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE._run_kriging" title="Link to this definition"></a></dt>
+<dd><p>Performs Ordinary Kriging on prediction errors to estimate error and uncertainty across a geographical area.</p>
+<p>This method uses Ordinary Kriging to interpolate prediction errors across a geographical area. It generates a grid of coordinates for interpolation and returns the interpolated error predictions and uncertainties.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>actual_coords</strong> (<em>np.array</em>) – Array of actual geographical coordinates.</p></li>
+<li><p><strong>haversine_errors</strong> (<em>np.array</em>) – Array of prediction errors.</p></li>
+<li><p><strong>xmin</strong> (<em>float</em>) – Minimum longitude value.</p></li>
+<li><p><strong>ymin</strong> (<em>float</em>) – Minimum latitude value.</p></li>
+<li><p><strong>xmax</strong> (<em>float</em>) – Maximum longitude value.</p></li>
+<li><p><strong>ymax</strong> (<em>float</em>) – Maximum latitude value.</p></li>
+<li><p><strong>buffer</strong> (<em>float</em>) – Buffer distance for geographical plotting.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Array of grid x-coordinates.
+np.array: Array of grid y-coordinates.
+np.array: Array of error predictions.
+np.array: Array of error standard deviations.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>np.array</p>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<ul class="simple">
+<li><p>This method uses Ordinary Kriging to interpolate prediction errors across a geographical area.</p></li>
+<li><p>It generates a grid of coordinates for interpolation and returns the interpolated error predictions and uncertainties.</p></li>
+</ul>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE._set_cbar_fontsize">
+<span class="sig-name descname"><span class="pre">_set_cbar_fontsize</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cbar</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/plotting/plotting.html#PlotGenIE._set_cbar_fontsize"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE._set_cbar_fontsize" title="Link to this definition"></a></dt>
+<dd><p>Sets the font size for the colorbar labels.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>cbar</strong> (<em>matplotlib.colorbar.Colorbar</em>) – The colorbar object whose font size is to be set.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The colorbar object with updated font size.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>matplotlib.colorbar.Colorbar</p>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<ul class="simple">
+<li><p>This is a utility method for adjusting the appearance of colorbars in plots.</p></li>
+</ul>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE.make_optuna_plots">
+<span class="sig-name descname"><span class="pre">make_optuna_plots</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">study</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/plotting/plotting.html#PlotGenIE.make_optuna_plots"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE.make_optuna_plots" title="Link to this definition"></a></dt>
+<dd><p>Visualize Optuna search using built-in Optuna plotting methods.</p>
+<p>This method generates a series of plots to visualize the results of an Optuna hyperparameter search.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>study</strong> (<em>optuna.study</em>) – Optuna study to plot.</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>Exception</strong> – If an error occurs during the plot generation process.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE.obp">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">obp</span></span><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE.obp" title="Link to this definition"></a></dt>
+<dd><p>Get the output base path for the files.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE.outdir">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">outdir</span></span><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE.outdir" title="Link to this definition"></a></dt>
+<dd><p>Get the output directory for the files.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE.pfx">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">pfx</span></span><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE.pfx" title="Link to this definition"></a></dt>
+<dd><p>Get the prefix for the output files.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE.plot_bootstrap_aggregates">
+<span class="sig-name descname"><span class="pre">plot_bootstrap_aggregates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/plotting/plotting.html#PlotGenIE.plot_bootstrap_aggregates"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE.plot_bootstrap_aggregates" title="Link to this definition"></a></dt>
+<dd><p>Make KDE and bar plots with bootstrap distributions and CIs.</p>
+<p>This method creates two plots: one with kernel density estimates (KDEs) of the bootstrap distributions for each metric, and another with box plots showing the distribution of bootstrap samples for each metric.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>df</strong> (<em>pd.DataFrame</em>) – The DataFrame containing the bootstrap samples for each metric.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE.plot_cumulative_error_distribution">
+<span class="sig-name descname"><span class="pre">plot_cumulative_error_distribution</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fn</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">percentiles</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">median</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mean</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/plotting/plotting.html#PlotGenIE.plot_cumulative_error_distribution"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE.plot_cumulative_error_distribution" title="Link to this definition"></a></dt>
+<dd><p>Generate an ECDF plot for the given data.</p>
+<p>This method generates an Empirical Cumulative Distribution Function (ECDF) plot for the given data, with gradient fill based on the data values.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data</strong> (<em>array-like</em>) – The dataset for which the ECDF is to be plotted. Should be a 1-D array of prediction errors.</p></li>
+<li><p><strong>fn</strong> (<em>str</em>) – Output filename.</p></li>
+<li><p><strong>percentiles</strong> (<em>np.ndarray</em>) – 25th, 50th, and 75th percentiles of errors. Will be of shape (3,).</p></li>
+<li><p><strong>median</strong> (<em>float</em>) – Median of prediction errors.</p></li>
+<li><p><strong>mean</strong> (<em>float</em>) – Mean of prediction errors.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The ECDF plot.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>matplotlib.figure.Figure</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE.plot_data_distributions">
+<span class="sig-name descname"><span class="pre">plot_data_distributions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">train</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">val</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_target</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/plotting/plotting.html#PlotGenIE.plot_data_distributions"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE.plot_data_distributions" title="Link to this definition"></a></dt>
+<dd><p>Plot the distributions of the train, validation, and test datasets.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>train</strong> (<em>np.ndarray</em>) – Training dataset.</p></li>
+<li><p><strong>val</strong> (<em>np.ndarray</em>) – Validation dataset.</p></li>
+<li><p><strong>test</strong> (<em>np.ndarray</em>) – Test dataset.</p></li>
+<li><p><strong>is_target</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether the data is a target. Defaults to False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ValueError</strong> – If the data is not a target and the shape of the arrays is not the same.</p>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<ul class="simple">
+<li><p>This method plots the distributions of the train, validation, and test datasets.</p></li>
+<li><p>If the data is a target, the method plots the distributions of the longitude and latitude values.</p></li>
+<li><p>If the data is not a target, the method plots the distributions of the genotypes.</p></li>
+</ul>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE.plot_error_distribution">
+<span class="sig-name descname"><span class="pre">plot_error_distribution</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">errors</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outfile</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/plotting/plotting.html#PlotGenIE.plot_error_distribution"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE.plot_error_distribution" title="Link to this definition"></a></dt>
+<dd><p>Plot the distribution of errors using a histogram, box plot, and Q-Q plot.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>errors</strong> (<em>np.array</em>) – An array of prediction errors.</p></li>
+<li><p><strong>outfile</strong> (<em>str</em>) – Output file path.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE.plot_gamma_distribution">
+<span class="sig-name descname"><span class="pre">plot_gamma_distribution</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">shape</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Dg</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sig_level</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filename</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">plot_main</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/plotting/plotting.html#PlotGenIE.plot_gamma_distribution"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE.plot_gamma_distribution" title="Link to this definition"></a></dt>
+<dd><p>Plot the gamma distribution.</p>
+<p>This method plots the gamma distribution with the given shape and scale parameters and highlights the critical value for the given significance level.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>shape</strong> (<em>float</em>) – Shape parameter of the gamma distribution.</p></li>
+<li><p><strong>scale</strong> (<em>float</em>) – Scale parameter of the gamma distribution.</p></li>
+<li><p><strong>Dg</strong> (<em>np.array</em>) – Dg statistic for each sample.</p></li>
+<li><p><strong>sig_level</strong> (<em>float</em>) – Significance level (e.g., 0.05).</p></li>
+<li><p><strong>filename</strong> (<em>str</em>) – Name of the file to save the plot.</p></li>
+<li><p><strong>plot_main</strong> (<em>str</em>) – Title of the plot.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE.plot_geographic_error_distribution">
+<span class="sig-name descname"><span class="pre">plot_geographic_error_distribution</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">actual_coords</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">predicted_coords</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dataset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">buffer</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">marker_scale_factor</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_colorscale</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_colorscale</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">300</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_contour_levels</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">20</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">centroids</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/plotting/plotting.html#PlotGenIE.plot_geographic_error_distribution"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE.plot_geographic_error_distribution" title="Link to this definition"></a></dt>
+<dd><p>Plots the geographic distribution of prediction errors and uncertainties.</p>
+<p>This function calculates the Haversine error between actual and predicted coordinates and uses Gaussian Process Regression (GPR) to estimate error and uncertainty across a geographical area.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>actual_coords</strong> (<em>np.array</em>) – Array of actual geographical coordinates.</p></li>
+<li><p><strong>predicted_coords</strong> (<em>np.array</em>) – Array of predicted geographical coordinates.</p></li>
+<li><p><strong>url</strong> (<em>str</em>) – URL for the shapefile to plot geographical data.</p></li>
+<li><p><strong>dataset</strong> (<em>str</em>) – Name of the dataset being used.</p></li>
+<li><p><strong>buffer</strong> (<em>float</em><em>, </em><em>optional</em>) – Buffer distance for geographical plotting. Defaults to 0.1.</p></li>
+<li><p><strong>marker_scale_factor</strong> (<em>int</em><em>, </em><em>optional</em>) – Scale factor for marker size in plots. Defaults to 2.</p></li>
+<li><p><strong>min_colorscale</strong> (<em>int</em><em>, </em><em>optional</em>) – Minimum value for the color scale. Defaults to 0.</p></li>
+<li><p><strong>max_colorscale</strong> (<em>int</em><em>, </em><em>optional</em>) – Maximum value for the color scale. Defaults to 300.</p></li>
+<li><p><strong>n_contour_levels</strong> (<em>int</em><em>, </em><em>optional</em>) – Number of contour levels in the plot. Defaults to 20.</p></li>
+<li><p><strong>centroids</strong> (<em>np.array</em><em> or </em><em>geopandas.GeoDataFrame</em><em>, </em><em>optional</em>) – Array of centroids to be plotted. Defaults to None.</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<ul class="simple">
+<li><p>This method produces two subplots: one showing the spatial distribution of prediction errors and the others showing the uncertainty of these predictions.</p></li>
+</ul>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE.plot_history">
+<span class="sig-name descname"><span class="pre">plot_history</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">train_loss</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">val_loss</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/plotting/plotting.html#PlotGenIE.plot_history"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE.plot_history" title="Link to this definition"></a></dt>
+<dd><p>Automatically plot training and validation loss with scaling.</p>
+<p>This method generates a plot showing the training and validation loss over epochs. It automatically scales the y-axis to ensure that the plot is visually appealing.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>train_loss</strong> (<em>list</em>) – List of training loss values.</p></li>
+<li><p><strong>val_loss</strong> (<em>list</em>) – List of validation loss values.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE.plot_mca_curve">
+<span class="sig-name descname"><span class="pre">plot_mca_curve</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">explained_inertia</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">optimal_n</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/plotting/plotting.html#PlotGenIE.plot_mca_curve"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE.plot_mca_curve" title="Link to this definition"></a></dt>
+<dd><p>Plots the cumulative explained inertia as a function of the number of components in Multiple Correspondence Analysis (MCA).</p>
+<p>This plot is useful for determining the optimal number of components to retain in MCA.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>explained_inertia</strong> (<em>array-like</em>) – An array of cumulative explained inertia for each number of components.</p></li>
+<li><p><strong>optimal_n</strong> (<em>int</em>) – The optimal number of components determined for MCA.</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<ul class="simple">
+<li><p>The plot displays the explained inertia against the number of components.</p></li>
+<li><p>A vertical line indicates the selected optimal number of components.</p></li>
+</ul>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE.plot_nmf_error">
+<span class="sig-name descname"><span class="pre">plot_nmf_error</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">errors</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">opt_n_components</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/plotting/plotting.html#PlotGenIE.plot_nmf_error"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE.plot_nmf_error" title="Link to this definition"></a></dt>
+<dd><p>Plots the reconstruction error as a function of the number of components in Non-negative Matrix Factorization (NMF).</p>
+<p>This plot can be used to select the optimal number of components for NMF by identifying the point where additional components do not significantly decrease the error.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>errors</strong> (<em>list</em>) – A list of NMF reconstruction errors for each number of components.</p></li>
+<li><p><strong>opt_n_components</strong> (<em>int</em>) – The optimal number of components selected for NMF.</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<ul class="simple">
+<li><p>The plot visualizes how the reconstruction error changes with the number of NMF components.</p></li>
+<li><p>A vertical line indicates the selected optimal number of NMF components.</p></li>
+</ul>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE.plot_outliers">
+<span class="sig-name descname"><span class="pre">plot_outliers</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mask</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">y_true</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/plotting/plotting.html#PlotGenIE.plot_outliers"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE.plot_outliers" title="Link to this definition"></a></dt>
+<dd><p>Plots a scatter plot to visualize identified outliers.</p>
+<p>This method plots the geographical coordinates of the data points, highlighting the outliers in a different color and size.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mask</strong> (<em>np.array</em>) – A boolean array where ‘True’ indicates an outlier.</p></li>
+<li><p><strong>y_true</strong> (<em>np.array</em>) – Array of actual coordinates.</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<ul class="simple">
+<li><p>The function visualizes outliers on a geographical map, aiding in the identification of anomalous data points.</p></li>
+</ul>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE.plot_pca_curve">
+<span class="sig-name descname"><span class="pre">plot_pca_curve</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">knee</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/plotting/plotting.html#PlotGenIE.plot_pca_curve"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE.plot_pca_curve" title="Link to this definition"></a></dt>
+<dd><p>Plots the cumulative explained variance as a function of the number of principal components in Principal Component Analysis (PCA).</p>
+<p>This plot is helpful for determining the number of components to retain in PCA.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array-like</em>) – An array representing the number of principal components.</p></li>
+<li><p><strong>vr</strong> (<em>array-like</em>) – An array of cumulative explained variance ratios for each number of components.</p></li>
+<li><p><strong>knee</strong> (<em>int</em>) – The ‘knee’ point, or the optimal number of components to retain in PCA.</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<ul class="simple">
+<li><p>The plot shows the cumulative explained variance against the number of principal components.</p></li>
+<li><p>A vertical line at the ‘knee’ point helps in visually identifying the optimal number of components.</p></li>
+</ul>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE.plot_sample_with_density">
+<span class="sig-name descname"><span class="pre">plot_sample_with_density</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">df_known</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dataset</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gray_counties</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/plotting/plotting.html#PlotGenIE.plot_sample_with_density"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE.plot_sample_with_density" title="Link to this definition"></a></dt>
+<dd><p>Method to plot a sample with density contours.</p>
+<p>This method calculates the density contours using KDE and plots them on a map.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>df</strong> (<em>pd.DataFrame</em>) – DataFrame containing the sample data.</p></li>
+<li><p><strong>sample_id</strong> (<em>str</em>) – Sample ID.</p></li>
+<li><p><strong>df_known</strong> (<em>pd.DataFrame</em><em>, </em><em>optional</em>) – DataFrame containing known data. Defaults to None.</p></li>
+<li><p><strong>dataset</strong> (<em>str</em><em>, </em><em>optional</em>) – Name of the dataset. Defaults to None.</p></li>
+<li><p><strong>gray_counties</strong> (<em>list</em><em>, </em><em>optional</em>) – List of counties to highlight in gray. Defaults to</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>TypeError</strong> – If the dataset argument is NoneType.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE.plot_scatter_samples_map">
+<span class="sig-name descname"><span class="pre">plot_scatter_samples_map</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">y_true_train</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">y_true</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dataset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hue1</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hue2</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/plotting/plotting.html#PlotGenIE.plot_scatter_samples_map"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE.plot_scatter_samples_map" title="Link to this definition"></a></dt>
+<dd><p>Plots geographical scatter plots of training and test/validation sample densities.</p>
+<p>This method creates a subplot with two scatter plots, one showing the density of training samples and the other for test or validation samples.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>y_true_train</strong> (<em>np.array</em>) – Array of actual geographical coordinates for the training dataset.</p></li>
+<li><p><strong>y_true</strong> (<em>np.array</em>) – Array of actual geographical coordinates for the test or validation dataset.</p></li>
+<li><p><strong>dataset</strong> (<em>str</em>) – Specifies whether the dataset is ‘test’ or ‘validation’.</p></li>
+<li><p><strong>hue1</strong> (<em>np.array</em><em>, </em><em>optional</em>) – Array of hue values for the training dataset. Defaults to None.</p></li>
+<li><p><strong>hue2</strong> (<em>np.array</em><em>, </em><em>optional</em>) – Array of hue values for the test or validation dataset. Defaults to None.</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<ul class="simple">
+<li><p>The method visualizes the geographical distribution of training and test/validation samples.</p></li>
+<li><p>It uses scatter plots to represent the density of samples in different geographical areas.</p></li>
+<li><p>The scatter plots are overlaid on top of a base map obtained from the specified shapefile URL.</p></li>
+</ul>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE.plot_smote_bins">
+<span class="sig-name descname"><span class="pre">plot_smote_bins</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bins</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">df_orig</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bins_orig</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/plotting/plotting.html#PlotGenIE.plot_smote_bins"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE.plot_smote_bins" title="Link to this definition"></a></dt>
+<dd><p>Plots scatter plots before and after oversampling.</p>
+<p>This method visualizes the effect of oversampling on the data distribution. It creates a subplot with two scatter plots: one showing the original data and the other showing the data after SMOTE has been applied.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>df</strong> (<em>pandas DataFrame</em>) – DataFrame containing the data after SMOTE oversampling.</p></li>
+<li><p><strong>bins</strong> (<em>array-like</em>) – Array of bin labels for the data after SMOTE.</p></li>
+<li><p><strong>df_orig</strong> (<em>pandas DataFrame</em>) – DataFrame containing the original data before SMOTE.</p></li>
+<li><p><strong>bins_orig</strong> (<em>array-like</em>) – Array of original bin labels before SMOTE.</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<ul class="simple">
+<li><p>This function visually compares the geographical distribution of data before and after SMOTE.</p></li>
+<li><p>Each plot shows data points colored by their bin labels, providing insight into the oversampling process.</p></li>
+</ul>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE.plot_times">
+<span class="sig-name descname"><span class="pre">plot_times</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rolling_avgs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rolling_stds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filename</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/plotting/plotting.html#PlotGenIE.plot_times"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE.plot_times" title="Link to this definition"></a></dt>
+<dd><p>Plot model training times.</p>
+<p>This method generates a plot showing the rolling average of model training times over bootstrap replicates. It also includes the standard deviation of training times to provide insight into the variability of training durations.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>rolling_avgs</strong> (<em>list</em>) – List of rolling average training times.</p></li>
+<li><p><strong>rolling_stds</strong> (<em>list</em>) – List of rolling standard deviations of training times.</p></li>
+<li><p><strong>filename</strong> (<em>str</em>) – Name of the file to save the plot.</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<ul class="simple">
+<li><p>This method visualizes the time taken to train models over bootstrap replicates.</p></li>
+<li><p>It uses a line plot to show the rolling average of training times and includes a shaded region to represent the standard deviation of training times.</p></li>
+</ul>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE.plot_zscores">
+<span class="sig-name descname"><span class="pre">plot_zscores</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">z</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fn</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/plotting/plotting.html#PlotGenIE.plot_zscores"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE.plot_zscores" title="Link to this definition"></a></dt>
+<dd><p>Plot Z-score histogram for prediction errors.</p>
+<p>This method plots a histogram of Z-scores for prediction errors, with a gradient fill based on the Z-score values.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>z</strong> (<em>np.ndarray</em>) – Array of Z-scores.</p></li>
+<li><p><strong>errors</strong> (<em>np.ndarray</em>) – Array of prediction errors.</p></li>
+<li><p><strong>fn</strong> (<em>str</em>) – Filename for the output plot.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE.polynomial_regression_plot">
+<span class="sig-name descname"><span class="pre">polynomial_regression_plot</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">actual_coords</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">predicted_coords</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dataset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">degree</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">3</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">torch.float32</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_ylim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_xlim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_xticks</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/plotting/plotting.html#PlotGenIE.polynomial_regression_plot"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE.polynomial_regression_plot" title="Link to this definition"></a></dt>
+<dd><p>Creates a polynomial regression plot with the specified degree.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>actual_coords</strong> (<em>np.array</em>) – Array of actual geographical coordinates.</p></li>
+<li><p><strong>predicted_coords</strong> (<em>np.array</em>) – Array of predicted geographical coordinates by the model.</p></li>
+<li><p><strong>dataset</strong> (<em>str</em>) – Specifies the dataset being used, should be either ‘test’ or ‘validation’.</p></li>
+<li><p><strong>degree</strong> (<em>int</em>) – Polynomial degree to fit. Defaults to 3.</p></li>
+<li><p><strong>dtype</strong> (<em>torch.dtype</em>) – PyTorch data type to use. Defaults to torch.float32.</p></li>
+<li><p><strong>max_ylim</strong> (<em>int</em>) – Maximum y-axis (prediction error) value to plot. Defaults to None (don’t adjust y-axis limits). Defaults to None.</p></li>
+<li><p><strong>max_xlim</strong> (<em>float</em>) – Maximum X-axis (sample density) value to plot. Defaults to None (don’t adjust x-axis limits). Defaults to None.</p></li>
+<li><p><strong>n_xticks</strong> (<em>int</em>) – Number of major X-axis ticks to use. Only applied if max_xlim is not None. Defaults to 5.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ValueError</strong> – If the dataset parameter is not ‘test’ or does not start with ‘val’.</p>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<ul class="simple">
+<li><p>This function calculates the Haversine error for each pair of actual and predicted coordinates.</p></li>
+<li><p>It then computes the KDE values for these errors and plots a regression to analyze the relationship.</p></li>
+</ul>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE.update_config_labels">
+<span class="sig-name descname"><span class="pre">update_config_labels</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/plotting/plotting.html#PlotGenIE.update_config_labels"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE.update_config_labels" title="Link to this definition"></a></dt>
+<dd><p>Update config labels in the dataframe based on the file patterns.</p>
+<p>This method updates the configuration labels in the dataframe based on the file patterns used to generate the data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>df</strong> (<em>pd.DataFrame</em>) – The dataframe to be updated.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The updated dataframe.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>pd.DataFrame</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE.update_metric_labels">
+<span class="sig-name descname"><span class="pre">update_metric_labels</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/plotting/plotting.html#PlotGenIE.update_metric_labels"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE.update_metric_labels" title="Link to this definition"></a></dt>
+<dd><p>Update metric labels in the dataframe based on specified mappings.</p>
+<p>This method updates the metric labels in the dataframe based on the mappings provided in the method.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>df</strong> (<em>pd.DataFrame</em>) – The dataframe to be updated.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The updated dataframe.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>pd.DataFrame</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.plotting.plotting.PlotGenIE.visualize_oversample_clusters">
+<span class="sig-name descname"><span class="pre">visualize_oversample_clusters</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">arr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cluster_labels</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_origin_list</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/plotting/plotting.html#PlotGenIE.visualize_oversample_clusters"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.plotting.plotting.PlotGenIE.visualize_oversample_clusters" title="Link to this definition"></a></dt>
+<dd><p>Visualize the genotypes and their clusters in a 2D scatter plot.</p>
+<p>This method plots the genotypes and their clusters in a 2D scatter plot, coloring the points by cluster and shape by sample origin.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>arr</strong> (<em>np.ndarray</em>) – Array to use for clustering.</p></li>
+<li><p><strong>cluster_labels</strong> (<em>np.ndarray</em>) – Cluster labels to use.</p></li>
+<li><p><strong>sample_origin_list</strong> – (list): List of sample origins (synthetic versus original).</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="module-geogenie.plotting">
+<span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-geogenie.plotting" title="Link to this heading"></a></h2>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="geogenie.outliers.html" class="btn btn-neutral float-left" title="geogenie.outliers package" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="geogenie.utils.html" class="btn btn-neutral float-right" title="geogenie.utils package" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Bradley T. Martin and Tyler K. Chafin.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

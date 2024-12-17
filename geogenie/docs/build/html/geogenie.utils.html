@@ -1,0 +1,2114 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>geogenie.utils package &mdash; GeoGenIE 1.0.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=292eb321"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="prev" title="geogenie.plotting package" href="geogenie.plotting.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            GeoGenIE
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="tutorial.html">GeoGenIE Tutorial</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="geogenie.html">geogenie package</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="geogenie.html#subpackages">Subpackages</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="geogenie.models.html">geogenie.models package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="geogenie.outliers.html">geogenie.outliers package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="geogenie.plotting.html">geogenie.plotting package</a></li>
+<li class="toctree-l3 current"><a class="current reference internal" href="#">geogenie.utils package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#module-geogenie.utils.argument_parser">geogenie.utils.argument_parser module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#module-geogenie.utils.callbacks">geogenie.utils.callbacks module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#module-geogenie.utils.data">geogenie.utils.data module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#module-geogenie.utils.data_structure">geogenie.utils.data_structure module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#module-geogenie.utils.exceptions">geogenie.utils.exceptions module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#module-geogenie.utils.logger">geogenie.utils.logger module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#module-geogenie.utils.loss">geogenie.utils.loss module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#module-geogenie.utils.scorers">geogenie.utils.scorers module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#module-geogenie.utils.spatial_data_processors">geogenie.utils.spatial_data_processors module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#module-geogenie.utils.transformers">geogenie.utils.transformers module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#module-geogenie.utils.utils">geogenie.utils.utils module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#module-geogenie.utils">Module contents</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="geogenie.html#submodules">Submodules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geogenie.html#module-geogenie.cli">geogenie.cli module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geogenie.html#module-geogenie.geogenie">geogenie.geogenie module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geogenie.html#module-geogenie">Module contents</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">GeoGenIE</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="geogenie.html">geogenie package</a></li>
+      <li class="breadcrumb-item active">geogenie.utils package</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/geogenie.utils.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="geogenie-utils-package">
+<h1>geogenie.utils package<a class="headerlink" href="#geogenie-utils-package" title="Link to this heading"></a></h1>
+<section id="submodules">
+<h2>Submodules<a class="headerlink" href="#submodules" title="Link to this heading"></a></h2>
+</section>
+<section id="module-geogenie.utils.argument_parser">
+<span id="geogenie-utils-argument-parser-module"></span><h2>geogenie.utils.argument_parser module<a class="headerlink" href="#module-geogenie.utils.argument_parser" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="geogenie.utils.argument_parser.EvaluateAction">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">geogenie.utils.argument_parser.</span></span><span class="sig-name descname"><span class="pre">EvaluateAction</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">option_strings</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dest</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">nargs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">const</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">default</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">choices</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">required</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">help</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">metavar</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/argument_parser.html#EvaluateAction"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.argument_parser.EvaluateAction" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Action</span></code></p>
+<p>Custom action for evaluating complex arguments as Python literal structures.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.utils.argument_parser.load_config">
+<span class="sig-prename descclassname"><span class="pre">geogenie.utils.argument_parser.</span></span><span class="sig-name descname"><span class="pre">load_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config_path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/argument_parser.html#load_config"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.argument_parser.load_config" title="Link to this definition"></a></dt>
+<dd><p>Load the YAML configuration file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>config_path</strong> (<em>str</em>) – Path to configuration file.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Configuration arguments.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.utils.argument_parser.setup_parser">
+<span class="sig-prename descclassname"><span class="pre">geogenie.utils.argument_parser.</span></span><span class="sig-name descname"><span class="pre">setup_parser</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">test_mode</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/argument_parser.html#setup_parser"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.argument_parser.setup_parser" title="Link to this definition"></a></dt>
+<dd><p>Parse command-line arguments.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Parsed command line arguments.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>argparse.Namespace</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.utils.argument_parser.validate_colorscale">
+<span class="sig-prename descclassname"><span class="pre">geogenie.utils.argument_parser.</span></span><span class="sig-name descname"><span class="pre">validate_colorscale</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">parser</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/argument_parser.html#validate_colorscale"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.argument_parser.validate_colorscale" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.utils.argument_parser.validate_dtype">
+<span class="sig-prename descclassname"><span class="pre">geogenie.utils.argument_parser.</span></span><span class="sig-name descname"><span class="pre">validate_dtype</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">parser</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/argument_parser.html#validate_dtype"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.argument_parser.validate_dtype" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.utils.argument_parser.validate_embeddings">
+<span class="sig-prename descclassname"><span class="pre">geogenie.utils.argument_parser.</span></span><span class="sig-name descname"><span class="pre">validate_embeddings</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">parser</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/argument_parser.html#validate_embeddings"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.argument_parser.validate_embeddings" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.utils.argument_parser.validate_gb_params">
+<span class="sig-prename descclassname"><span class="pre">geogenie.utils.argument_parser.</span></span><span class="sig-name descname"><span class="pre">validate_gb_params</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">parser</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/argument_parser.html#validate_gb_params"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.argument_parser.validate_gb_params" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.utils.argument_parser.validate_gpu_number">
+<span class="sig-prename descclassname"><span class="pre">geogenie.utils.argument_parser.</span></span><span class="sig-name descname"><span class="pre">validate_gpu_number</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/argument_parser.html#validate_gpu_number"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.argument_parser.validate_gpu_number" title="Link to this definition"></a></dt>
+<dd><p>Validate the provided GPU number.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>value</strong> (<em>str</em>) – The GPU number provided as a command-line argument.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The validated GPU number.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>argparse.ArgumentTypeError</strong> – If the GPU number is invalid.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.utils.argument_parser.validate_inputs">
+<span class="sig-prename descclassname"><span class="pre">geogenie.utils.argument_parser.</span></span><span class="sig-name descname"><span class="pre">validate_inputs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">parser</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test_mode</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/argument_parser.html#validate_inputs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.argument_parser.validate_inputs" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.utils.argument_parser.validate_lower_str">
+<span class="sig-prename descclassname"><span class="pre">geogenie.utils.argument_parser.</span></span><span class="sig-name descname"><span class="pre">validate_lower_str</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/argument_parser.html#validate_lower_str"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.argument_parser.validate_lower_str" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.utils.argument_parser.validate_max_neighbors">
+<span class="sig-prename descclassname"><span class="pre">geogenie.utils.argument_parser.</span></span><span class="sig-name descname"><span class="pre">validate_max_neighbors</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">parser</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/argument_parser.html#validate_max_neighbors"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.argument_parser.validate_max_neighbors" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.utils.argument_parser.validate_n_jobs">
+<span class="sig-prename descclassname"><span class="pre">geogenie.utils.argument_parser.</span></span><span class="sig-name descname"><span class="pre">validate_n_jobs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/argument_parser.html#validate_n_jobs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.argument_parser.validate_n_jobs" title="Link to this definition"></a></dt>
+<dd><p>Validate the provided n_jobs parameter.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>value</strong> (<em>int</em>) – the number of jobs to use.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The validated n_jobs parameter.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.utils.argument_parser.validate_positive_float">
+<span class="sig-prename descclassname"><span class="pre">geogenie.utils.argument_parser.</span></span><span class="sig-name descname"><span class="pre">validate_positive_float</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/argument_parser.html#validate_positive_float"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.argument_parser.validate_positive_float" title="Link to this definition"></a></dt>
+<dd><p>Validate that the provided value is a positive float.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.utils.argument_parser.validate_positive_int">
+<span class="sig-prename descclassname"><span class="pre">geogenie.utils.argument_parser.</span></span><span class="sig-name descname"><span class="pre">validate_positive_int</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/argument_parser.html#validate_positive_int"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.argument_parser.validate_positive_int" title="Link to this definition"></a></dt>
+<dd><p>Validate that the provided value is a positive integer.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.utils.argument_parser.validate_seed">
+<span class="sig-prename descclassname"><span class="pre">geogenie.utils.argument_parser.</span></span><span class="sig-name descname"><span class="pre">validate_seed</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/argument_parser.html#validate_seed"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.argument_parser.validate_seed" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.utils.argument_parser.validate_significance_levels">
+<span class="sig-prename descclassname"><span class="pre">geogenie.utils.argument_parser.</span></span><span class="sig-name descname"><span class="pre">validate_significance_levels</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">parser</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/argument_parser.html#validate_significance_levels"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.argument_parser.validate_significance_levels" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.utils.argument_parser.validate_smote">
+<span class="sig-prename descclassname"><span class="pre">geogenie.utils.argument_parser.</span></span><span class="sig-name descname"><span class="pre">validate_smote</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">parser</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/argument_parser.html#validate_smote"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.argument_parser.validate_smote" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.utils.argument_parser.validate_split">
+<span class="sig-prename descclassname"><span class="pre">geogenie.utils.argument_parser.</span></span><span class="sig-name descname"><span class="pre">validate_split</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/argument_parser.html#validate_split"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.argument_parser.validate_split" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.utils.argument_parser.validate_str2list">
+<span class="sig-prename descclassname"><span class="pre">geogenie.utils.argument_parser.</span></span><span class="sig-name descname"><span class="pre">validate_str2list</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">arg</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/argument_parser.html#validate_str2list"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.argument_parser.validate_str2list" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.utils.argument_parser.validate_verbosity">
+<span class="sig-prename descclassname"><span class="pre">geogenie.utils.argument_parser.</span></span><span class="sig-name descname"><span class="pre">validate_verbosity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/argument_parser.html#validate_verbosity"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.argument_parser.validate_verbosity" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.utils.argument_parser.validate_weighted_opts">
+<span class="sig-prename descclassname"><span class="pre">geogenie.utils.argument_parser.</span></span><span class="sig-name descname"><span class="pre">validate_weighted_opts</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">parser</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/argument_parser.html#validate_weighted_opts"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.argument_parser.validate_weighted_opts" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</section>
+<section id="module-geogenie.utils.callbacks">
+<span id="geogenie-utils-callbacks-module"></span><h2>geogenie.utils.callbacks module<a class="headerlink" href="#module-geogenie.utils.callbacks" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="geogenie.utils.callbacks.EarlyStopping">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">geogenie.utils.callbacks.</span></span><span class="sig-name descname"><span class="pre">EarlyStopping</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prefix</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">patience</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">verbose</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">delta</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trial</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">boot</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/callbacks.html#EarlyStopping"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.callbacks.EarlyStopping" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Early stopping PyTorch callback.</p>
+<p>This class defines an early stopping callback for PyTorch models.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.utils.callbacks.EarlyStopping.patience">
+<span class="sig-name descname"><span class="pre">patience</span></span><a class="headerlink" href="#geogenie.utils.callbacks.EarlyStopping.patience" title="Link to this definition"></a></dt>
+<dd><p>Number of epochs to wait for improvement before stopping.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.utils.callbacks.EarlyStopping.verbose">
+<span class="sig-name descname"><span class="pre">verbose</span></span><a class="headerlink" href="#geogenie.utils.callbacks.EarlyStopping.verbose" title="Link to this definition"></a></dt>
+<dd><p>Verbosity mode.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.utils.callbacks.EarlyStopping.delta">
+<span class="sig-name descname"><span class="pre">delta</span></span><a class="headerlink" href="#geogenie.utils.callbacks.EarlyStopping.delta" title="Link to this definition"></a></dt>
+<dd><p>Minimum change to qualify as an improvement.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.utils.callbacks.EarlyStopping.output_dir">
+<span class="sig-name descname"><span class="pre">output_dir</span></span><a class="headerlink" href="#geogenie.utils.callbacks.EarlyStopping.output_dir" title="Link to this definition"></a></dt>
+<dd><p>Directory to save the outputs.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.utils.callbacks.EarlyStopping.prefix">
+<span class="sig-name descname"><span class="pre">prefix</span></span><a class="headerlink" href="#geogenie.utils.callbacks.EarlyStopping.prefix" title="Link to this definition"></a></dt>
+<dd><p>Prefix for the saved files.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.utils.callbacks.EarlyStopping.counter">
+<span class="sig-name descname"><span class="pre">counter</span></span><a class="headerlink" href="#geogenie.utils.callbacks.EarlyStopping.counter" title="Link to this definition"></a></dt>
+<dd><p>Counter for the number of epochs since last improvement.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.utils.callbacks.EarlyStopping.early_stop">
+<span class="sig-name descname"><span class="pre">early_stop</span></span><a class="headerlink" href="#geogenie.utils.callbacks.EarlyStopping.early_stop" title="Link to this definition"></a></dt>
+<dd><p>Flag to indicate if early stopping is triggered.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bool</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.utils.callbacks.EarlyStopping.best_score">
+<span class="sig-name descname"><span class="pre">best_score</span></span><a class="headerlink" href="#geogenie.utils.callbacks.EarlyStopping.best_score" title="Link to this definition"></a></dt>
+<dd><p>Best score for the monitored quantity.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.utils.callbacks.EarlyStopping.val_loss_min">
+<span class="sig-name descname"><span class="pre">val_loss_min</span></span><a class="headerlink" href="#geogenie.utils.callbacks.EarlyStopping.val_loss_min" title="Link to this definition"></a></dt>
+<dd><p>Minimum validation loss.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.utils.callbacks.EarlyStopping.boot">
+<span class="sig-name descname"><span class="pre">boot</span></span><a class="headerlink" href="#geogenie.utils.callbacks.EarlyStopping.boot" title="Link to this definition"></a></dt>
+<dd><p>Boot object or identifier.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.utils.callbacks.EarlyStopping.trial">
+<span class="sig-name descname"><span class="pre">trial</span></span><a class="headerlink" href="#geogenie.utils.callbacks.EarlyStopping.trial" title="Link to this definition"></a></dt>
+<dd><p>Trial number for hyperparameter optimization.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.utils.callbacks.EarlyStopping.logger">
+<span class="sig-name descname"><span class="pre">logger</span></span><a class="headerlink" href="#geogenie.utils.callbacks.EarlyStopping.logger" title="Link to this definition"></a></dt>
+<dd><p>Logger object for the class.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>logging.Logger</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.callbacks.EarlyStopping.load_best_model">
+<span class="sig-name descname"><span class="pre">load_best_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/callbacks.html#EarlyStopping.load_best_model"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.callbacks.EarlyStopping.load_best_model" title="Link to this definition"></a></dt>
+<dd><p>Load the best model from the checkpoint file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>model</strong> (<em>torch.nn.Module</em>) – The model to load the checkpoint into.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The model with weights loaded from the best checkpoint.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>torch.nn.Module</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>FileNotFoundError</strong> – If the checkpoint file is not found.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.callbacks.EarlyStopping.save_checkpoint">
+<span class="sig-name descname"><span class="pre">save_checkpoint</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">val_loss</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/callbacks.html#EarlyStopping.save_checkpoint"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.callbacks.EarlyStopping.save_checkpoint" title="Link to this definition"></a></dt>
+<dd><p>Save the model when validation loss decreases.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>val_loss</strong> (<em>float</em>) – Current validation loss.</p></li>
+<li><p><strong>model</strong> (<em>torch.nn.Module</em>) – The model being trained.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.utils.callbacks.callback_init">
+<span class="sig-prename descclassname"><span class="pre">geogenie.utils.callbacks.</span></span><span class="sig-name descname"><span class="pre">callback_init</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">optimizer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trial</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">boot</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/callbacks.html#callback_init"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.callbacks.callback_init" title="Link to this definition"></a></dt>
+<dd><p>Initialize early stopping and learning rate scheduler callbacks.</p>
+<blockquote>
+<div><p>EarlyStopping Arguments:
+output_dir (str): Directory to save the outputs.
+prefix (str): Prefix for the saved files.
+patience (int): Number of epochs to wait for improvement before stopping.
+verbose (bool): If True, prints messages about early stopping.
+delta (float): Minimum change to qualify as an improvement.
+trial (optuna.trial.Trial): Optuna trial object.
+boot (any): Boot object or identifier.</p>
+</div></blockquote>
+<dl class="simple">
+<dt>ReduceLROnPlateau Arguments:</dt><dd><p>optimizer (torch.optim.Optimizer): Wrapped optimizer.
+mode (str): One of ‘min’, ‘max’. In ‘min’ mode, lr will be reduced when the quantity monitored has stopped decreasing; in ‘max’ mode it will be reduced when the quantity monitored has stopped increasing.
+factor (float): Factor by which the learning rate will be reduced. new_lr = lr * factor.
+patience (int): Number of epochs with no improvement after which learning rate will be reduced.
+verbose (bool): If True, prints a message to stdout for each update.</p>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>optimizer</strong> (<em>torch.optim.Optimizer</em>) – The optimizer for which the learning rate scheduler will be applied.</p></li>
+<li><p><strong>args</strong> (<em>argparse.Namespace</em>) – Argument namespace containing the necessary hyperparameters and settings.</p></li>
+<li><p><strong>trial</strong> (<em>optuna.trial.Trial</em><em>, </em><em>optional</em>) – Optuna trial object for hyperparameter optimization. Defaults to None.</p></li>
+<li><p><strong>boot</strong> (<em>any</em><em>, </em><em>optional</em>) – Boot object or identifier, used for early stopping callback. Defaults to None.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A tuple containing the initialized EarlyStopping and ReduceLROnPlateau scheduler.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="module-geogenie.utils.data">
+<span id="geogenie-utils-data-module"></span><h2>geogenie.utils.data module<a class="headerlink" href="#module-geogenie.utils.data" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="geogenie.utils.data.CustomDataset">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">geogenie.utils.data.</span></span><span class="sig-name descname"><span class="pre">CustomDataset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">features</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">labels</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_weights</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_ids</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">torch.float32</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/data.html#CustomDataset"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.data.CustomDataset" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Dataset</span></code></p>
+<p>Class to create a custom PyTorch Dataset with sample weighting and sample IDs.</p>
+<p>This class defines a custom PyTorch Dataset that incorporates sample weighting and sample IDs.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.utils.data.CustomDataset.tensors">
+<span class="sig-name descname"><span class="pre">tensors</span></span><a class="headerlink" href="#geogenie.utils.data.CustomDataset.tensors" title="Link to this definition"></a></dt>
+<dd><p>Tuple consisting of (features, labels, sample_weights, sample_ids).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="geogenie.utils.data.CustomDataset.features">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">features</span></span><a class="headerlink" href="#geogenie.utils.data.CustomDataset.features" title="Link to this definition"></a></dt>
+<dd><p>Get the features tensor.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="geogenie.utils.data.CustomDataset.labels">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">labels</span></span><a class="headerlink" href="#geogenie.utils.data.CustomDataset.labels" title="Link to this definition"></a></dt>
+<dd><p>Get the labels tensor.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="geogenie.utils.data.CustomDataset.n_features">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">n_features</span></span><a class="headerlink" href="#geogenie.utils.data.CustomDataset.n_features" title="Link to this definition"></a></dt>
+<dd><p>Return the number of columns in the features dataset.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="geogenie.utils.data.CustomDataset.n_labels">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">n_labels</span></span><a class="headerlink" href="#geogenie.utils.data.CustomDataset.n_labels" title="Link to this definition"></a></dt>
+<dd><p>Return the number of columns in the labels dataset.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="geogenie.utils.data.CustomDataset.sample_ids">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">sample_ids</span></span><a class="headerlink" href="#geogenie.utils.data.CustomDataset.sample_ids" title="Link to this definition"></a></dt>
+<dd><p>Get the sample IDs.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="geogenie.utils.data.CustomDataset.sample_weights">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">sample_weights</span></span><a class="headerlink" href="#geogenie.utils.data.CustomDataset.sample_weights" title="Link to this definition"></a></dt>
+<dd><p>Get the sample weights.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="module-geogenie.utils.data_structure">
+<span id="geogenie-utils-data-structure-module"></span><h2>geogenie.utils.data_structure module<a class="headerlink" href="#module-geogenie.utils.data_structure" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="geogenie.utils.data_structure.DataStructure">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">geogenie.utils.data_structure.</span></span><span class="sig-name descname"><span class="pre">DataStructure</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vcf_file</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">verbose</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">torch.float32</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">debug</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/data_structure.html#DataStructure"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.data_structure.DataStructure" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Class to hold data structure from input VCF file.</p>
+<p>High level class overview. Key class functionalities include data loading, preprocessing, transformation, and machine learning model preparation.</p>
+<p>Initialization and Data Parsing - It loads VCF (Variant Call Format) files using pysam, processes genotypes, and handles missing data.</p>
+<p>Data Transformation and Imputation - Implements methods for allele counting, imputing missing genotypes, normalizing data, and transforming genotypes to various encodings.</p>
+<p>Data Splitting - Facilitates splitting data into training, validation, and test sets.</p>
+<p>Outlier Detection - Includes methods for detecting and handling outliers in the data.</p>
+<p>Data Preprocessing and Embedding: The class contains methods for preprocessing data, including scaling, dimensionality reduction, and embedding using various techniques like PCA, t-SNE, MCA, etc.</p>
+<p>Data Analysis and Visualization - The script integrates with the geogenie library for tasks like outlier detection and plotting.</p>
+<p>Machine Learning and Data Loading - It includes functionalities for creating data loaders (using torch) and preparing datasets for machine learning tasks, with support for different data sampling strategies and weightings.</p>
+<p>Utility Methods - The script provides additional utility methods for tasks like reading GTseq data, setting parameters, and selecting optimal components for different data transformations.</p>
+<p>In summary, the script is designed for comprehensive genomic data analysis, offering capabilities for data loading, preprocessing, transformation, machine learning model preparation, and visualization. It is structured to handle data from VCF files, process it through various analytical and transformational steps, and prepare it for further analysis or machine learning tasks.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.data_structure.DataStructure.call_create_dataloaders">
+<span class="sig-name descname"><span class="pre">call_create_dataloaders</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">X</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">y</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_val</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_ids</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dataset</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/data_structure.html#DataStructure.call_create_dataloaders"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.data_structure.DataStructure.call_create_dataloaders" title="Link to this definition"></a></dt>
+<dd><p>Helper method to create DataLoader objects for different datasets.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>X</strong> (<em>numpy.ndarray</em><em> | </em><em>list</em>) – Feature data.</p></li>
+<li><p><strong>y</strong> (<em>numpy.ndarray</em><em> | </em><em>None</em>) – Target data.</p></li>
+<li><p><strong>args</strong> (<em>argparse.Namespace</em>) – User-supplied arguments.</p></li>
+<li><p><strong>is_val</strong> (<em>bool</em>) – Whether the dataset is validation and test data. Default is False.</p></li>
+<li><p><strong>sample_ids</strong> (<em>List</em><em>[</em><em>str</em><em>]</em>) – List of sample IDs. Default is None.</p></li>
+<li><p><strong>dataset</strong> (<em>str</em>) – Dataset type. Required keyword argument. Default is None.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>DataLoader object.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>torch.utils.data.DataLoader</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ValueError</strong> – If sampleIDs are not provided.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.data_structure.DataStructure.count_alleles">
+<span class="sig-name descname"><span class="pre">count_alleles</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/data_structure.html#DataStructure.count_alleles"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.data_structure.DataStructure.count_alleles" title="Link to this definition"></a></dt>
+<dd><p>Count alleles for each SNP across all samples.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>2D array of allele counts with shape (n_loci, 2).</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>numpy.ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.data_structure.DataStructure.create_dataloaders">
+<span class="sig-name descname"><span class="pre">create_dataloaders</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">X</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">y</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">batch_size</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_val</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_ids</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dataset</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/data_structure.html#DataStructure.create_dataloaders"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.data_structure.DataStructure.create_dataloaders" title="Link to this definition"></a></dt>
+<dd><p>Create dataloaders for training, testing, and validation datasets.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>X</strong> (<em>numpy.ndarray</em><em> | </em><em>list</em>) – X dataset. Train, test, or validation.</p></li>
+<li><p><strong>y</strong> (<em>numpy.ndarray</em><em> | </em><em>None</em>) – Target data (train, test, or validation). None for GNN.</p></li>
+<li><p><strong>batch_size</strong> (<em>int</em>) – Batch size to use with model.</p></li>
+<li><p><strong>args</strong> (<em>argparse.Namespace</em>) – User-supplied arguments.</p></li>
+<li><p><strong>is_val</strong> (<em>bool</em>) – Whether using validation/ test dataset. Otherwise should be training dataset. Default is False.</p></li>
+<li><p><strong>sample_ids</strong> (<em>List</em><em>[</em><em>str</em><em>]</em>) – List of sample IDs. Default is None.</p></li>
+<li><p><strong>dataset</strong> (<em>str</em>) – Dataset type. Required keyword argument. Default is None.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>DataLoader object suitable for the specified model type.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>torch.utils.data.DataLoader</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.data_structure.DataStructure.define_params">
+<span class="sig-name descname"><span class="pre">define_params</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/data_structure.html#DataStructure.define_params"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.data_structure.DataStructure.define_params" title="Link to this definition"></a></dt>
+<dd><p>Defines and updates class attrubutes from an argparse.Namespace object.</p>
+<p>This method sets the class attributes based on the parameters provided in the argparse.Namespace object. It is used to update the class parameters with the values provided in the command-line arguments.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>args</strong> (<em>argparse.Namespace</em>) – Argument namespace containing the parameters.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.data_structure.DataStructure.embed">
+<span class="sig-name descname"><span class="pre">embed</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">X</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alg</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'pca'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">full_dataset_only</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">transform_only</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/data_structure.html#DataStructure.embed"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.data_structure.DataStructure.embed" title="Link to this definition"></a></dt>
+<dd><p>Embed SNP data using one of several dimensionality reduction techniques.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>args</strong> (<em>argparse.Namespace</em>) – User-supplied arguments.</p></li>
+<li><p><strong>X</strong> (<em>numpy.ndarray</em>) – Data to embed. If None, uses self.genotypes_enc. Default is None.</p></li>
+<li><p><strong>alg</strong> (<em>str</em>) – Algorithm to use. Default is ‘pca’.</p></li>
+<li><p><strong>full_dataset_only</strong> (<em>bool</em>) – If True, only embed and return full dataset. Default is False.</p></li>
+<li><p><strong>transform_only</strong> (<em>bool</em>) – If True, only transform without fitting. Default is False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Embedded data.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>numpy.ndarray</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#geogenie.utils.exceptions.EmbeddingError" title="geogenie.utils.exceptions.EmbeddingError"><strong>EmbeddingError</strong></a> – If the optimal number of components cannot be estimated.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.data_structure.DataStructure.extract_datasets">
+<span class="sig-name descname"><span class="pre">extract_datasets</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">outliers</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/data_structure.html#DataStructure.extract_datasets"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.data_structure.DataStructure.extract_datasets" title="Link to this definition"></a></dt>
+<dd><p>Extracts and separates datasets into known and predicted sets based on the presence of missing data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>outliers</strong> (<em>numpy.ndarray</em>) – Array of outlier indices.</p></li>
+<li><p><strong>args</strong> (<em>argparse.Namespace</em>) – User-supplied arguments.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Extracted datasets and sample indices.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.data_structure.DataStructure.filter_gt">
+<span class="sig-name descname"><span class="pre">filter_gt</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">gt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_mac</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_snps</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">allele_counts</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/data_structure.html#DataStructure.filter_gt"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.data_structure.DataStructure.filter_gt" title="Link to this definition"></a></dt>
+<dd><p>Filter genotypes based on minor allele count and random subsets (max_snps).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>gt</strong> (<em>numpy.ndarray</em>) – Genotypes to filter.</p></li>
+<li><p><strong>min_mac</strong> (<em>int</em>) – Minimum minor allele count.</p></li>
+<li><p><strong>max_snps</strong> (<em>int</em><em>, </em><em>optional</em>) – Maximum number of SNPs to retain.</p></li>
+<li><p><strong>allele_counts</strong> (<em>numpy.ndarray</em>) – Allele counts.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Filtered genotypes.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>numpy.ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.data_structure.DataStructure.find_optimal_nmf_components">
+<span class="sig-name descname"><span class="pre">find_optimal_nmf_components</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_components</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_components</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/data_structure.html#DataStructure.find_optimal_nmf_components"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.data_structure.DataStructure.find_optimal_nmf_components" title="Link to this definition"></a></dt>
+<dd><p>Find the optimal number of components for NMF based on reconstruction error.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data</strong> (<em>np.array</em>) – The data to fit the NMF model.</p></li>
+<li><p><strong>min_components</strong> (<em>int</em>) – The minimum number of components to try.</p></li>
+<li><p><strong>max_components</strong> (<em>int</em>) – The maximum number of components to try.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The optimal number of components and the reconstruction errors.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.data_structure.DataStructure.generate_unknowns">
+<span class="sig-name descname"><span class="pre">generate_unknowns</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">p</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">verbose</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/data_structure.html#DataStructure.generate_unknowns"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.data_structure.DataStructure.generate_unknowns" title="Link to this definition"></a></dt>
+<dd><p>Randomly choose unknown samples for prediction.</p>
+<p>Only gets used if user does not supply and unkowns.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>p</strong> (<em>float</em>) – Proportion of samples to randomly select for the unknown prediction dataset. Defaults to 0.1.</p></li>
+<li><p><strong>seed</strong> (<em>int</em><em> or </em><em>None</em>) – Random seed to use for the random choice generator. Defaults to None (no random seed supplied).</p></li>
+<li><p><strong>verbose</strong> (<em>bool</em>) – Whether in verbose mode. Defaults to False.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.data_structure.DataStructure.get_num_pca_comp">
+<span class="sig-name descname"><span class="pre">get_num_pca_comp</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/data_structure.html#DataStructure.get_num_pca_comp"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.data_structure.DataStructure.get_num_pca_comp" title="Link to this definition"></a></dt>
+<dd><p>Get optimal number of PCA components.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>x</strong> (<em>numpy.ndarray</em>) – Dataset to fit PCA to.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Optimal number of principal components to use.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.data_structure.DataStructure.get_sample_weights">
+<span class="sig-name descname"><span class="pre">get_sample_weights</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">y</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/data_structure.html#DataStructure.get_sample_weights"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.data_structure.DataStructure.get_sample_weights" title="Link to this definition"></a></dt>
+<dd><p>Gets inverse sample_weights based on sampling density.</p>
+<p>Uses scikit-learn KernelDensity with a grid search to estimate the optimal bandwidth for GeographicDensitySampler.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>y</strong> (<em>numpy.ndarray</em>) – Target values.</p></li>
+<li><p><strong>args</strong> (<em>argparse.Namespace</em>) – User-supplied arguments.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The weighted sampler with estimated sample weights.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>GeographicDensitySampler</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.data_structure.DataStructure.impute_missing">
+<span class="sig-name descname"><span class="pre">impute_missing</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">X</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">transform_only</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/data_structure.html#DataStructure.impute_missing"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.data_structure.DataStructure.impute_missing" title="Link to this definition"></a></dt>
+<dd><p>Impute missing genotypes based on allele frequency threshold.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>X</strong> (<em>numpy.ndarray</em>) – Data to impute.</p></li>
+<li><p><strong>transform_only</strong> (<em>bool</em>) – Whether to transform, but not fit. Default is False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Imputed data.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>numpy.ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.data_structure.DataStructure.is_biallelic">
+<span class="sig-name descname"><span class="pre">is_biallelic</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">record</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/data_structure.html#DataStructure.is_biallelic"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.data_structure.DataStructure.is_biallelic" title="Link to this definition"></a></dt>
+<dd><p>Check if number of alleles is biallelic.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>record</strong> (<em>pysam.VariantRecord</em>) – A VCF record.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>True if the record is biallelic, False otherwise.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bool</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.data_structure.DataStructure.load_and_preprocess_data">
+<span class="sig-name descname"><span class="pre">load_and_preprocess_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/data_structure.html#DataStructure.load_and_preprocess_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.data_structure.DataStructure.load_and_preprocess_data" title="Link to this definition"></a></dt>
+<dd><p>Wrapper method to load and preprocess data.</p>
+<p>Code execution order is listed below.</p>
+<p>Sample Data Loading and Sorting - Calls <cite>self.sort_samples</cite> with <cite>args.sample_data</cite> to load and sort sample data. This step involves reading sample data, presumably including their geographical locations, and aligning them with the genomic data.</p>
+<p>SNP Encoding Transformation - Transforms Single Nucleotide Polymorphisms (SNPs) into a 0,1,2 encoding format using self.snps_to_012, considering parameters like min_mac (minimum minor allele count) and max_snps (maximum number of SNPs).</p>
+<p>Validation of Feature and Target Lengths - Ensures that the feature data (X) and target data (y) have the same number of rows using self.validate_feature_target_len.</p>
+<p>Missing Data Imputation on full dataset - Imputes missing data in <cite>self.genotypes_enc</cite> using <cite>self.impute_missing</cite>.</p>
+<p>Data Embedding and Transformation - Performs an embedding transformation (like PCA) on the imputed data (X) using self.embed, with full_dataset_only=True and transform_only=False.</p>
+<p>Index Mask Setup - Defines masks for prediction (self.pred_mask) to identify samples with known and unknown locations. Sets up index masks for data using self.setup_index_masks.</p>
+<p>Outlier Detection (Conditional) - If args.detect_outliers is True, performs outlier detection using self.run_outlier_detection.</p>
+<p>Extract datasets - self.X, self.y, self.X_pred, self.true_idx, self.all_samples, self.samples, self.pred_samples, self.outlier_samples, self.non_outlier_samples = self.extract_datasets(all_outliers, args)</p>
+<p>Plotting Outliers (Conditional) - If outliers are detected, plots the outliers using self.plotting.plot_outliers.</p>
+<p>Data Normalization (Placeholder) - Normalizes the target data (y) using self.normalize_target with placeholder=True. This does nothing, unless <cite>placeholder=False</cite>.</p>
+<p>Splitting into Train, Test, and Validation Sets - Splits the dataset into training, validation, and testing sets using self.split_train_test.</p>
+<p>Feature Embedding for Train, Validation, and Test Sets (Conditional) - <cite>args.embedding_type</cite> is not <cite>none</cite>, embeds the features of training, validation, and test sets using <cite>self.embed</cite>.</p>
+<p>Logging Data Split and DataLoader Creation - Logs the completion of data splitting and the start of DataLoader creation, if verbosity is enabled.</p>
+<p>DataLoader Creation - Creates DataLoaders for training, validation, and test datasets using <cite>self.call_create_dataloaders</cite>. Additional DataLoader is created for gradient boosting if args.use_gradient_boosting is True. Logging Completion of Preprocessing Logs the successful completion of data loading and preprocessing, if verbosity is enabled.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.data_structure.DataStructure.map_alleles_to_iupac">
+<span class="sig-name descname"><span class="pre">map_alleles_to_iupac</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">alleles</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">iupac_dict</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/data_structure.html#DataStructure.map_alleles_to_iupac"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.data_structure.DataStructure.map_alleles_to_iupac" title="Link to this definition"></a></dt>
+<dd><p>Maps a list of allele tuples to their corresponding IUPAC nucleotide codes.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>alleles</strong> (<em>List</em><em>[</em><em>tuple</em><em>]</em>) – List of tuples representing alleles.</p></li>
+<li><p><strong>iupac_dict</strong> (<em>dict</em>) – Dictionary mapping allele tuples to IUPAC codes.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>List of IUPAC nucleotide codes corresponding to the alleles.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>List[str]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.data_structure.DataStructure.map_outliers_through_filters">
+<span class="sig-name descname"><span class="pre">map_outliers_through_filters</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">original_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter_stages</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outliers</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/data_structure.html#DataStructure.map_outliers_through_filters"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.data_structure.DataStructure.map_outliers_through_filters" title="Link to this definition"></a></dt>
+<dd><p>Maps outlier indices through multiple filtering stages back to the original dataset.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>original_indices</strong> (<em>np.ndarray</em>) – Array of original indices before any filtering.</p></li>
+<li><p><strong>filter_stages</strong> (<em>List</em><em>[</em><em>np.ndarray</em><em>]</em>) – List of arrays of indices after each filtering stage.</p></li>
+<li><p><strong>outliers</strong> (<em>np.ndarray</em>) – Outlier indices in the most filtered dataset.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Mapped outlier indices in the original dataset.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>np.ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.data_structure.DataStructure.normalize_target">
+<span class="sig-name descname"><span class="pre">normalize_target</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">y</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">transform_only</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/data_structure.html#DataStructure.normalize_target"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.data_structure.DataStructure.normalize_target" title="Link to this definition"></a></dt>
+<dd><p>Normalize locations, ignoring NaN.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>y</strong> (<em>numpy.ndarray</em>) – Array of locations to normalize.</p></li>
+<li><p><strong>transform_only</strong> (<em>bool</em>) – Whether to transform without fitting. Default is False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Normalized locations.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>numpy.ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="geogenie.utils.data_structure.DataStructure.params">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">params</span></span><a class="headerlink" href="#geogenie.utils.data_structure.DataStructure.params" title="Link to this definition"></a></dt>
+<dd><p>Getter for the params dictionary.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Parameters dictionary.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.data_structure.DataStructure.perform_mca_and_select_components">
+<span class="sig-name descname"><span class="pre">perform_mca_and_select_components</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_components_range</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">S</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/data_structure.html#DataStructure.perform_mca_and_select_components"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.data_structure.DataStructure.perform_mca_and_select_components" title="Link to this definition"></a></dt>
+<dd><p>Perform MCA on the provided data and select the optimal number of components.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data</strong> (<em>pd.DataFrame</em>) – The categorical data.</p></li>
+<li><p><strong>n_components_range</strong> (<em>list</em>) – The range of components to explore.</p></li>
+<li><p><strong>S</strong> (<em>float</em>) – Sensitivity setting for selecting optimal number of components.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The optimal number of components.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.data_structure.DataStructure.run_outlier_detection">
+<span class="sig-name descname"><span class="pre">run_outlier_detection</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">X</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">y</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">index</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter_stage_indices</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/data_structure.html#DataStructure.run_outlier_detection"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.data_structure.DataStructure.run_outlier_detection" title="Link to this definition"></a></dt>
+<dd><p>Performs outlier detection using geographic and genetic criteria.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>args</strong> (<em>argparse.Namespace</em>) – User-supplied arguments.</p></li>
+<li><p><strong>X</strong> (<em>numpy.ndarray</em>) – Feature matrix.</p></li>
+<li><p><strong>indices</strong> (<em>numpy.ndarray</em>) – Indices of samples.</p></li>
+<li><p><strong>y</strong> (<em>numpy.ndarray</em>) – Target variable (coordinates).</p></li>
+<li><p><strong>index</strong> (<em>numpy.ndarray</em>) – Index array for samples.</p></li>
+<li><p><strong>filter_stage_indices</strong> (<em>List</em><em>[</em><em>np.ndarray</em><em>]</em>) – List of filter stage indices.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Array of outlier indices.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>numpy.ndarray</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#geogenie.utils.exceptions.OutlierDetectionError" title="geogenie.utils.exceptions.OutlierDetectionError"><strong>OutlierDetectionError</strong></a> – If an error occurs during outlier detection.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.data_structure.DataStructure.select_optimal_components">
+<span class="sig-name descname"><span class="pre">select_optimal_components</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cumulative_inertia</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">S</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/data_structure.html#DataStructure.select_optimal_components"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.data_structure.DataStructure.select_optimal_components" title="Link to this definition"></a></dt>
+<dd><p>Select the optimal number of components based on explained inertia.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>cumulative_inertia</strong> (<em>list</em>) – The cumulative inertia for each component.</p></li>
+<li><p><strong>S</strong> (<em>float</em>) – Sensitivity setting for selecting optimal number of components.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The optimal number of components.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.data_structure.DataStructure.setup_index_masks">
+<span class="sig-name descname"><span class="pre">setup_index_masks</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">X</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/data_structure.html#DataStructure.setup_index_masks"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.data_structure.DataStructure.setup_index_masks" title="Link to this definition"></a></dt>
+<dd><p>Sets up index masks for filtering the data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>X</strong> (<em>numpy.ndarray</em>) – Feature data.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Filtered feature data, indices, target data, and sample indices.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.data_structure.DataStructure.snps_to_012">
+<span class="sig-name descname"><span class="pre">snps_to_012</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">min_mac</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_snps</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">return_values</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/data_structure.html#DataStructure.snps_to_012"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.data_structure.DataStructure.snps_to_012" title="Link to this definition"></a></dt>
+<dd><p>Convert IUPAC SNPs to 012 encodings.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>min_mac</strong> (<em>int</em>) – Minimum minor allele count. Default is 2.</p></li>
+<li><p><strong>max_snps</strong> (<em>int</em><em>, </em><em>optional</em>) – Maximum number of SNPs to retain.</p></li>
+<li><p><strong>return_values</strong> (<em>bool</em>) – Whether to return encoded values. Default is True.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Encoded genotypes if return_values is True, otherwise updates internal state.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>numpy.ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.data_structure.DataStructure.sort_samples">
+<span class="sig-name descname"><span class="pre">sort_samples</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sample_data_filename</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/data_structure.html#DataStructure.sort_samples"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.data_structure.DataStructure.sort_samples" title="Link to this definition"></a></dt>
+<dd><p>Load sample_data and popmap and sort to match VCF file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>sample_data_filename</strong> (<em>str</em>) – Filename of the sample data file.</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#geogenie.utils.exceptions.InvalidSampleDataError" title="geogenie.utils.exceptions.InvalidSampleDataError"><strong>InvalidSampleDataError</strong></a> – If the sample data file format is incorrect.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.data_structure.DataStructure.split_train_test">
+<span class="sig-name descname"><span class="pre">split_train_test</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">train_split</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">val_split</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seed</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/data_structure.html#DataStructure.split_train_test"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.data_structure.DataStructure.split_train_test" title="Link to this definition"></a></dt>
+<dd><p>Splits the data into training, validation, and test datasets.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>train_split</strong> (<em>float</em>) – Proportion of the data to use for training.</p></li>
+<li><p><strong>val_split</strong> (<em>float</em>) – Proportion of the data to use for validation.</p></li>
+<li><p><strong>seed</strong> (<em>int</em>) – Random seed for reproducibility.</p></li>
+<li><p><strong>args</strong> (<em>argparse.Namespace</em>) – Argument namespace containing additional parameters.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.data_structure.DataStructure.validate_feature_target_len">
+<span class="sig-name descname"><span class="pre">validate_feature_target_len</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/data_structure.html#DataStructure.validate_feature_target_len"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.data_structure.DataStructure.validate_feature_target_len" title="Link to this definition"></a></dt>
+<dd><p>Validate that the feature and target datasets have the same length.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#geogenie.utils.exceptions.InvalidInputShapeError" title="geogenie.utils.exceptions.InvalidInputShapeError"><strong>InvalidInputShapeError</strong></a> – If the shapes of the feature and target datasets do not match.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="module-geogenie.utils.exceptions">
+<span id="geogenie-utils-exceptions-module"></span><h2>geogenie.utils.exceptions module<a class="headerlink" href="#module-geogenie.utils.exceptions" title="Link to this heading"></a></h2>
+<dl class="py exception">
+<dt class="sig sig-object py" id="geogenie.utils.exceptions.DataStructureError">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">geogenie.utils.exceptions.</span></span><span class="sig-name descname"><span class="pre">DataStructureError</span></span><a class="reference internal" href="_modules/geogenie/utils/exceptions.html#DataStructureError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.exceptions.DataStructureError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Exception</span></code></p>
+<p>Base class for exceptions in DataStructure.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="geogenie.utils.exceptions.EmbeddingError">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">geogenie.utils.exceptions.</span></span><span class="sig-name descname"><span class="pre">EmbeddingError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'n_components</span> <span class="pre">could</span> <span class="pre">not</span> <span class="pre">be</span> <span class="pre">estimated</span> <span class="pre">for</span> <span class="pre">embedding.'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/exceptions.html#EmbeddingError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.exceptions.EmbeddingError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#geogenie.utils.exceptions.DataStructureError" title="geogenie.utils.exceptions.DataStructureError"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataStructureError</span></code></a></p>
+<p>Exception raised for errors during embedding.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="geogenie.utils.exceptions.GPUUnavailableError">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">geogenie.utils.exceptions.</span></span><span class="sig-name descname"><span class="pre">GPUUnavailableError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'Specified</span> <span class="pre">GPU</span> <span class="pre">is</span> <span class="pre">not</span> <span class="pre">available.'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/exceptions.html#GPUUnavailableError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.exceptions.GPUUnavailableError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Exception</span></code></p>
+<p>Exception raised when a GPU is specified but not available.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="geogenie.utils.exceptions.InvalidInputShapeError">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">geogenie.utils.exceptions.</span></span><span class="sig-name descname"><span class="pre">InvalidInputShapeError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">shape1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">shape2</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/exceptions.html#InvalidInputShapeError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.exceptions.InvalidInputShapeError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#geogenie.utils.exceptions.DataStructureError" title="geogenie.utils.exceptions.DataStructureError"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataStructureError</span></code></a></p>
+<p>Exception raised for invalid input shapes.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="geogenie.utils.exceptions.InvalidSampleDataError">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">geogenie.utils.exceptions.</span></span><span class="sig-name descname"><span class="pre">InvalidSampleDataError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'Invalid</span> <span class="pre">sample</span> <span class="pre">data</span> <span class="pre">format.</span> <span class="pre">Expected</span> <span class="pre">a</span> <span class="pre">tab-delimited</span> <span class="pre">file</span> <span class="pre">with</span> <span class="pre">three</span> <span class="pre">columns:</span> <span class="pre">sampleID,</span> <span class="pre">x,</span> <span class="pre">and</span> <span class="pre">y.'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/exceptions.html#InvalidSampleDataError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.exceptions.InvalidSampleDataError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#geogenie.utils.exceptions.DataStructureError" title="geogenie.utils.exceptions.DataStructureError"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataStructureError</span></code></a></p>
+<p>Exception raised for errors in the sample data file.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="geogenie.utils.exceptions.OutlierDetectionError">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">geogenie.utils.exceptions.</span></span><span class="sig-name descname"><span class="pre">OutlierDetectionError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'Error</span> <span class="pre">occurred</span> <span class="pre">during</span> <span class="pre">outlier</span> <span class="pre">detection.'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/exceptions.html#OutlierDetectionError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.exceptions.OutlierDetectionError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#geogenie.utils.exceptions.DataStructureError" title="geogenie.utils.exceptions.DataStructureError"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataStructureError</span></code></a></p>
+<p>Exception raised for errors during outlier detection.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="geogenie.utils.exceptions.ResourceAllocationError">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">geogenie.utils.exceptions.</span></span><span class="sig-name descname"><span class="pre">ResourceAllocationError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'Specified</span> <span class="pre">resource</span> <span class="pre">is</span> <span class="pre">not</span> <span class="pre">available.'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/exceptions.html#ResourceAllocationError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.exceptions.ResourceAllocationError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Exception</span></code></p>
+<p>Exception raised when a specified resource is invalid.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="geogenie.utils.exceptions.SampleOrderingError">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">geogenie.utils.exceptions.</span></span><span class="sig-name descname"><span class="pre">SampleOrderingError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'Invalid</span> <span class="pre">sample</span> <span class="pre">ordering</span> <span class="pre">after</span> <span class="pre">filtering</span> <span class="pre">and</span> <span class="pre">sorting.'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/exceptions.html#SampleOrderingError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.exceptions.SampleOrderingError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#geogenie.utils.exceptions.DataStructureError" title="geogenie.utils.exceptions.DataStructureError"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataStructureError</span></code></a></p>
+<p>Exception raised for errors in the sample ordering.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="geogenie.utils.exceptions.TimeoutException">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">geogenie.utils.exceptions.</span></span><span class="sig-name descname"><span class="pre">TimeoutException</span></span><a class="reference internal" href="_modules/geogenie/utils/exceptions.html#TimeoutException"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.exceptions.TimeoutException" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Exception</span></code></p>
+</dd></dl>
+
+</section>
+<section id="module-geogenie.utils.logger">
+<span id="geogenie-utils-logger-module"></span><h2>geogenie.utils.logger module<a class="headerlink" href="#module-geogenie.utils.logger" title="Link to this heading"></a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.utils.logger.setup_logger">
+<span class="sig-prename descclassname"><span class="pre">geogenie.utils.logger.</span></span><span class="sig-name descname"><span class="pre">setup_logger</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">log_file</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">log_level</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">20</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/logger.html#setup_logger"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.logger.setup_logger" title="Link to this definition"></a></dt>
+<dd><p>Function to set up a logger for logging info, warnings, errors, and debug prints.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>log_file</strong> (<em>str</em>) – Filename for log file.</p></li>
+<li><p><strong>log_level</strong> (<em>int</em>) – Log level to use. Should be either logging.INFO, logging.WARNING, logging.ERROR, or logging.DEBUG. These levels are converted to integers when called. Defaults to logging.INFO.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="module-geogenie.utils.loss">
+<span id="geogenie-utils-loss-module"></span><h2>geogenie.utils.loss module<a class="headerlink" href="#module-geogenie.utils.loss" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="geogenie.utils.loss.WeightedDRMSLoss">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">geogenie.utils.loss.</span></span><span class="sig-name descname"><span class="pre">WeightedDRMSLoss</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">radius</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">6371</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/loss.html#WeightedDRMSLoss"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.loss.WeightedDRMSLoss" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Module</span></code></p>
+<p>Custom loss class to compute the Distance Root Mean Square (DRMS) for
+longitude and latitude coordinates.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.utils.loss.WeightedDRMSLoss.radius">
+<span class="sig-name descname"><span class="pre">radius</span></span><a class="headerlink" href="#geogenie.utils.loss.WeightedDRMSLoss.radius" title="Link to this definition"></a></dt>
+<dd><p>Radius of the Earth in kilometers. Default is 6371 km.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.loss.WeightedDRMSLoss.forward">
+<span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">preds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">targets</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_weight</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/loss.html#WeightedDRMSLoss.forward"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.loss.WeightedDRMSLoss.forward" title="Link to this definition"></a></dt>
+<dd><p>Forward pass to compute the Distance Root Mean Square (DRMS) loss.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>preds</strong> (<em>torch.Tensor</em>) – Predicted longitude and latitude coordinates.</p></li>
+<li><p><strong>targets</strong> (<em>torch.Tensor</em>) – Actual longitude and latitude coordinates.</p></li>
+<li><p><strong>sample_weight</strong> (<em>torch.Tensor</em>) – Sample weights to make some samples more or less important than others. Defaults to None.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>DRMS loss.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>torch.Tensor</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="geogenie.utils.loss.WeightedHuberLoss">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">geogenie.utils.loss.</span></span><span class="sig-name descname"><span class="pre">WeightedHuberLoss</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">delta</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">smoothing_factor</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.1</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/loss.html#WeightedHuberLoss"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.loss.WeightedHuberLoss" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Module</span></code></p>
+<p>Custom loss class to compute the Weighted Huber Loss.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.utils.loss.WeightedHuberLoss.delta">
+<span class="sig-name descname"><span class="pre">delta</span></span><a class="headerlink" href="#geogenie.utils.loss.WeightedHuberLoss.delta" title="Link to this definition"></a></dt>
+<dd><p>The threshold for the Huber loss. Default is 1.0.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.utils.loss.WeightedHuberLoss.smoothing_factor">
+<span class="sig-name descname"><span class="pre">smoothing_factor</span></span><a class="headerlink" href="#geogenie.utils.loss.WeightedHuberLoss.smoothing_factor" title="Link to this definition"></a></dt>
+<dd><p>The smoothing factor for the target. Default is 0.1.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.loss.WeightedHuberLoss.forward">
+<span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_weight</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/loss.html#WeightedHuberLoss.forward"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.loss.WeightedHuberLoss.forward" title="Link to this definition"></a></dt>
+<dd><p>Forward pass to compute the Weighted Huber Loss.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.utils.loss.weighted_rmse_loss">
+<span class="sig-prename descclassname"><span class="pre">geogenie.utils.loss.</span></span><span class="sig-name descname"><span class="pre">weighted_rmse_loss</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">y_true</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">y_pred</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_weight</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/loss.html#weighted_rmse_loss"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.loss.weighted_rmse_loss" title="Link to this definition"></a></dt>
+<dd><p>Custom PyTorch weighted RMSE loss function.</p>
+<p>This method computes the weighted RMSE loss between the ground truth and predictions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>y_true</strong> (<em>torch.Tensor</em>) – Ground truth values.</p></li>
+<li><p><strong>y_pred</strong> (<em>torch.Tensor</em>) – Predictions.</p></li>
+<li><p><strong>sample_weight</strong> (<em>torch.Tensor</em>) – Sample weights (1-dimensional).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Weighted RMSE loss.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="module-geogenie.utils.scorers">
+<span id="geogenie-utils-scorers-module"></span><h2>geogenie.utils.scorers module<a class="headerlink" href="#module-geogenie.utils.scorers" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="geogenie.utils.scorers.LocallyLinearEmbeddingWrapper">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">geogenie.utils.scorers.</span></span><span class="sig-name descname"><span class="pre">LocallyLinearEmbeddingWrapper</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_neighbors</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_components</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reg</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.001</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">eigen_solver</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'auto'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tol</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1e-06</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_iter</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">method</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'standard'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hessian_tol</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0001</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">modified_tol</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1e-12</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">neighbors_algorithm</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'auto'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">random_state</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_jobs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/scorers.html#LocallyLinearEmbeddingWrapper"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.scorers.LocallyLinearEmbeddingWrapper" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference external" href="https://scikit-learn.org/stable/modules/generated/sklearn.manifold.LocallyLinearEmbedding.html#sklearn.manifold.LocallyLinearEmbedding" title="(in scikit-learn v1.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">LocallyLinearEmbedding</span></code></a></p>
+<p>Wrapper class for LocallyLinearEmbedding to allow for prediction.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.utils.scorers.LocallyLinearEmbeddingWrapper._sklearn_auto_wrap_output_keys">
+<span class="sig-name descname"><span class="pre">_sklearn_auto_wrap_output_keys</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{'transform'}</span></em><a class="headerlink" href="#geogenie.utils.scorers.LocallyLinearEmbeddingWrapper._sklearn_auto_wrap_output_keys" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.scorers.LocallyLinearEmbeddingWrapper.lle_reconstruction_scorer">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">lle_reconstruction_scorer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">estimator</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">X</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">y</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/scorers.html#LocallyLinearEmbeddingWrapper.lle_reconstruction_scorer"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.scorers.LocallyLinearEmbeddingWrapper.lle_reconstruction_scorer" title="Link to this definition"></a></dt>
+<dd><p>Compute the negative reconstruction error for an LLE model to use as a scorer.
+GridSearchCV assumes that higher score values are better, so the reconstruction
+error is negated.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>estimator</strong> (<em>LocallyLinearEmbedding</em>) – Fitted LLE model.</p></li>
+<li><p><strong>X</strong> (<em>numpy.ndarray</em>) – Original high-dimensional data.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Negative reconstruction error.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.scorers.LocallyLinearEmbeddingWrapper.predict">
+<span class="sig-name descname"><span class="pre">predict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">X</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/scorers.html#LocallyLinearEmbeddingWrapper.predict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.scorers.LocallyLinearEmbeddingWrapper.predict" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.utils.scorers.calculate_r2_knn">
+<span class="sig-prename descclassname"><span class="pre">geogenie.utils.scorers.</span></span><span class="sig-name descname"><span class="pre">calculate_r2_knn</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">predicted_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">actual_data</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/scorers.html#calculate_r2_knn"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.scorers.calculate_r2_knn" title="Link to this definition"></a></dt>
+<dd><p>Calculate the coefficient of determination (R^2) for predictions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>predicted_data</strong> (<em>np.array</em>) – Predicted data from KNN.</p></li>
+<li><p><strong>actual_data</strong> (<em>np.array</em>) – Actual data.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>R^2 value.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.utils.scorers.calculate_rmse">
+<span class="sig-prename descclassname"><span class="pre">geogenie.utils.scorers.</span></span><span class="sig-name descname"><span class="pre">calculate_rmse</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">preds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">targets</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/scorers.html#calculate_rmse"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.scorers.calculate_rmse" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.utils.scorers.haversine_distance">
+<span class="sig-prename descclassname"><span class="pre">geogenie.utils.scorers.</span></span><span class="sig-name descname"><span class="pre">haversine_distance</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">coord1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">coord2</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/scorers.html#haversine_distance"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.scorers.haversine_distance" title="Link to this definition"></a></dt>
+<dd><p>Calculate the Haversine distance between two geographic coordinate points.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>coord1</strong> (<em>tuple</em>) – Latitude and longitude for each point.</p></li>
+<li><p><strong>coord2</strong> (<em>tuple</em>) – Latitude and longitude for each point.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Distance in kilometers.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.utils.scorers.kstest">
+<span class="sig-prename descclassname"><span class="pre">geogenie.utils.scorers.</span></span><span class="sig-name descname"><span class="pre">kstest</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">y_true</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">y_pred</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_weight</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/scorers.html#kstest"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.scorers.kstest" title="Link to this definition"></a></dt>
+<dd><p>Perform the Kolmogorov-Smirnov test on the Haversine errors.</p>
+</dd></dl>
+
+</section>
+<section id="module-geogenie.utils.spatial_data_processors">
+<span id="geogenie-utils-spatial-data-processors-module"></span><h2>geogenie.utils.spatial_data_processors module<a class="headerlink" href="#module-geogenie.utils.spatial_data_processors" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="geogenie.utils.spatial_data_processors.SpatialDataProcessor">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">geogenie.utils.spatial_data_processors.</span></span><span class="sig-name descname"><span class="pre">SpatialDataProcessor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">output_dir</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">basemap_fips</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">crs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'EPSG:4326'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">logger</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/spatial_data_processors.html#SpatialDataProcessor"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.spatial_data_processors.SpatialDataProcessor" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Spatial data processing class.</p>
+<p>This class provides a set of tools for processing spatial data, including calculating statistics, distances, and clustering.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.utils.spatial_data_processors.SpatialDataProcessor.tmpdir">
+<span class="sig-name descname"><span class="pre">tmpdir</span></span><a class="headerlink" href="#geogenie.utils.spatial_data_processors.SpatialDataProcessor.tmpdir" title="Link to this definition"></a></dt>
+<dd><p>Temporary directory for shapefiles.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Path</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.utils.spatial_data_processors.SpatialDataProcessor.output_dir">
+<span class="sig-name descname"><span class="pre">output_dir</span></span><a class="headerlink" href="#geogenie.utils.spatial_data_processors.SpatialDataProcessor.output_dir" title="Link to this definition"></a></dt>
+<dd><p>Output directory for shapefiles.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Path</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.utils.spatial_data_processors.SpatialDataProcessor.basemap_fips">
+<span class="sig-name descname"><span class="pre">basemap_fips</span></span><a class="headerlink" href="#geogenie.utils.spatial_data_processors.SpatialDataProcessor.basemap_fips" title="Link to this definition"></a></dt>
+<dd><p>FIPS code for the base map.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.utils.spatial_data_processors.SpatialDataProcessor.crs">
+<span class="sig-name descname"><span class="pre">crs</span></span><a class="headerlink" href="#geogenie.utils.spatial_data_processors.SpatialDataProcessor.crs" title="Link to this definition"></a></dt>
+<dd><p>Coordinate reference system.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.utils.spatial_data_processors.SpatialDataProcessor.logger">
+<span class="sig-name descname"><span class="pre">logger</span></span><a class="headerlink" href="#geogenie.utils.spatial_data_processors.SpatialDataProcessor.logger" title="Link to this definition"></a></dt>
+<dd><p>Logger object.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>logging.Logger</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.spatial_data_processors.SpatialDataProcessor._ensure_is_gdf">
+<span class="sig-name descname"><span class="pre">_ensure_is_gdf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">gdf</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/spatial_data_processors.html#SpatialDataProcessor._ensure_is_gdf"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.spatial_data_processors.SpatialDataProcessor._ensure_is_gdf" title="Link to this definition"></a></dt>
+<dd><p>Ensure the data is a GeoPandas GeoDataFrame.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>gdf</strong> (<em>geopandas.GeoDataFrame</em>) – GeoDataFrame to validate.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Validated GeoDataFrame.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>geopandas.GeoDataFrame</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>TypeError</strong> – If the data is not a valid format.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.spatial_data_processors.SpatialDataProcessor._ensure_is_numpy">
+<span class="sig-name descname"><span class="pre">_ensure_is_numpy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">X</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/spatial_data_processors.html#SpatialDataProcessor._ensure_is_numpy"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.spatial_data_processors.SpatialDataProcessor._ensure_is_numpy" title="Link to this definition"></a></dt>
+<dd><p>Ensure the data is a NumPy array.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>X</strong> (<em>np.ndarray</em>) – Data to validate.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Validated NumPy array.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>np.ndarray</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>TypeError</strong> – If the data is not a valid format.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.spatial_data_processors.SpatialDataProcessor._ensure_is_pandas">
+<span class="sig-name descname"><span class="pre">_ensure_is_pandas</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/spatial_data_processors.html#SpatialDataProcessor._ensure_is_pandas"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.spatial_data_processors.SpatialDataProcessor._ensure_is_pandas" title="Link to this definition"></a></dt>
+<dd><p>Ensure the data is a Pandas DataFrame.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>df</strong> (<em>pandas.DataFrame</em>) – Data to validate.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Validated DataFrame.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>pandas.DataFrame</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>TypeError</strong> – If the data is not a valid format.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.spatial_data_processors.SpatialDataProcessor._validate_dists">
+<span class="sig-name descname"><span class="pre">_validate_dists</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">err</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/spatial_data_processors.html#SpatialDataProcessor._validate_dists"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.spatial_data_processors.SpatialDataProcessor._validate_dists" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.spatial_data_processors.SpatialDataProcessor.calculate_bounding_box">
+<span class="sig-name descname"><span class="pre">calculate_bounding_box</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">gdf</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/spatial_data_processors.html#SpatialDataProcessor.calculate_bounding_box"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.spatial_data_processors.SpatialDataProcessor.calculate_bounding_box" title="Link to this definition"></a></dt>
+<dd><p>Calculate the bounding box for the dataset.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.spatial_data_processors.SpatialDataProcessor.calculate_convex_hull">
+<span class="sig-name descname"><span class="pre">calculate_convex_hull</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">gdf</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/spatial_data_processors.html#SpatialDataProcessor.calculate_convex_hull"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.spatial_data_processors.SpatialDataProcessor.calculate_convex_hull" title="Link to this definition"></a></dt>
+<dd><p>Calculate the convex hull of all points.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.spatial_data_processors.SpatialDataProcessor.calculate_statistics">
+<span class="sig-name descname"><span class="pre">calculate_statistics</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">gdf</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_boots</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">known_coords</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/spatial_data_processors.html#SpatialDataProcessor.calculate_statistics"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.spatial_data_processors.SpatialDataProcessor.calculate_statistics" title="Link to this definition"></a></dt>
+<dd><p>Calculate statistics on properly projected data.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.spatial_data_processors.SpatialDataProcessor.detect_clusters">
+<span class="sig-name descname"><span class="pre">detect_clusters</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">gdf</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">eps</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_samples</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/spatial_data_processors.html#SpatialDataProcessor.detect_clusters"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.spatial_data_processors.SpatialDataProcessor.detect_clusters" title="Link to this definition"></a></dt>
+<dd><p>Detect clusters using DBSCAN.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.spatial_data_processors.SpatialDataProcessor.detect_outliers">
+<span class="sig-name descname"><span class="pre">detect_outliers</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">gdf</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/spatial_data_processors.html#SpatialDataProcessor.detect_outliers"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.spatial_data_processors.SpatialDataProcessor.detect_outliers" title="Link to this definition"></a></dt>
+<dd><p>Identify outliers based on distance from the mean.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.spatial_data_processors.SpatialDataProcessor.extract_basemap_path_url">
+<span class="sig-name descname"><span class="pre">extract_basemap_path_url</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">url</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/spatial_data_processors.html#SpatialDataProcessor.extract_basemap_path_url"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.spatial_data_processors.SpatialDataProcessor.extract_basemap_path_url" title="Link to this definition"></a></dt>
+<dd><p>Extract base map from provided URL or file path.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>url</strong> (<em>str</em>) – URL or file path to extract base map from.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Extracted base map path or URL.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ValueError</strong> – If the base map FIPS code is not provided.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.spatial_data_processors.SpatialDataProcessor.geodesic_distance">
+<span class="sig-name descname"><span class="pre">geodesic_distance</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">coords1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">coords2</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/spatial_data_processors.html#SpatialDataProcessor.geodesic_distance"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.spatial_data_processors.SpatialDataProcessor.geodesic_distance" title="Link to this definition"></a></dt>
+<dd><p>Calculate geodesic distance between two sets of coordinates.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.spatial_data_processors.SpatialDataProcessor.haversine_distance">
+<span class="sig-name descname"><span class="pre">haversine_distance</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">coords1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">coords2</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/spatial_data_processors.html#SpatialDataProcessor.haversine_distance"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.spatial_data_processors.SpatialDataProcessor.haversine_distance" title="Link to this definition"></a></dt>
+<dd><p>Calculate haversine distance between two sets of points.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>coords1</strong> (<em>np.ndarray</em>) – First set of coordinates.</p></li>
+<li><p><strong>coords2</strong> (<em>np.ndarray</em>) – Second set of coordinates.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Haversine distance between coords1 and coords2.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>np.ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.spatial_data_processors.SpatialDataProcessor.haversine_error">
+<span class="sig-name descname"><span class="pre">haversine_error</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">point1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">point2</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/spatial_data_processors.html#SpatialDataProcessor.haversine_error"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.spatial_data_processors.SpatialDataProcessor.haversine_error" title="Link to this definition"></a></dt>
+<dd><p>Calculate the haversine error between two geographic points.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>point1</strong> (<em>float</em>) – First point to calculate error from.</p></li>
+<li><p><strong>point2</strong> (<em>float</em>) – Second point to calculate error from.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Haversine error between points 1 and 2.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>np.ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.spatial_data_processors.SpatialDataProcessor.nearest_neighbor">
+<span class="sig-name descname"><span class="pre">nearest_neighbor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">gdf</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/spatial_data_processors.html#SpatialDataProcessor.nearest_neighbor"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.spatial_data_processors.SpatialDataProcessor.nearest_neighbor" title="Link to this definition"></a></dt>
+<dd><p>Calculate the nearest neighbor for each point.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.spatial_data_processors.SpatialDataProcessor.spherical_mean">
+<span class="sig-name descname"><span class="pre">spherical_mean</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">gdf</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/spatial_data_processors.html#SpatialDataProcessor.spherical_mean"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.spatial_data_processors.SpatialDataProcessor.spherical_mean" title="Link to this definition"></a></dt>
+<dd><p>Calculate spherical mean of geographic points.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.spatial_data_processors.SpatialDataProcessor.to_geopandas">
+<span class="sig-name descname"><span class="pre">to_geopandas</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/spatial_data_processors.html#SpatialDataProcessor.to_geopandas"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.spatial_data_processors.SpatialDataProcessor.to_geopandas" title="Link to this definition"></a></dt>
+<dd><p>Convert DataFrame to GeoPandas GeoDataFrame with proper CRS.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>df</strong> (<em>pandas.DataFrame</em>) – DataFrame to convert to geopandas.GeoDataFrame.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Converted GeoDataFrame object.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>geopandas.GeoDataFrame</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.spatial_data_processors.SpatialDataProcessor.to_numpy">
+<span class="sig-name descname"><span class="pre">to_numpy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">gdf</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/spatial_data_processors.html#SpatialDataProcessor.to_numpy"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.spatial_data_processors.SpatialDataProcessor.to_numpy" title="Link to this definition"></a></dt>
+<dd><p>Convert GeoPandas GeoDataFrame to NumPy array.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>gdf</strong> (<em>geopandas.GeoDataFrame</em>) – GeoDataFrame to convert to numpy.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Converted numpy array.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>numpy.ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.spatial_data_processors.SpatialDataProcessor.to_pandas">
+<span class="sig-name descname"><span class="pre">to_pandas</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">gdf</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/spatial_data_processors.html#SpatialDataProcessor.to_pandas"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.spatial_data_processors.SpatialDataProcessor.to_pandas" title="Link to this definition"></a></dt>
+<dd><p>Convert GeoPandas GeoDataFrame to Pandas DataFrame.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>gdf</strong> (<em>geopandas.GeoDataFrame</em>) – GeoDataFrame to convert to pandas.DataFrame.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>pandas DataFrame object.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>pandas.DataFrame</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="module-geogenie.utils.transformers">
+<span id="geogenie-utils-transformers-module"></span><h2>geogenie.utils.transformers module<a class="headerlink" href="#module-geogenie.utils.transformers" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="geogenie.utils.transformers.MCA">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">geogenie.utils.transformers.</span></span><span class="sig-name descname"><span class="pre">MCA</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n_components</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_iter</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">10</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">check_input</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">random_state</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">one_hot</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">categories</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[0,</span> <span class="pre">1,</span> <span class="pre">2]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">epsilon</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1e-05</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/transformers.html#MCA"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.transformers.MCA" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference external" href="https://scikit-learn.org/stable/modules/generated/sklearn.base.BaseEstimator.html#sklearn.base.BaseEstimator" title="(in scikit-learn v1.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">BaseEstimator</span></code></a>, <a class="reference external" href="https://scikit-learn.org/stable/modules/generated/sklearn.base.TransformerMixin.html#sklearn.base.TransformerMixin" title="(in scikit-learn v1.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">TransformerMixin</span></code></a></p>
+<p>Class to perform Multiple Correspondence Analayis (MCA).</p>
+<p>This class performs Multiple Correspondence Analysis (MCA) on the input data.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.utils.transformers.MCA.n_components">
+<span class="sig-name descname"><span class="pre">n_components</span></span><a class="headerlink" href="#geogenie.utils.transformers.MCA.n_components" title="Link to this definition"></a></dt>
+<dd><p>Number of MCA components to output.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.utils.transformers.MCA.n_iter">
+<span class="sig-name descname"><span class="pre">n_iter</span></span><a class="headerlink" href="#geogenie.utils.transformers.MCA.n_iter" title="Link to this definition"></a></dt>
+<dd><p>Number of randomized SVD iterations to perform.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.utils.transformers.MCA.check_input">
+<span class="sig-name descname"><span class="pre">check_input</span></span><a class="headerlink" href="#geogenie.utils.transformers.MCA.check_input" title="Link to this definition"></a></dt>
+<dd><p>Whether to check input data for conformity.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bool</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.utils.transformers.MCA.random_state">
+<span class="sig-name descname"><span class="pre">random_state</span></span><a class="headerlink" href="#geogenie.utils.transformers.MCA.random_state" title="Link to this definition"></a></dt>
+<dd><p>Random state for reproducibility.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int or None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.utils.transformers.MCA.one_hot">
+<span class="sig-name descname"><span class="pre">one_hot</span></span><a class="headerlink" href="#geogenie.utils.transformers.MCA.one_hot" title="Link to this definition"></a></dt>
+<dd><p>Flag for one-hot encoding the input data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bool</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.utils.transformers.MCA.categories">
+<span class="sig-name descname"><span class="pre">categories</span></span><a class="headerlink" href="#geogenie.utils.transformers.MCA.categories" title="Link to this definition"></a></dt>
+<dd><p>Possible categories in input features.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.utils.transformers.MCA.epsilon">
+<span class="sig-name descname"><span class="pre">epsilon</span></span><a class="headerlink" href="#geogenie.utils.transformers.MCA.epsilon" title="Link to this definition"></a></dt>
+<dd><p>Small value to prevent division by 0.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.utils.transformers.MCA.logger">
+<span class="sig-name descname"><span class="pre">logger</span></span><a class="headerlink" href="#geogenie.utils.transformers.MCA.logger" title="Link to this definition"></a></dt>
+<dd><p>Logger object for the class</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>logging.Logger</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.transformers.MCA._compute_S_matrix">
+<span class="sig-name descname"><span class="pre">_compute_S_matrix</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">X</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/transformers.html#MCA._compute_S_matrix"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.transformers.MCA._compute_S_matrix" title="Link to this definition"></a></dt>
+<dd><p>Compute the S matrix.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>X</strong> (<em>np.ndarray</em>) – The input data.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The S matrix</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>sp.spmatrix</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.transformers.MCA._normalize_data">
+<span class="sig-name descname"><span class="pre">_normalize_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">X</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/transformers.html#MCA._normalize_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.transformers.MCA._normalize_data" title="Link to this definition"></a></dt>
+<dd><p>Normalize the input data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>X</strong> (<em>np.ndarray</em>) – Array to normalize.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Normalized array.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>np.ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.utils.transformers.MCA._sklearn_auto_wrap_output_keys">
+<span class="sig-name descname"><span class="pre">_sklearn_auto_wrap_output_keys</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{'transform'}</span></em><a class="headerlink" href="#geogenie.utils.transformers.MCA._sklearn_auto_wrap_output_keys" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.transformers.MCA._store_results">
+<span class="sig-name descname"><span class="pre">_store_results</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/transformers.html#MCA._store_results"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.transformers.MCA._store_results" title="Link to this definition"></a></dt>
+<dd><p>Store the results of the MCA.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.transformers.MCA.fit">
+<span class="sig-name descname"><span class="pre">fit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">X</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">y</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/transformers.html#MCA.fit"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.transformers.MCA.fit" title="Link to this definition"></a></dt>
+<dd><p>Fit the input data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>X</strong> (<em>np.ndarray</em>) – Array to fit.</p></li>
+<li><p><strong>y</strong> (<em>None</em><em>, </em><em>optional</em>) – Ignored. This parameter exists only for compatibility with the sklearn API.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.transformers.MCA.transform">
+<span class="sig-name descname"><span class="pre">transform</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">X</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/transformers.html#MCA.transform"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.transformers.MCA.transform" title="Link to this definition"></a></dt>
+<dd><p>Transform input data X using MCA.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>X</strong> (<em>np.ndarray</em>) – Array to transform.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="geogenie.utils.transformers.MinMaxScalerGeo">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">geogenie.utils.transformers.</span></span><span class="sig-name descname"><span class="pre">MinMaxScalerGeo</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">lat_range</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">(-90,</span> <span class="pre">90)</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lon_range</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">(-180,</span> <span class="pre">180)</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale_min</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale_max</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/transformers.html#MinMaxScalerGeo"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.transformers.MinMaxScalerGeo" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference external" href="https://scikit-learn.org/stable/modules/generated/sklearn.base.BaseEstimator.html#sklearn.base.BaseEstimator" title="(in scikit-learn v1.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">BaseEstimator</span></code></a>, <a class="reference external" href="https://scikit-learn.org/stable/modules/generated/sklearn.base.TransformerMixin.html#sklearn.base.TransformerMixin" title="(in scikit-learn v1.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">TransformerMixin</span></code></a></p>
+<p>Class to scale geographic coordinates to a specified range.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.utils.transformers.MinMaxScalerGeo.lat_range">
+<span class="sig-name descname"><span class="pre">lat_range</span></span><a class="headerlink" href="#geogenie.utils.transformers.MinMaxScalerGeo.lat_range" title="Link to this definition"></a></dt>
+<dd><p>Minimum and maximum values for latitude.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.utils.transformers.MinMaxScalerGeo.lon_range">
+<span class="sig-name descname"><span class="pre">lon_range</span></span><a class="headerlink" href="#geogenie.utils.transformers.MinMaxScalerGeo.lon_range" title="Link to this definition"></a></dt>
+<dd><p>Minimum and maximum values for longitude.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.utils.transformers.MinMaxScalerGeo.scale_min">
+<span class="sig-name descname"><span class="pre">scale_min</span></span><a class="headerlink" href="#geogenie.utils.transformers.MinMaxScalerGeo.scale_min" title="Link to this definition"></a></dt>
+<dd><p>Minimum value of the scaled range.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.utils.transformers.MinMaxScalerGeo.scale_max">
+<span class="sig-name descname"><span class="pre">scale_max</span></span><a class="headerlink" href="#geogenie.utils.transformers.MinMaxScalerGeo.scale_max" title="Link to this definition"></a></dt>
+<dd><p>Maximum value of the scaled range.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.utils.transformers.MinMaxScalerGeo.logger">
+<span class="sig-name descname"><span class="pre">logger</span></span><a class="headerlink" href="#geogenie.utils.transformers.MinMaxScalerGeo.logger" title="Link to this definition"></a></dt>
+<dd><p>Logger object for the class.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>logging.Logger</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="geogenie.utils.transformers.MinMaxScalerGeo._sklearn_auto_wrap_output_keys">
+<span class="sig-name descname"><span class="pre">_sklearn_auto_wrap_output_keys</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{'transform'}</span></em><a class="headerlink" href="#geogenie.utils.transformers.MinMaxScalerGeo._sklearn_auto_wrap_output_keys" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.transformers.MinMaxScalerGeo.fit">
+<span class="sig-name descname"><span class="pre">fit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">X</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">y</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/transformers.html#MinMaxScalerGeo.fit"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.transformers.MinMaxScalerGeo.fit" title="Link to this definition"></a></dt>
+<dd><p>Fit does nothing as parameters are not data-dependent.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>X</strong> (<em>array-like</em>) – The data to fit. Ignored. This parameter exists only for compatibility with the sklearn API.</p></li>
+<li><p><strong>y</strong> (<em>None</em><em>, </em><em>optional</em>) – Ignored. This parameter exists only for compatibility with the sklearn API.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Returns the instance itself.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>self</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.transformers.MinMaxScalerGeo.inverse_transform">
+<span class="sig-name descname"><span class="pre">inverse_transform</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">X_scaled</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/transformers.html#MinMaxScalerGeo.inverse_transform"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.transformers.MinMaxScalerGeo.inverse_transform" title="Link to this definition"></a></dt>
+<dd><p>Scale back the coordinates to their original range.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>X_scaled</strong> (<em>array-like</em>) – The scaled coordinates to revert.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Original geographic coordinates.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>np.array</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.transformers.MinMaxScalerGeo.set_inverse_transform_request">
+<span class="sig-name descname"><span class="pre">set_inverse_transform_request</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">X_scaled</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'$UNCHANGED$'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#geogenie.utils.transformers.MinMaxScalerGeo" title="geogenie.utils.transformers.MinMaxScalerGeo"><span class="pre">MinMaxScalerGeo</span></a></span></span><a class="headerlink" href="#geogenie.utils.transformers.MinMaxScalerGeo.set_inverse_transform_request" title="Link to this definition"></a></dt>
+<dd><p>Request metadata passed to the <code class="docutils literal notranslate"><span class="pre">inverse_transform</span></code> method.</p>
+<p>Note that this method is only relevant if
+<code class="docutils literal notranslate"><span class="pre">enable_metadata_routing=True</span></code> (see <a class="reference external" href="https://scikit-learn.org/stable/modules/generated/sklearn.set_config.html#sklearn.set_config" title="(in scikit-learn v1.6)"><code class="xref py py-func docutils literal notranslate"><span class="pre">sklearn.set_config()</span></code></a>).
+Please see <a class="reference external" href="https://scikit-learn.org/stable/metadata_routing.html#metadata-routing" title="(in scikit-learn v1.6)"><span class="xref std std-ref">User Guide</span></a> on how the routing
+mechanism works.</p>
+<p>The options for each parameter are:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">True</span></code>: metadata is requested, and passed to <code class="docutils literal notranslate"><span class="pre">inverse_transform</span></code> if provided. The request is ignored if metadata is not provided.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">False</span></code>: metadata is not requested and the meta-estimator will not pass it to <code class="docutils literal notranslate"><span class="pre">inverse_transform</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">None</span></code>: metadata is not requested, and the meta-estimator will raise an error if the user provides it.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">str</span></code>: metadata should be passed to the meta-estimator with this given alias instead of the original name.</p></li>
+</ul>
+<p>The default (<code class="docutils literal notranslate"><span class="pre">sklearn.utils.metadata_routing.UNCHANGED</span></code>) retains the
+existing request. This allows you to change the request for some
+parameters and not others.</p>
+<div class="versionadded">
+<p><span class="versionmodified added">Added in version 1.3.</span></p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This method is only relevant if this estimator is used as a
+sub-estimator of a meta-estimator, e.g. used inside a
+<a class="reference external" href="https://scikit-learn.org/stable/modules/generated/sklearn.pipeline.Pipeline.html#sklearn.pipeline.Pipeline" title="(in scikit-learn v1.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Pipeline</span></code></a>. Otherwise it has no effect.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>X_scaled</strong> (<em>str</em><em>, </em><em>True</em><em>, </em><em>False</em><em>, or </em><em>None</em><em>,                     </em><em>default=sklearn.utils.metadata_routing.UNCHANGED</em>) – Metadata routing for <code class="docutils literal notranslate"><span class="pre">X_scaled</span></code> parameter in <code class="docutils literal notranslate"><span class="pre">inverse_transform</span></code>.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>self</strong> – The updated object.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>object</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="geogenie.utils.transformers.MinMaxScalerGeo.transform">
+<span class="sig-name descname"><span class="pre">transform</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">X</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/transformers.html#MinMaxScalerGeo.transform"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.transformers.MinMaxScalerGeo.transform" title="Link to this definition"></a></dt>
+<dd><p>Scale the geographic coordinates based on the provided ranges.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>X</strong> (<em>array-like</em>) – The input coordinates to transform. Expected shape (n_samples, 2) where
+X[:, 0] should be longitude and X[:, 1] should be latitude.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Transformed coordinates, where each feature is scaled to [scale_min, scale_max].</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>np.array</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="module-geogenie.utils.utils">
+<span id="geogenie-utils-utils-module"></span><h2>geogenie.utils.utils module<a class="headerlink" href="#module-geogenie.utils.utils" title="Link to this heading"></a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.utils.utils.assign_to_bins">
+<span class="sig-prename descclassname"><span class="pre">geogenie.utils.utils.</span></span><span class="sig-name descname"><span class="pre">assign_to_bins</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">long_col</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lat_col</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_bins</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">method</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'optics'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_samples</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">random_state</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/utils.html#assign_to_bins"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.utils.assign_to_bins" title="Link to this definition"></a></dt>
+<dd><p>Assign longitude and latitude coordinates to bins based on K-Means or DBSCAN clustering.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>df</strong> (<em>pd.DataFrame</em>) – DataFrame containing longitude and latitude columns.</p></li>
+<li><p><strong>long_col</strong> (<em>str</em>) – Name of the column containing longitude values.</p></li>
+<li><p><strong>lat_col</strong> (<em>str</em>) – Name of the column containing latitude values.</p></li>
+<li><p><strong>n_bins</strong> (<em>int</em>) – Number of bins (clusters) for KMeans or minimum samples for OPTICS.</p></li>
+<li><p><strong>method</strong> (<em>str</em>) – Clustering method (‘kmeans’ or ‘optics’). Defaults to ‘optics’.</p></li>
+<li><p><strong>min_samples</strong> (<em>int</em>) – Minimum number of samples for OPTICS. Defaults to None (4).</p></li>
+<li><p><strong>random_state</strong> (<em>int</em><em> or </em><em>RandomState</em>) – Random seed or state for reproducibility. Defaults to None (new seed each time).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Numpy array with bin indices indicating the bin assignment.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>np.ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.utils.utils.check_column_dtype">
+<span class="sig-prename descclassname"><span class="pre">geogenie.utils.utils.</span></span><span class="sig-name descname"><span class="pre">check_column_dtype</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">column_name</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/utils.html#check_column_dtype"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.utils.check_column_dtype" title="Link to this definition"></a></dt>
+<dd><p>Check if a DataFrame column is string dtype or numeric dtype.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>df</strong> (<em>pd.DataFrame</em>) – The DataFrame to check.</p></li>
+<li><p><strong>column_name</strong> (<em>str</em>) – The name of the column to check.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>‘string’ if the column is of string dtype, ‘numeric’ if the column is of numeric dtype, otherwise ‘other’.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.utils.utils.detect_separator">
+<span class="sig-prename descclassname"><span class="pre">geogenie.utils.utils.</span></span><span class="sig-name descname"><span class="pre">detect_separator</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/utils.html#detect_separator"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.utils.detect_separator" title="Link to this definition"></a></dt>
+<dd><p>Detects the separator used in a CSV file by reading the first line.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>file_path</strong> (<em>str</em>) – Path to the CSV file.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The detected separator (one of ‘,’, ‘      ‘, or ‘ ‘).</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.utils.utils.geo_coords_is_valid">
+<span class="sig-prename descclassname"><span class="pre">geogenie.utils.utils.</span></span><span class="sig-name descname"><span class="pre">geo_coords_is_valid</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">coordinates</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/utils.html#geo_coords_is_valid"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.utils.geo_coords_is_valid" title="Link to this definition"></a></dt>
+<dd><p>Validates that a given NumPy array contains valid geographic coordinates.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>coordinates</strong> (<em>np.ndarray</em>) – A NumPy array of shape (n_samples, 2) where the first column is longitude and the second is latitude.</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ValueError</strong> – If the array shape is not (n_samples, 2), or if the longitude and latitude values are not in their respective valid ranges.</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>True if the validation passes, indicating the coordinates are valid.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>bool</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.utils.utils.get_iupac_dict">
+<span class="sig-prename descclassname"><span class="pre">geogenie.utils.utils.</span></span><span class="sig-name descname"><span class="pre">get_iupac_dict</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/utils.html#get_iupac_dict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.utils.get_iupac_dict" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.utils.utils.read_csv_with_dynamic_sep">
+<span class="sig-prename descclassname"><span class="pre">geogenie.utils.utils.</span></span><span class="sig-name descname"><span class="pre">read_csv_with_dynamic_sep</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/utils.html#read_csv_with_dynamic_sep"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.utils.read_csv_with_dynamic_sep" title="Link to this definition"></a></dt>
+<dd><p>Reads a CSV file with a dynamically detected separator, replacing spaces with tabs in-memory.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>file_path</strong> (<em>str</em>) – Path to the CSV file.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The DataFrame containing the CSV data.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>pd.DataFrame</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.utils.utils.time_limit">
+<span class="sig-prename descclassname"><span class="pre">geogenie.utils.utils.</span></span><span class="sig-name descname"><span class="pre">time_limit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">seconds</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/utils.html#time_limit"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.utils.time_limit" title="Link to this definition"></a></dt>
+<dd><p>Context manager to terminate execution of anything within the context. If <code class="docutils literal notranslate"><span class="pre">seconds</span></code> are exceeded in terms of execution time, then the code within the context gets skipped.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="geogenie.utils.utils.validate_is_numpy">
+<span class="sig-prename descclassname"><span class="pre">geogenie.utils.utils.</span></span><span class="sig-name descname"><span class="pre">validate_is_numpy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">features</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">labels</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_weights</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/geogenie/utils/utils.html#validate_is_numpy"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#geogenie.utils.utils.validate_is_numpy" title="Link to this definition"></a></dt>
+<dd><p>Ensure that features, labels, and sample_weights are numpy arrays and not PyTorch Tensors.</p>
+</dd></dl>
+
+</section>
+<section id="module-geogenie.utils">
+<span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-geogenie.utils" title="Link to this heading"></a></h2>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="geogenie.plotting.html" class="btn btn-neutral float-left" title="geogenie.plotting package" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Bradley T. Martin and Tyler K. Chafin.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

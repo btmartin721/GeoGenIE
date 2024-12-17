@@ -1,0 +1,769 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GeoGenIE Tutorial &mdash; GeoGenIE 1.0.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=292eb321"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="geogenie package" href="geogenie.html" />
+    <link rel="prev" title="GeoGenIE documentation" href="index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            GeoGenIE
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">GeoGenIE Tutorial</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#introduction">Introduction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#features-at-a-glance">Features at a Glance</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#deep-learning-model-architecture">Deep Learning Model Architecture</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#installation">Installation</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#steps-to-install-geogenie">Steps to Install GeoGenIE</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#dependencies">Dependencies</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#usage">Usage</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#running-geogenie">Running GeoGenIE</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#configuration-file-format">Configuration File Format</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#input-files">Input Files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#algorithms-to-mitigate-sampling-imbalance">Algorithms to Mitigate Sampling Imbalance</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#features-and-settings">Features and Settings</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#data-input-and-preprocessing">Data Input and Preprocessing</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#model-configuration">Model Configuration</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#tips">Tips:</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#training-parameters">Training Parameters</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#outlier-detection">Outlier Detection</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#bootstrapping">Bootstrapping</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#hyperparameter-optimization">Hyperparameter Optimization</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#plot-settings">Plot Settings</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#plot-examples">Plot Examples</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#output-files">Output Files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#metric-descriptions">Metric Descriptions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#conclusion">Conclusion</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#glossary">Glossary</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#references">References</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="geogenie.html">geogenie package</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">GeoGenIE</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">GeoGenIE Tutorial</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/tutorial.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="geogenie-tutorial">
+<h1>GeoGenIE Tutorial<a class="headerlink" href="#geogenie-tutorial" title="Link to this heading"></a></h1>
+<section id="introduction">
+<h2>Introduction<a class="headerlink" href="#introduction" title="Link to this heading"></a></h2>
+<p>Welcome to the GeoGenIE tutorial! This guide will help you install and run GeoGenIE, a tool for predicting geographic provenance from genetic SNP data. GeoGenIE uses deep learning models to infer latitude and longitude origins from genetic data, addressing challenges like sampling imbalance and outliers.</p>
+<p>GeoGenIE (Geographic-Genetic Inference Engine) is a sophisticated tool designed for predicting geographic provenance (i.e., latitude and longitude origin) from genetic SNP data using deep learning models. It incorporates advanced features such as:</p>
+<ul class="simple">
+<li><p><strong>Automated model parameter optimization</strong> using Optuna <span id="id1"><sup><a class="reference internal" href="#id6" title="T. Akiba, S. Sano, T. Yanase, T. Ohta, and M. Koyama. Optuna: a next-generation hyperparameter optimization framework. In Proceedings of the 25th ACM SIGKDD International Conference on Knowledge Discovery &amp; Data Mining. 2020. doi:10.1145/3292500.3330701.">1</a></sup></span>. Optuna tunes hyperparameters to improve model performance. The parameter search is parallelized for faster optimization.</p></li>
+<li><p><strong>Outlier detection</strong> using the algorithm adapted from GGOutlieR <span id="id2"><sup><a class="reference internal" href="#id8" title="C. Chang and K. Schmid. Ggoutlier: an r package to identify and visualize unusual geo-genetic patterns. Journal of Open Source Software, 8(91):5687, 2023. doi:10.21105/joss.05687.">3</a></sup></span>.</p></li>
+<li><p><strong>Handling imbalanced sampling</strong> with regression-based synthetic oversampling, based on the SMOTE algorithm <span id="id3"><sup><a class="reference internal" href="#id9" title="N.V. Chawla, K.W. Bowyer, L.O. Hall, and W.P. Kegelmeyer. Smote: synthetic minority over-sampling technique. Journal of Artificial Intelligence Research, 16:321–357, 2002. doi:10.5555/1622407.1622416.">4</a></sup></span>, and weighted loss functions.</p></li>
+<li><p><strong>Effective Visualizations and metrics</strong> for evaluating predictions.</p></li>
+</ul>
+<p>GeoGenIE is tailored for researchers in population genetics and molecular ecology, addressing challenges like sampling imbalance and outliers while delivering robust geographic predictions.</p>
+</section>
+<section id="features-at-a-glance">
+<h2>Features at a Glance<a class="headerlink" href="#features-at-a-glance" title="Link to this heading"></a></h2>
+<p>GeoGenIE combines cutting-edge methodologies to deliver accurate and reproducible results. Key features include:</p>
+<ul class="simple">
+<li><p><strong>Scalable Architecture:</strong> Capable of handling large-scale SNP datasets with thousands of samples.</p></li>
+<li><p><strong>Geospatial Mapping:</strong> Provides informative maps of predicted versus actual sample locations.</p></li>
+<li><p><strong>Customizable Outputs:</strong> Supports tailored metrics and visualizations based on user-defined parameters.</p></li>
+<li><p><strong>Parallelized Bootstrapping:</strong> Offers built-in methods for robust model validation and uncertainty estimation. Bootstrapping is parallelized for faster execution.</p></li>
+</ul>
+</section>
+<section id="deep-learning-model-architecture">
+<h2>Deep Learning Model Architecture<a class="headerlink" href="#deep-learning-model-architecture" title="Link to this heading"></a></h2>
+<p>GeoGenIE’s deep learning architecture builds on Locator <span id="id4"><sup><a class="reference internal" href="#id7" title="C.J. Battey, P.L. Ralph, and A.D. Kern. Predicting geographic location from genetic variation with deep neural networks. eLife, 9:e54507, 2020. doi:10.7554/eLife.54507.">2</a></sup></span>, leveraging the flexibility of PyTorch. It incorporates:</p>
+<ul class="simple">
+<li><p><strong>Dynamic Neural Network Architecture:</strong> Configurable hidden layers with progressive reduction controlled by <cite>–factor</cite>.</p></li>
+<li><p><strong>Regularization Techniques:</strong> Includes dropout, batch normalization, and L2 regularization to enhance model generalizability.</p></li>
+<li><p><strong>Custom Loss Functions:</strong> Supports RMSE, Huber, and DRMS Loss to address specific prediction challenges.</p></li>
+</ul>
+</section>
+<section id="installation">
+<h2>Installation<a class="headerlink" href="#installation" title="Link to this heading"></a></h2>
+<section id="steps-to-install-geogenie">
+<h3>Steps to Install GeoGenIE<a class="headerlink" href="#steps-to-install-geogenie" title="Link to this heading"></a></h3>
+<ol class="arabic">
+<li><dl>
+<dt><strong>Create a virtual or conda environment:</strong></dt><dd><div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>venv<span class="w"> </span>geogenie_env
+<span class="nb">source</span><span class="w"> </span>geogenie_env/bin/activate
+</pre></div>
+</div>
+</dd>
+</dl>
+</li>
+<li><dl>
+<dt><strong>Install GeoGenIE:</strong></dt><dd><div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>.
+</pre></div>
+</div>
+</dd>
+</dl>
+</li>
+</ol>
+</section>
+<section id="dependencies">
+<h3>Dependencies<a class="headerlink" href="#dependencies" title="Link to this heading"></a></h3>
+<p>Dependencies like PyTorch, geopandas, scikit-learn, matplotlib, scipy, pykrige, numpy, and many others are automatically installed. Ensure Python ≥ 3.11 is used.</p>
+</section>
+</section>
+<section id="usage">
+<h2>Usage<a class="headerlink" href="#usage" title="Link to this heading"></a></h2>
+<section id="running-geogenie">
+<h3>Running GeoGenIE<a class="headerlink" href="#running-geogenie" title="Link to this heading"></a></h3>
+<p>GeoGenIE can be run via:</p>
+<ul>
+<li><dl>
+<dt><strong>YAML Configuration File</strong> (recommended):</dt><dd><div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>geogenie<span class="w"> </span>--config<span class="w"> </span>config_files/config.yaml
+</pre></div>
+</div>
+</dd>
+</dl>
+</li>
+<li><dl>
+<dt><strong>Command-Line Arguments:</strong></dt><dd><div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>geogenie<span class="w"> </span>--vcf<span class="w"> </span>&lt;vcf_file&gt;<span class="w"> </span>--sample_data<span class="w"> </span>&lt;coordinates_file&gt;
+</pre></div>
+</div>
+</dd>
+</dl>
+</li>
+</ul>
+<p>Run <code class="docutils literal notranslate"><span class="pre">geogenie</span> <span class="pre">-h</span></code> to see all available arguments.</p>
+</section>
+<section id="configuration-file-format">
+<h3>Configuration File Format<a class="headerlink" href="#configuration-file-format" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p>Boolean values: <code class="docutils literal notranslate"><span class="pre">true</span></code> or <code class="docutils literal notranslate"><span class="pre">false</span></code>.</p></li>
+<li><p><cite>None</cite> values: <code class="docutils literal notranslate"><span class="pre">null</span></code>.</p></li>
+</ul>
+</section>
+</section>
+<section id="input-files">
+<h2>Input Files<a class="headerlink" href="#input-files" title="Link to this heading"></a></h2>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p><strong>Argument</strong></p></th>
+<th class="head"><p><strong>Description</strong></p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>vcf</strong></p></td>
+<td><p>VCF file with SNP data.</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>sample_data</strong></p></td>
+<td><p>CSV/TSV file with sample coordinates (sampleID, x, y).
+Unknowns as <code class="docutils literal notranslate"><span class="pre">nan</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>known_coords_file</strong></p></td>
+<td><p>File with known coordinates for samples.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="algorithms-to-mitigate-sampling-imbalance">
+<h2>Algorithms to Mitigate Sampling Imbalance<a class="headerlink" href="#algorithms-to-mitigate-sampling-imbalance" title="Link to this heading"></a></h2>
+<p>GeoGenIE addresses sampling imbalances with:</p>
+<ol class="arabic simple">
+<li><p><strong>Outlier Detection:</strong> Removes anomalous samples (e.g., due to translocations).</p></li>
+<li><p><strong>Weighted Loss Function:</strong> Focuses training on underrepresented regions.</p></li>
+<li><p><strong>Synthetic Oversampling:</strong> Creates synthetic samples in sparsely sampled areas.</p></li>
+</ol>
+</section>
+<section id="features-and-settings">
+<h2>Features and Settings<a class="headerlink" href="#features-and-settings" title="Link to this heading"></a></h2>
+<section id="data-input-and-preprocessing">
+<h3>Data Input and Preprocessing<a class="headerlink" href="#data-input-and-preprocessing" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p><strong>Option</strong></p></th>
+<th class="head"><p><strong>Description</strong></p></th>
+<th class="head"><p><strong>Default</strong></p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>min_mac</strong></p></td>
+<td><p>Filters SNPs with minor allele counts below a
+threshold.</p></td>
+<td><p>2</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>max_SNPs</strong></p></td>
+<td><p>Limits the number of SNPs used in analysis.</p></td>
+<td><p>Use all SNPs</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="model-configuration">
+<h3>Model Configuration<a class="headerlink" href="#model-configuration" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p><strong>Option</strong></p></th>
+<th class="head"><p><strong>Description</strong></p></th>
+<th class="head"><p><strong>Default</strong></p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>dropout_prop</strong></p></td>
+<td><p>Dropout rate to prevent overfitting.</p></td>
+<td><p>0.25</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>n_layers</strong></p></td>
+<td><p>Number of hidden layers in the neural network.</p></td>
+<td><p>10</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>width</strong></p></td>
+<td><p>Neurons per layer.</p></td>
+<td><p>256</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>criterion</strong></p></td>
+<td><p>Loss function (rmse, huber, drms).</p></td>
+<td><p>“rmse”</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="tips">
+<h3>Tips:<a class="headerlink" href="#tips" title="Link to this heading"></a></h3>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<ul class="simple">
+<li><p>Start with default settings. Then adjust based on model performance.</p></li>
+<li><p>Adjust <code class="docutils literal notranslate"><span class="pre">dropout_prop</span></code> for overfitting.</p></li>
+<li><p>Increase <code class="docutils literal notranslate"><span class="pre">n_layers</span></code> for complex data.</p></li>
+<li><p>Adjust <code class="docutils literal notranslate"><span class="pre">width</span></code> based on data complexity.</p></li>
+<li><p>Use <code class="docutils literal notranslate"><span class="pre">criterion</span></code> to select the loss function.</p></li>
+<li><p>Set <code class="docutils literal notranslate"><span class="pre">min_mac</span></code> based on data quality.</p></li>
+<li><p>Use <code class="docutils literal notranslate"><span class="pre">max_SNPs</span></code> to limit the number of SNPs.</p></li>
+<li><p>Use the <code class="docutils literal notranslate"><span class="pre">known_coords_file</span></code> to validate predictions. This file can be the same as the <code class="docutils literal notranslate"><span class="pre">sample_data</span></code> file.</p></li>
+</ul>
+</div>
+</section>
+<section id="training-parameters">
+<h3>Training Parameters<a class="headerlink" href="#training-parameters" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p><strong>Option</strong></p></th>
+<th class="head"><p><strong>Description</strong></p></th>
+<th class="head"><p><strong>Default</strong></p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>max_epochs</strong></p></td>
+<td><p>Maximum training cycles.</p></td>
+<td><p>5000</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>learning_rate</strong></p></td>
+<td><p>Learning rate for weight updates.</p></td>
+<td><p>0.001</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>train_split</strong></p></td>
+<td><p>Proportion of data for training.</p></td>
+<td><p>0.8</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>val_split</strong></p></td>
+<td><p>Proportion of data for validation set.</p></td>
+<td><p>0.2</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>early_stop_patience</strong></p></td>
+<td><p>Epochs without improvement before stopping.</p></td>
+<td><p>48</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>batch_size</strong></p></td>
+<td><p>Number of samples processed per iteration.</p></td>
+<td><p>32</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>l2_reg</strong></p></td>
+<td><p>L2 regularization parameter.</p></td>
+<td><p>0.0</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>factor</strong></p></td>
+<td><p>Factor for hidden layer size reduction.</p></td>
+<td><p>0.5</p></td>
+</tr>
+<tr class="row-even"><td colspan="2"><p><strong>lr_scheduler_patience</strong> | Patience for learning rate scheduler.</p></td>
+<td><p>10</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>dtype</strong></p></td>
+<td><p>Data type for model (float32, float64).</p></td>
+<td><p>“float32”</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>grad_clip</strong></p></td>
+<td><p>Enable graadient clipping.</p></td>
+<td><p>False</p></td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<ul class="simple">
+<li><p>Set <code class="docutils literal notranslate"><span class="pre">max_epochs</span></code> high and rely on early stopping to prevent overfitting. The default will suffice in most circumstances.</p></li>
+<li><p>Use <code class="docutils literal notranslate"><span class="pre">early_stop_patience</span></code> to control how quickly early stopping occurs.</p></li>
+<li><p>Adjust <code class="docutils literal notranslate"><span class="pre">learning_rate</span></code> based on model performance.</p></li>
+<li><p>Use <code class="docutils literal notranslate"><span class="pre">train_split</span></code> and <code class="docutils literal notranslate"><span class="pre">val_split</span></code> to control training and validation data proportions. The default is 80/20. Make sure they sum to 1.0.</p></li>
+<li><p>Set <code class="docutils literal notranslate"><span class="pre">batch_size</span></code> based on available memory and model performance.</p></li>
+<li><p>Use <code class="docutils literal notranslate"><span class="pre">l2_reg</span></code> to prevent overfitting.</p></li>
+<li><p>Adjust <code class="docutils literal notranslate"><span class="pre">factor</span></code> to control hidden layer size reduction.</p></li>
+<li><p>Set <code class="docutils literal notranslate"><span class="pre">lr_scheduler_patience</span></code> to control learning rate decay.</p></li>
+<li><p>Use <code class="docutils literal notranslate"><span class="pre">dtype</span></code> to set the model data type.</p></li>
+<li><p>Enable <code class="docutils literal notranslate"><span class="pre">grad_clip</span></code> to prevent exploding gradients.</p></li>
+</ul>
+</div>
+</section>
+<section id="outlier-detection">
+<h3>Outlier Detection<a class="headerlink" href="#outlier-detection" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p><strong>Option</strong></p></th>
+<th class="head"><p><strong>Description</strong></p></th>
+<th class="head"><p><strong>Default</strong></p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>detect_outliers</strong></p></td>
+<td><p>Enables outlier detection.</p></td>
+<td><p>False</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>min_nn_dist</strong></p></td>
+<td><p>Minimum distance to flag outliers.</p></td>
+<td><p>1000</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>significance_level</strong></p></td>
+<td><p>Statistical significance threshold.</p></td>
+<td><p>0.05</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>maxk</strong></p></td>
+<td><p>Max number of neighbors for outlier test.</p></td>
+<td><p>10</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="bootstrapping">
+<h3>Bootstrapping<a class="headerlink" href="#bootstrapping" title="Link to this heading"></a></h3>
+<p>Enable bootstrapping for confidence intervals with:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>geogenie<span class="w"> </span>--do_bootstrap<span class="w"> </span>--nboots<span class="w"> </span><span class="m">100</span>
+</pre></div>
+</div>
+<p>Confidence interval plots are saved in <code class="docutils literal notranslate"><span class="pre">&lt;output_dir&gt;/plots/bootstrapped_sample_ci</span></code>.</p>
+</section>
+<section id="hyperparameter-optimization">
+<h3>Hyperparameter Optimization<a class="headerlink" href="#hyperparameter-optimization" title="Link to this heading"></a></h3>
+<p>Optuna optimizes model hyperparameters automatically. The process is fully parallelized across multiple CPUs to speed up computation. The best parameters are saved in JSON format and can be reloaded in future analyses.</p>
+<p>Optimize model hyperparameters with Optuna:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p><strong>Option</strong></p></th>
+<th class="head"><p><strong>Description</strong></p></th>
+<th class="head"><p><strong>Default</strong></p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>do_gridsearch</strong></p></td>
+<td><p>Perform search for optimal hyperparameters</p></td>
+<td><p>False</p></td>
+</tr>
+<tr class="row-odd"><td colspan="2"><p><strong>n_iter</strong>          | Number of optimization iterations.</p></td>
+<td><p>100</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>sqldb</strong></p></td>
+<td><p>Path to SQLite database for Optuna.</p></td>
+<td><p>None</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>load_best_params</strong></p></td>
+<td><p>Load best parameters from Optuna.</p></td>
+<td><p>None</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="plot-settings">
+<h3>Plot Settings<a class="headerlink" href="#plot-settings" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head" colspan="3"><p><strong>Option</strong>         | <strong>Description</strong></p></th>
+<th class="head"><p><strong>Default</strong></p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td colspan="3"><p><strong>show_plots</strong>     | Display plots interactively.</p></td>
+<td><p>False</p></td>
+</tr>
+<tr class="row-odd"><td colspan="2"><p><strong>fontsize</strong></p></td>
+<td><p>Font size for plots.</p></td>
+<td><p>24</p></td>
+</tr>
+<tr class="row-even"><td colspan="2"><p><strong>filetype</strong></p></td>
+<td><p>File format for saved plots (e.g., png).</p></td>
+<td><p>“png”</p></td>
+</tr>
+<tr class="row-odd"><td colspan="2"><p><strong>output_dir</strong></p></td>
+<td><p>Directory for saving output files.</p></td>
+<td><p>“output”</p></td>
+</tr>
+<tr class="row-even"><td colspan="2"><p><strong>prefix</strong></p></td>
+<td><p>Prefix for output files.</p></td>
+<td><p>“geogenie”</p></td>
+</tr>
+<tr class="row-odd"><td colspan="2"><p><strong>remove_splines</strong></p></td>
+<td><p>Remove plot axis spines.</p></td>
+<td><p>False</p></td>
+</tr>
+<tr class="row-even"><td colspan="2"><p><strong>plot_dpi</strong></p></td>
+<td><p>Dots per inch for saved plots.</p></td>
+<td><p>300</p></td>
+</tr>
+<tr class="row-odd"><td colspan="2"><p><strong>filetype</strong></p></td>
+<td><p>File format for saved plots (png, pdf, jpg)</p></td>
+<td><p>“png”</p></td>
+</tr>
+<tr class="row-even"><td colspan="2"><p><strong>shapefile</strong></p></td>
+<td><p>URL or path to shapefile for plotting.</p></td>
+<td><p>None</p></td>
+</tr>
+<tr class="row-odd"><td colspan="2"><p><strong>basemap_fips</strong></p></td>
+<td><p>FIPS code for basemap.</p></td>
+<td><p>“US”</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="plot-examples">
+<h3>Plot Examples<a class="headerlink" href="#plot-examples" title="Link to this heading"></a></h3>
+<p>Below are examples of some of the plots generated by GeoGenIE:</p>
+<figure class="align-center" id="id10">
+<a class="reference internal image-reference" href="_images/geographic_error_test.png"><img alt="Geographic Error Interpolated with Kriging" src="_images/geographic_error_test.png" style="width: 800px;" />
+</a>
+<figcaption>
+<p><span class="caption-text">Geographic Error interpolated across the landscape with Kriging. The color scale represents Haversine distance between the predicted and recorded localities, in kilometers. Blue circles represnet the recorded sample locations.</span><a class="headerlink" href="#id10" title="Link to this image"></a></p>
+</figcaption>
+</figure>
+<figure class="align-center" id="id11">
+<a class="reference internal image-reference" href="_images/bootstrap_ci_plot_test.png"><img alt="Bootstrapped Sample CI" src="_images/bootstrap_ci_plot_test.png" style="width: 800px;" />
+</a>
+<figcaption>
+<p><span class="caption-text">Confidence intervals for a representive sample among 100 bootstrap replicates. Gray circles represent the predicted sample locations, the “X” marks the centroid of the bootstrap replicates, and the black filled triangle represents the recorded sample location. The contours represent varying levels of bootstrap prediction densities.</span><a class="headerlink" href="#id11" title="Link to this image"></a></p>
+</figcaption>
+</figure>
+<figure class="align-center" id="id12">
+<a class="reference internal image-reference" href="_images/removed_outliers.png"><img alt="Flagged Outliers" src="_images/removed_outliers.png" style="width: 800px;" />
+</a>
+<figcaption>
+<p><span class="caption-text">Detected outlier samples based on samples that deviate from expected genetic and geographic patterns. Outliers are flagged based on the minimum nearest neighbor distance and statistical significance threshold. The large orange circles represent removed outlier samples.</span><a class="headerlink" href="#id12" title="Link to this image"></a></p>
+</figcaption>
+</figure>
+<figure class="align-center" id="id13">
+<a class="reference internal image-reference" href="_images/kde_error_regression_test.png"><img alt="Regression Plot" src="_images/kde_error_regression_test.png" style="width: 800px;" />
+</a>
+<figcaption>
+<p><span class="caption-text">Scatter plot of predicted versus recorded sample locations. The trend lines represents the linear and polynomial regression fit. The color scale represents the density of samples. The Pearson and Spearman correlation coefficients are displayed.</span><a class="headerlink" href="#id13" title="Link to this image"></a></p>
+</figcaption>
+</figure>
+<figure class="align-center" id="id14">
+<a class="reference internal image-reference" href="_images/train_clusters_oversampled.png"><img alt="Synthetic Oversampling" src="_images/train_clusters_oversampled.png" style="width: 800px;" />
+</a>
+<figcaption>
+<p><span class="caption-text">Synthetic samples generated by the SMOTE-based algorithm to balance the distribution of samples across geographic space. The synthetic samples are shown as “x” marks. Real samples are shown as circles. The colors represent the samples grouped with the K-means clustering algorithm.</span><a class="headerlink" href="#id14" title="Link to this image"></a></p>
+</figcaption>
+</figure>
+<figure class="align-center" id="id15">
+<a class="reference internal image-reference" href="_images/test_sample_densities.png"><img alt="Sample Densities" src="_images/test_sample_densities.png" style="width: 800px;" />
+</a>
+<figcaption>
+<p><span class="caption-text">Geographic distribution of samples in the test set. Circles represent sample locations, and the color scale and size of each point represents the inverse density of samples in the area, with larger and darker circles indicating higher inverse sample densities.</span><a class="headerlink" href="#id15" title="Link to this image"></a></p>
+</figcaption>
+</figure>
+<figure class="align-center" id="id16">
+<a class="reference internal image-reference" href="_images/bootstrap_error_boxplots.png"><img alt="Bootstrapped Error Box plots" src="_images/bootstrap_error_boxplots.png" style="width: 800px;" />
+</a>
+<figcaption>
+<p><span class="caption-text">(Left subplot) Box plots of prediction errors for bootstrapped samples. The box represents the interquartile range, the line represents the median, and the whiskers represent the range of values. (Right subplot) Boxplots of Pearson and Spearman correlation coefficients for bootstrapped samples. Correlation coefficients are calculated between longitude and latitude of predicted and recorded sample locations.</span><a class="headerlink" href="#id16" title="Link to this image"></a></p>
+</figcaption>
+</figure>
+<figure class="align-center" id="id17">
+<a class="reference internal image-reference" href="_images/train_val_history.png"><img alt="Training History" src="_images/train_val_history.png" style="width: 800px;" />
+</a>
+<figcaption>
+<p><span class="caption-text">Training and validation loss over epochs. The training loss is shown in blue, and the validation loss is shown in orange. The plot demonstrates the convergence of the model during training.</span><a class="headerlink" href="#id17" title="Link to this image"></a></p>
+</figcaption>
+</figure>
+<p>These plots provide insights into the model’s performance, error distributions, and geographic predictions. There are also additional plots not shown here available for visualizing model outputs and performance metrics.</p>
+<p>Various aspects of the plots can be adjusted per user preference. For example, the font size, file type, and output directory can be customized to suit specific requirements, among other settings. See the <code class="docutils literal notranslate"><span class="pre">config.yaml</span></code> file for more options.</p>
+</section>
+</section>
+<section id="output-files">
+<h2>Output Files<a class="headerlink" href="#output-files" title="Link to this heading"></a></h2>
+<p>Outputs are saved in <code class="docutils literal notranslate"><span class="pre">&lt;output_dir&gt;/&lt;subdirectory&gt;/&lt;prefix&gt;_*</span></code>. Directory structure:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p><strong>Subdirectory</strong></p></th>
+<th class="head"><p><strong>Description</strong></p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>plots/</strong></p></td>
+<td><p>Visualizations like error distributions.</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>bootstrapped_sample_ci/</strong></p></td>
+<td><p>Per-sample bootstrap CI plots</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>models/</strong></p></td>
+<td><p>Trained PyTorch models (<code class="docutils literal notranslate"><span class="pre">.pt</span></code> files).</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>logfiles/</strong></p></td>
+<td><p>Logs (INFO, WARNING, ERROR).</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>bootstrap_metrics/</strong></p></td>
+<td><p>Metrics for bootstrapped analysis</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>bootstrap_predictions/</strong></p></td>
+<td><p>Predictions for bootstrapped samples.</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>bootstrapped_summaries/</strong></p></td>
+<td><p>Aggregated summaries of bootstrapped samples.</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>data/</strong></p></td>
+<td><p>Detected outlier samples</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>optimize/</strong></p></td>
+<td><p>Optuna optimization logs</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>predictions/</strong></p></td>
+<td><p>Predictions for all unknown samples</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>test/</strong></p></td>
+<td><p>Test set predictions for model evaluation</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>training/</strong></p></td>
+<td><p>Training set metrics from model evaluation</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>validation/</strong></p></td>
+<td><p>Validation set metrics from model evaluation</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>benchmarking/</strong></p></td>
+<td><p>Benchmarking results (per bootstrap)</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="metric-descriptions">
+<h2>Metric Descriptions<a class="headerlink" href="#metric-descriptions" title="Link to this heading"></a></h2>
+<p>GeoGenIE provides the below metrics for evaluating model performance:</p>
+<ul class="simple">
+<li><p><strong>Root Mean Squared Error (RMSLE):</strong> RMSE used in the loss function. Calculates the square root of the mean squared error between predicted and recorded values.</p></li>
+<li><p><strong>Mean Distance</strong>: Average Haversine distance between predicted and actual locations, in kilometers.</p></li>
+<li><p><strong>Median Distance</strong>: Median Haversine distance between predicted and actual locations, in kilometers.</p></li>
+<li><p><strong>Standard Deviation of Distance</strong>: Standard deviation of Haversine distances between predicted and actual locations, in kilometers.</p></li>
+<li><p><strong>Kolmogorov-Smirnov Statistic</strong>: Measures the similarity of two distributions.</p></li>
+<li><p><strong>Kolmogorov-Smirnov p-value</strong>: Statistical significance of the Kolmogorov-Smirnov test.</p></li>
+<li><p><strong>Skewness</strong>: Measure of asymmetry in the distribution of prediction errors.</p></li>
+<li><p><strong>Pearson Correlation</strong>: Measures the strength and direction of a linear relationship.</p></li>
+<li><p><strong>Spearman Correlation</strong>: Measures the strength and direction of a monotonic relationship.</p></li>
+<li><p><strong>Mean Absolute Z-Score</strong>: Average absolute z-score of prediction errors.</p></li>
+<li><p><strong>Percentile 25</strong>: 25th percentile of prediction errors.</p></li>
+<li><p><strong>Percentile 50</strong>: 50th percentile of prediction errors.</p></li>
+<li><p><strong>Percentile 75</strong>: 75th percentile of prediction errors.</p></li>
+<li><p><strong>Percent Within 20km</strong>: Percentage of predictions within 20km of actual locations.</p></li>
+<li><p><strong>Percent Within 50km</strong>: Percentage of predictions within 50km of actual locations.</p></li>
+<li><p><strong>Percent Within 75km</strong>: Percentage of predictions within 75km of actual locations.</p></li>
+<li><p><strong>Mean Absolute Deviation (MAD) of Haversine Distance</strong>: Average absolute deviation of Haversine distances between predicted and actual locations, in kilometers.</p></li>
+<li><p><strong>Coefficient of Variation</strong>: Measure of relative variability.</p></li>
+<li><p><strong>Interquartile Range</strong>: Range between the 25th and 75th percentiles.</p></li>
+</ul>
+</section>
+<section id="conclusion">
+<h2>Conclusion<a class="headerlink" href="#conclusion" title="Link to this heading"></a></h2>
+<p>GeoGenIE is a powerful tool for predicting geographic provenance from genetic SNP data. It offers advanced features like outlier detection, weighted loss functions, and synthetic oversampling to handle sampling imbalances. With a scalable architecture, customizable outputs, and parallelized bootstrapping, GeoGenIE delivers accurate and reproducible results. By leveraging deep learning models and Optuna hyperparameter optimization, GeoGenIE provides robust geographic predictions for researchers in population genetics and molecular ecology.</p>
+</section>
+<section id="glossary">
+<h2>Glossary<a class="headerlink" href="#glossary" title="Link to this heading"></a></h2>
+<p>Key terms include:</p>
+<ul class="simple">
+<li><p><strong>Dropout:</strong> A technique to prevent overfitting by randomly ignoring neurons.</p></li>
+<li><p><strong>Weighted Loss Function:</strong> Focuses on underrepresented data.</p></li>
+<li><p><strong>Haversine Formula:</strong> Calculates distances on a sphere using lat/long.</p></li>
+<li><p><strong>SMOTE:</strong> Synthetic oversampling to balance data.</p></li>
+<li><p><strong>Bootstrapping:</strong> Resampling technique for estimating confidence intervals.</p></li>
+<li><p><strong>Outlier Detection:</strong> Identifies unusual samples using statistical methods.</p></li>
+<li><p><strong>Deep Learning:</strong> Neural networks with multiple hidden layers.</p></li>
+<li><p><strong>Optuna:</strong> Hyperparameter optimization framework.</p></li>
+<li><p><strong>GGOutlieR:</strong> R package for identifying unusual geo-genetic patterns.</p></li>
+<li><p><strong>Synthetic Minority Over-sampling Technique (SMOTE):</strong> Balances imbalanced data.</p></li>
+<li><p><strong>Locator:</strong> Software for predicting geographic location from genetic data.</p></li>
+<li><p><strong>PyTorch:</strong> Deep learning library for Python.</p></li>
+<li><p><strong>DRMS Loss:</strong> Distance Root Mean Square loss function.</p></li>
+<li><p><strong>Huber Loss:</strong>  Loss function for regression that combines RMSE and MAE.</p></li>
+<li><p><strong>Batch Normalization:</strong> Normalizes inputs to improve training.</p></li>
+<li><p><strong>Minor Allele Count (MAC):</strong> Number of minor alleles in a population.</p></li>
+<li><p><strong>Early Stopping:</strong> Stops training when model performance plateaus.</p></li>
+<li><p><strong>Confidence Interval:</strong> Range of values where true value is likely to fall.</p></li>
+<li><p><strong>Font Size:</strong> Size of text in plots.</p></li>
+<li><p><strong>File Type:</strong> Format for saving plots (e.g., png).</p></li>
+<li><p><strong>Significance Level:</strong> Threshold for statistical significance.</p></li>
+<li><p><strong>Output Directory:</strong> Folder for saving results.</p></li>
+<li><p><strong>Subdirectory:</strong> Folder within the output directory.</p></li>
+<li><p><strong>Prefix:</strong> Prefix for output files.</p></li>
+<li><p><strong>Learning Rate</strong> Rate at which model weights are updated.</p></li>
+<li><p><strong>Training Split:</strong> Proportion of data used for training.</p></li>
+<li><p><strong>Early Stop Patience:</strong> Number of epochs without improvement before stopping.</p></li>
+<li><p><strong>Minimum Nearest Neighbor Distance:</strong> Minimum distance to flag outliers.</p></li>
+<li><p><strong>Statistical Significance Threshold:</strong> Threshold for outlier detection.</p></li>
+<li><p><strong>Bootstrap:</strong> Resampling technique for estimating confidence intervals.</p></li>
+<li><p><strong>Error Distribution:</strong> Distribution of prediction errors.</p></li>
+<li><p><strong>Model Directory:</strong> Folder for saving trained models.</p></li>
+<li><p><strong>Log Directory:</strong> Folder for saving logs.</p></li>
+<li><p><strong>Visualizations:</strong> Graphical representations of data.</p></li>
+<li><p><strong>Error Metrics:</strong> Measures of model performance.</p></li>
+<li><p><strong>Prediction Error:</strong> Difference between predicted and actual values.</p></li>
+<li><p><strong>Monotonic Relationship:</strong> Relationship where one variable increases as the other decreases.</p></li>
+<li><p><strong>Distance Calculation:</strong> Calculation of distances between points.</p></li>
+<li><p><strong>Percentage Within Distance:</strong> Percentage of predictions within specified distances.</p></li>
+<li><p><strong>Hyperparameter Optimization:</strong> Process of tuning model parameters to improve performance.</p></li>
+<li><p><strong>Sampling Imbalance:</strong> Unequal distribution of data.</p></li>
+<li><p><strong>Anomalous Samples:</strong> Unusual or outlying data points.</p></li>
+<li><p><strong>Translocations:</strong> Movement of samples to different locations.</p></li>
+<li><p><strong>Underrepresented Regions:</strong> Areas with few samples.</p></li>
+<li><p><strong>Synthetic Samples:</strong> Artificially generated data points.</p></li>
+<li><p><strong>Error Distributions:</strong> Distribution of prediction errors.</p></li>
+<li><p><strong>Interactively:</strong> In a way that allows user interaction.</p></li>
+<li><p><strong>Saved Plots:</strong> Graphical representations of data saved to files.</p></li>
+<li><p><strong>Directory Structure:</strong> Organization of files and folders.</p></li>
+<li><p><strong>L2 Regularization:</strong> Technique to prevent overfitting by penalizing large weights.</p></li>
+<li><p><strong>Batch Size:</strong> Number of samples processed in each training iteration.</p></li>
+<li><p><strong>Epoch:</strong> One complete pass through the training data.</p></li>
+<li><p><strong>Training Cycle:</strong> Iteration of training epochs.</p></li>
+<li><p><strong>Neurons:</strong> Units in a neural network that process input data.</p></li>
+<li><p><strong>Hidden Layers:</strong> Layers between input and output layers in a neural network.</p></li>
+<li><p><strong>Overfitting:</strong> Model that performs well on training data but poorly on test data.</p></li>
+<li><p><strong>Loss Function:</strong> Measures the difference between predicted and actual values.</p></li>
+<li><p><strong>Synthetic Oversampling:</strong> Technique to balance data by generating synthetic samples.</p></li>
+<li><p><strong>Parallelized:</strong> Process that runs multiple tasks simultaneously.</p></li>
+<li><p><strong>Reproducible Results:</strong> Results that can be replicated by others.</p></li>
+<li><p><strong>Geographic Provenance:</strong> Origin or source of geographic data.</p></li>
+<li><p><strong>Deep Learning Models:</strong> Neural networks with multiple layers.</p></li>
+<li><p><strong>Scalable Architecture:</strong> Design that can handle large datasets.</p></li>
+<li><p><strong>Customizable Outputs:</strong> Outputs that can be tailored to user needs.</p></li>
+<li><p><strong>Parallelized Bootstrapping:</strong> Resampling technique that runs in parallel.</p></li>
+<li><p><strong>Robust Geographic Predictions:</strong> Accurate and reliable geographic inferences.</p></li>
+<li><p><strong>Population Genetics:</strong> Study of genetic variation within populations.</p></li>
+<li><p><strong>Molecular Ecology:</strong> Study of genetic variation in ecological contexts.</p></li>
+<li><p><strong>Sampling Imbalances:</strong> Unequal distribution of samples.</p></li>
+<li><p><strong>Outliers:</strong> Unusual or extreme data points.</p></li>
+<li><p><strong>Weighted Loss Functions:</strong> Loss functions that focus on specific data points.</p></li>
+</ul>
+</section>
+<section id="references">
+<h2>References<a class="headerlink" href="#references" title="Link to this heading"></a></h2>
+<div class="docutils container" id="id5">
+<div role="list" class="citation-list">
+<div class="citation" id="id6" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id1">1</a><span class="fn-bracket">]</span></span>
+<p>T. Akiba, S. Sano, T. Yanase, T. Ohta, and M. Koyama. Optuna: a next-generation hyperparameter optimization framework. In <em>Proceedings of the 25th ACM SIGKDD International Conference on Knowledge Discovery &amp; Data Mining</em>. 2020. <a class="reference external" href="https://doi.org/10.1145/3292500.3330701">doi:10.1145/3292500.3330701</a>.</p>
+</div>
+<div class="citation" id="id7" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id4">2</a><span class="fn-bracket">]</span></span>
+<p>C.J. Battey, P.L. Ralph, and A.D. Kern. Predicting geographic location from genetic variation with deep neural networks. <em>eLife</em>, 9:e54507, 2020. <a class="reference external" href="https://doi.org/10.7554/eLife.54507">doi:10.7554/eLife.54507</a>.</p>
+</div>
+<div class="citation" id="id8" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id2">3</a><span class="fn-bracket">]</span></span>
+<p>C. Chang and K. Schmid. Ggoutlier: an r package to identify and visualize unusual geo-genetic patterns. <em>Journal of Open Source Software</em>, 8(91):5687, 2023. <a class="reference external" href="https://doi.org/10.21105/joss.05687">doi:10.21105/joss.05687</a>.</p>
+</div>
+<div class="citation" id="id9" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id3">4</a><span class="fn-bracket">]</span></span>
+<p>N.V. Chawla, K.W. Bowyer, L.O. Hall, and W.P. Kegelmeyer. Smote: synthetic minority over-sampling technique. <em>Journal of Artificial Intelligence Research</em>, 16:321–357, 2002. <a class="reference external" href="https://doi.org/10.5555/1622407.1622416">doi:10.5555/1622407.1622416</a>.</p>
+</div>
+</div>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="index.html" class="btn btn-neutral float-left" title="GeoGenIE documentation" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="geogenie.html" class="btn btn-neutral float-right" title="geogenie package" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Bradley T. Martin and Tyler K. Chafin.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
