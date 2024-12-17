@@ -50,6 +50,40 @@ def extract_major_steps(connections):
             })
     return major_steps
 
+def extract_major_code_flow(connections):
+    """
+    Extracts major steps from the code flow, starting with train_test_predict.
+    Includes major downstream functions/classes while pruning minor details.
+    """
+    major_steps = []
+
+    # Step 1: Start with train_test_predict
+    main_entry = connections[
+        (connections["Module"] == "geogenie") & (connections["Name"] == "train_test_predict")
+    ]
+    if not main_entry.empty:
+        major_steps.append({
+            "Module/Method": "geogenie.train_test_predict",
+            "Purpose": "Main entry point for training, testing, and predictions.",
+            "Dependencies": "Calls major downstream methods."
+        })
+
+    # Step 2: Identify downstream major modules
+    major_modules = ["data_structure", "bootstrap", "optuna_opt", "interpolate", "samplers"]
+
+    for module in major_modules:
+        module_entries = connections[connections["Module"] == module]
+        for _, row in module_entries.iterrows():
+            if "train" in row["Name"].lower() or "process" in row["Name"].lower() or "bootstrap" in row["Name"].lower():
+                major_steps.append({
+                    "Module/Method": f"{row['Module']}.{row['Name']}",
+                    "Purpose": f"Performs key operations in {module} (e.g., preprocessing, bootstrap training).",
+                    "Dependencies": row["Details"]
+                })
+
+    return major_steps
+
+
 # Function to save major steps as markdown
 def save_major_steps_as_markdown(major_steps, output_path):
     with open(output_path, "w") as f:
@@ -65,5 +99,6 @@ module_connections_file = Path("./code_flow_summaries/module_connections.md")
 output_file = Path("./code_flow_summaries/major_code_flow_steps.md")
 
 connections = parse_module_connections(module_connections_file)
-major_steps = extract_major_steps(connections)
+major_steps = extract_major_code_flow(connections)
 save_major_steps_as_markdown(major_steps, output_file)
+
