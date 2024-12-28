@@ -1,42 +1,38 @@
 # Major Code Flow Steps
 
-| Module/Method          | Purpose                                | Dependencies              |
-|------------------------|----------------------------------------|---------------------------|
-| geogenie.train_test_predict | Main entry point for training, testing, and predictions. | Calls major downstream methods. |
-| data_structure.sklearn.preprocessing | Performs key operations in data_structure (e.g., preprocessing, bootstrap training). | Imported module |
-| data_structure.split_train_test | Performs key operations in data_structure (e.g., preprocessing, bootstrap training). | Function defined in module |
-| data_structure.load_and_preprocess_data | Performs key operations in data_structure (e.g., preprocessing, bootstrap training). | Function defined in module |
-| data_structure.DataStructure.split_train_test | Performs key operations in data_structure (e.g., preprocessing, bootstrap training). | Method defined in class |
-| data_structure.DataStructure.load_and_preprocess_data | Performs key operations in data_structure (e.g., preprocessing, bootstrap training). | Method defined in class |
-| bootstrap.train_one_bootstrap | Performs key operations in bootstrap (e.g., preprocessing, bootstrap training). | Function defined in module |
-| bootstrap.bootstrap_training_generator | Performs key operations in bootstrap (e.g., preprocessing, bootstrap training). | Function defined in module |
-| bootstrap.save_bootstrap_results | Performs key operations in bootstrap (e.g., preprocessing, bootstrap training). | Function defined in module |
-| bootstrap.perform_bootstrap_training | Performs key operations in bootstrap (e.g., preprocessing, bootstrap training). | Function defined in module |
-| bootstrap._process_boot_preds | Performs key operations in bootstrap (e.g., preprocessing, bootstrap training). | Function defined in module |
-| bootstrap.Bootstrap | Performs key operations in bootstrap (e.g., preprocessing, bootstrap training). | Class defined in module |
-| bootstrap.Bootstrap.__init__ | Performs key operations in bootstrap (e.g., preprocessing, bootstrap training). | Method defined in class |
-| bootstrap.Bootstrap._get_thread_local_rng | Performs key operations in bootstrap (e.g., preprocessing, bootstrap training). | Method defined in class |
-| bootstrap.Bootstrap._resample_loaders | Performs key operations in bootstrap (e.g., preprocessing, bootstrap training). | Method defined in class |
-| bootstrap.Bootstrap._resample_boot | Performs key operations in bootstrap (e.g., preprocessing, bootstrap training). | Method defined in class |
-| bootstrap.Bootstrap.reset_weights | Performs key operations in bootstrap (e.g., preprocessing, bootstrap training). | Method defined in class |
-| bootstrap.Bootstrap.reinitialize_model | Performs key operations in bootstrap (e.g., preprocessing, bootstrap training). | Method defined in class |
-| bootstrap.Bootstrap.train_one_bootstrap | Performs key operations in bootstrap (e.g., preprocessing, bootstrap training). | Method defined in class |
-| bootstrap.Bootstrap.bootstrap_training_generator | Performs key operations in bootstrap (e.g., preprocessing, bootstrap training). | Method defined in class |
-| bootstrap.Bootstrap.extract_best_params | Performs key operations in bootstrap (e.g., preprocessing, bootstrap training). | Method defined in class |
-| bootstrap.Bootstrap.save_bootstrap_results | Performs key operations in bootstrap (e.g., preprocessing, bootstrap training). | Method defined in class |
-| bootstrap.Bootstrap.perform_bootstrap_training | Performs key operations in bootstrap (e.g., preprocessing, bootstrap training). | Method defined in class |
-| bootstrap.Bootstrap._process_boot_preds | Performs key operations in bootstrap (e.g., preprocessing, bootstrap training). | Method defined in class |
-| bootstrap.Bootstrap._grouped_ci_boot | Performs key operations in bootstrap (e.g., preprocessing, bootstrap training). | Method defined in class |
-| bootstrap.Bootstrap._bootrep_metrics_to_csv | Performs key operations in bootstrap (e.g., preprocessing, bootstrap training). | Method defined in class |
-| bootstrap.Bootstrap._validate_sample_data | Performs key operations in bootstrap (e.g., preprocessing, bootstrap training). | Method defined in class |
-| optuna_opt.run_rf_training | Performs key operations in optuna_opt (e.g., preprocessing, bootstrap training). | Function defined in module |
-| optuna_opt.run_training | Performs key operations in optuna_opt (e.g., preprocessing, bootstrap training). | Function defined in module |
-| optuna_opt.process_optuna_results | Performs key operations in optuna_opt (e.g., preprocessing, bootstrap training). | Function defined in module |
-| optuna_opt.Optimize.run_rf_training | Performs key operations in optuna_opt (e.g., preprocessing, bootstrap training). | Method defined in class |
-| optuna_opt.Optimize.run_training | Performs key operations in optuna_opt (e.g., preprocessing, bootstrap training). | Method defined in class |
-| optuna_opt.Optimize.process_optuna_results | Performs key operations in optuna_opt (e.g., preprocessing, bootstrap training). | Method defined in class |
-| interpolate.process_interp | Performs key operations in interpolate (e.g., preprocessing, bootstrap training). | Function defined in module |
-| samplers.sklearn.preprocessing | Performs key operations in samplers (e.g., preprocessing, bootstrap training). | Imported module |
-| samplers.geogenie.utils.spatial_data_processors | Performs key operations in samplers (e.g., preprocessing, bootstrap training). | Imported module |
-| samplers.sklearn.preprocessing | Performs key operations in samplers (e.g., preprocessing, bootstrap training). | Imported module |
-| samplers.process_bins | Performs key operations in samplers (e.g., preprocessing, bootstrap training). | Function defined in module |
+| Module/Method          | Purpose                                                                                                           | Dependencies                                                                                                   |
+|------------------------|-------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------|
+| geogenie.train_test_predict | Coordinates the complete pipeline for training models, testing predictions, and generating outputs.            | PyTorch, scikit-learn, custom data structure modules.                                                         |
+| data_structure.sklearn.preprocessing | Applies preprocessing techniques like scaling and encoding for compatibility with deep learning models.    | scikit-learn, NumPy.                                                                                          |
+| data_structure.split_train_test | Splits datasets into training and testing subsets based on user-defined proportions.                       | Custom function; relies on Python's `random` module.                                                          |
+| data_structure.load_and_preprocess_data | Loads genetic SNP datasets, validates formats, and preprocesses for training readiness.                     | Pandas, NumPy.                                                                                                |
+| data_structure.DataStructure.split_train_test | Encapsulates dataset splitting logic for reuse within class-based workflows.                                   | Method of the `DataStructure` class.                                                                          |
+| data_structure.DataStructure.load_and_preprocess_data | Integrates file input, validation, and preprocessing for structured SNP datasets.                                  | Pandas, method within `DataStructure` class.                                                                  |
+| bootstrap.train_one_bootstrap | Executes a single bootstrap replicate, updating weights and models to improve robustness.                     | PyTorch, NumPy.                                                                                               |
+| bootstrap.bootstrap_training_generator | Generates multiple bootstrap datasets for ensemble training or error estimation.                            | NumPy, scikit-learn.                                                                                          |
+| bootstrap.save_bootstrap_results | Saves bootstrap-derived metrics and predictions into structured outputs for later analysis.                  | Pandas, YAML.                                                                                                 |
+| bootstrap.perform_bootstrap_training | Automates the full bootstrap process, generating confidence intervals and model stability metrics.         | PyTorch, scikit-learn.                                                                                        |
+| bootstrap._process_boot_preds | Processes predictions from bootstrap runs, aggregating for statistical summaries.                              | NumPy, Pandas.                                                                                                |
+| bootstrap.Bootstrap | Central class encapsulating all bootstrap-related methods and parameters.                                           | Custom class in the `bootstrap` module.                                                                       |
+| bootstrap.Bootstrap.__init__ | Initializes the `Bootstrap` class with default or user-defined settings.                                       | Python built-ins, NumPy.                                                                                      |
+| bootstrap.Bootstrap._get_thread_local_rng | Ensures reproducible results by managing thread-local random number generators.                           | Python's `random` module.                                                                                     |
+| bootstrap.Bootstrap._resample_loaders | Resamples datasets for bootstrap analysis, leveraging parallel processing for efficiency.                  | scikit-learn.                                                                                                 |
+| bootstrap.Bootstrap._resample_boot | Resamples data while adhering to constraints like stratification.                                          | scikit-learn, NumPy.                                                                                          |
+| bootstrap.Bootstrap.reset_weights | Resets model weights to avoid overfitting during successive bootstrap iterations.                            | PyTorch.                                                                                                      |
+| bootstrap.Bootstrap.reinitialize_model | Reinitializes the neural network model for each bootstrap replicate.                                       | PyTorch.                                                                                                      |
+| bootstrap.Bootstrap.train_one_bootstrap | Handles logic for individual bootstrap training within the `Bootstrap` class.                             | Method within `Bootstrap`.                                                                                    |
+| bootstrap.Bootstrap.bootstrap_training_generator | Generates training samples for bootstrap iterations.                                                         | Method within `Bootstrap`.                                                                                    |
+| bootstrap.Bootstrap.extract_best_params | Extracts optimal parameters from bootstrap runs for downstream analyses.                                   | Optuna, YAML.                                                                                                 |
+| bootstrap.Bootstrap.save_bootstrap_results | Saves all outputs and summaries from bootstrap processes.                                                    | Method within `Bootstrap`.                                                                                    |
+| bootstrap.Bootstrap.perform_bootstrap_training | Manages end-to-end bootstrap training processes and integrates with other methods.                         | Method within `Bootstrap`.                                                                                    |
+| bootstrap.Bootstrap._process_boot_preds | Finalizes bootstrap predictions by aggregating results across replicates.                                   | Method within `Bootstrap`.                                                                                    |
+| bootstrap.Bootstrap._grouped_ci_boot | Computes confidence intervals using grouped bootstrap sampling techniques.                                  | NumPy, Pandas.                                                                                                |
+| bootstrap.Bootstrap._bootrep_metrics_to_csv | Exports bootstrap metrics into CSV format for easy reporting.                                               | Pandas.                                                                                                       |
+| bootstrap.Bootstrap._validate_sample_data | Validates integrity and consistency of data before bootstrap operations.                                    | NumPy, Pandas.                                                                                                |
+| optuna_opt.run_rf_training | Executes random forest training using Optuna's hyperparameter optimization.                                     | Optuna, scikit-learn.                                                                                         |
+| optuna_opt.run_training | Runs training pipelines optimized by Optuna for neural networks or other models.                                    | Optuna, PyTorch.                                                                                              |
+| optuna_opt.process_optuna_results | Processes results from Optuna optimization to identify top-performing configurations.                        | Optuna, Pandas.                                                                                               |
+| interpolate.process_interp | Applies geospatial interpolation methods for filling missing values or smoothing data distributions.              | pykrige, geopandas.                                                                                           |
+| samplers.sklearn.preprocessing | Adapts scikit-learn preprocessing utilities for custom sampling tasks in GeoGenIE.                             | scikit-learn, NumPy.                                                                                          |
+| samplers.geogenie.utils.spatial_data_processors | Processes spatial data for advanced sampling strategies, such as density-based clustering.                  | NumPy, scikit-learn.                                                                                          |
+| samplers.process_bins | Handles binning of data for density-based sampling and visualization.                                                 | scikit-learn, NumPy.                                                                                          |
