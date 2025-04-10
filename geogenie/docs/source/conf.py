@@ -3,17 +3,15 @@ import sys
 
 # -- Project information -----------------------------------------------------
 project = "GeoGenIE"  # Name of the project
-project_name = "GeoGenIE"  # Name of the project
-project_slug = "geogenie"  # Slug for the project
 
 copyright = "2024, Bradley T. Martin and Tyler K. Chafin"
 author = "Drs. Bradley T. Martin and Tyler K. Chafin"
-release = "1.0.3"  # Version of the project
+release = "1.0.4"  # Version of the project
 version = release  # Version for the documentation
 
 # -- Path setup --------------------------------------------------------------
 # Add the project's root directory to sys.path
-sys.path.insert(0, os.path.abspath("../../"))
+sys.path.insert(0, os.path.abspath("../../../"))
 
 # -- Sphinx Extensions -------------------------------------------------------
 # Add extensions for autodoc, type hints, and more
@@ -36,8 +34,7 @@ html_context = {
     "github_user": "btmartin721",  # GitHub username
     "github_repo": "GeoGenIE",  # GitHub repo
     "github_version": "master",  # Branch to use
-    "conf_py_path": "/docs/source/",  # Path to docs in the repo
-    "current_version": "v1.0.3",  # Project version
+    "current_version": "v1.0.4",  # Project version
     "display_version": True,  # Display version number in the theme
     "latest_version": "master",  # Define the latest stable version
     "display_edit_on_github": True,  # Add 'Edit on GitHub' link

@@ -14,9 +14,9 @@ build:
 
 # Sphinx documentation options
 sphinx:
-  configuration: geogenie/docs/source/conf.py
+  configuration: "geogenie/docs/source/conf.py"
   builder: html
-  fail_on_warning: false
+  fail_on_warning: true
 
 python:
   install:

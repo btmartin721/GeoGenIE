@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "GeoGenIE"
-version = "1.0.2"
+version = "1.0.4"
 description = "Deep learning software package to predict geographic coordinates from genome-wide SNP data."
 readme = "README.md"
 authors = [{name = "Bradley T. Martin, Ph.D.", email = "evobio721@gmail.com"}, {name = "Tyler K. Chafin, Ph.D.", email = "tkchafin@gmail.com"}]
@@ -44,7 +44,7 @@ dependencies = [
     "pysam",
     "pyyaml",
     "requests",
-    "scikit-learn<=1.3.2",
+    "scikit-learn>=1.5",
     "scipy",
     "seaborn",
     "statsmodels",
