@@ -28,18 +28,16 @@ GeoGenIE was written in PyTorch. Below is the deep learning model architecture \
 To install GeoGenIE, it is recommended to use a virtual environment or conda environment. From the root project directory, enter the following command:
 
 ```bash
-pip install .
+pip install GeoGenIE
 ```
-
-GeoGenIE will be hosted on PyPI in the future for easier installation.
 
 ### Dependencies
 
-The following packages will be installed when running `pip install .`:
+The following packages will be installed when running `pip install GeoGenIE`:
 
 Here is the list of dependencies:
 
-- python >= 3.11
+- python >= 3.11,<3.13
 - geopandas
 - geopy
 - imblearn
