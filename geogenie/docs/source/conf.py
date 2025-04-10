@@ -21,7 +21,10 @@ extensions = [
     "sphinx_autodoc_typehints",  # Type hints in function signatures
     "sphinx.ext.todo",  # To-do directives in documentation
     "sphinx.ext.viewcode",  # Add links to highlighted source code
+    "sphinxcontrib.bibtex",  # For bibliography management
 ]
+
+bibtex_bibfiles = ["docs/references.bib"]  # Path to the bibliography file
 
 # Enable displaying todos
 todo_include_todos = True
