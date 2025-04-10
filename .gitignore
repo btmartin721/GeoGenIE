@@ -39,3 +39,5 @@ scripts/run_all_combos2_1.sh
 scripts/run_all_combos2.sh
 
 dist/
+geogenie/docs/build/
+*.doctree

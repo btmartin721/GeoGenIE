@@ -46,7 +46,7 @@ Steps to Install GeoGenIE
 2. **Install GeoGenIE:**
     .. code-block:: bash
 
-        pip install .
+        pip install GeoGenIE
 
 Dependencies
 ~~~~~~~~~~~~
