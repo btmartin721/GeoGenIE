@@ -34,7 +34,7 @@ intersphinx_mapping = {
     )
 }
 
-bibtex_bibfiles = ["../references.bib"]  # Path to the bibliography file
+bibtex_bibfiles = ["./references.bib"]  # Path to the bibliography file
 
 # Enable displaying todos
 todo_include_todos = True
@@ -53,18 +53,8 @@ html_context = {
     "display_edit_on_github": True,  # Add 'Edit on GitHub' link
 }
 
-# Set paths for templates and static files (custom CSS)
-templates_path = ["_templates"]
-html_static_path = ["_static"]
-
 # Custom logo and favicon
 html_logo = "../../../img/geogenie_logo.png"
-
-
-# Add custom CSS for further styling if needed
-def setup(app):
-    app.add_css_file("custom.css")  # Use a custom CSS file (if needed)
-
 
 # -- General configuration ---------------------------------------------------
 # Files or directories to ignore during build
