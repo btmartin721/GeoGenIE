@@ -11,4 +11,11 @@ GeoGenIE documentation
    :caption: Contents:
 
    tutorial
-   geogenie
+   modules
+
+Indices and tables
+==================
+
+* :ref:`genindex`
+* :ref:`modindex`
+* :ref:`search`
