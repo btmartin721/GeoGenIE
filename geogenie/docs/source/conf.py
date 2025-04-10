@@ -1,62 +1,61 @@
-# Configuration file for the Sphinx documentation builder.
-#
-# For the full list of built-in configuration values, see the documentation:
-# https://www.sphinx-doc.org/en/master/usage/configuration.html
-
-# -- Project information -----------------------------------------------------
-# https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
-
 import os
 import sys
 
+# -- Project information -----------------------------------------------------
+project = "GeoGenIE"  # Name of the project
+project_name = "GeoGenIE"  # Name of the project
+project_slug = "geogenie"  # Slug for the project
+
+copyright = "2024, Bradley T. Martin and Tyler K. Chafin"
+author = "Drs. Bradley T. Martin and Tyler K. Chafin"
+release = "1.0.3"  # Version of the project
+version = release  # Version for the documentation
+
+# -- Path setup --------------------------------------------------------------
+# Add the project's root directory to sys.path
 sys.path.insert(0, os.path.abspath("../../../"))
 
-project = "GeoGenIE"
-copyright = "2024, Bradley T. Martin and Tyler K. Chafin"
-author = "Bradley T. Martin and Tyler K. Chafin"
-release = "1.0.2"
-
-# -- General configuration ---------------------------------------------------
-# https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
-
+# -- Sphinx Extensions -------------------------------------------------------
+# Add extensions for autodoc, type hints, and more
 extensions = [
-    "sphinx.ext.githubpages",
-    "sphinx.ext.viewcode",
-    "sphinx.ext.todo",
     "sphinx.ext.autodoc",
-    "sphinx.ext.napoleon",
-    "sphinx.ext.intersphinx",
-    "sphinx_autodoc_typehints",
-    "sphinxcontrib.bibtex",
+    "sphinx.ext.napoleon",  # Supports Google-style docstrings
+    "sphinx_autodoc_typehints",  # Type hints in function signatures
+    "sphinx.ext.todo",  # To-do directives in documentation
+    "sphinx.ext.viewcode",  # Add links to highlighted source code
 ]
 
-# -- Link intersphinx to the scikit-learn documentation ------------------------
-# -- Avoids a the metadata_routing error --------------------------------------
-intersphinx_mapping = {
-    "sklearn": ("https://scikit-learn.org/stable/", None),
+# Enable displaying todos
+todo_include_todos = True
+
+# -- HTML output theme and customization -------------------------------------
+html_theme = "sphinx_rtd_theme"  # Read the Docs theme
+
+html_context = {
+    "display_github": True,  # Enable GitHub integration
+    "github_user": "btmartin721",  # GitHub username
+    "github_repo": "GeoGenIE",  # GitHub repo
+    "github_version": "master",  # Branch to use
+    "conf_py_path": "/docs/source/",  # Path to docs in the repo
+    "current_version": "v1.0.3",  # Project version
+    "display_version": True,  # Display version number in the theme
+    "latest_version": "master",  # Define the latest stable version
+    "display_edit_on_github": True,  # Add 'Edit on GitHub' link
 }
 
+# Set paths for templates and static files (custom CSS)
 templates_path = ["_templates"]
-exclude_patterns = []
-
-language = "en"
-
-# -- Options for HTML output -------------------------------------------------
-# https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
-
-html_theme = "sphinx_rtd_theme"
 html_static_path = ["_static"]
 
-# Path to the BibTeX file
-bibtex_bibfiles = ["references.bib"]
+# Custom logo and favicon
+html_logo = "../../../img/geogenie_logo.png"
 
-# Use "author_year" citation style for parentheses (e.g., (Akiba et al., 2020))
-bibtex_reference_style = "super"
 
-# Set bibliography output style to plain
-bibtex_default_style = "plain"
+# Add custom CSS for further styling if needed
+def setup(app):
+    app.add_css_file("custom.css")  # Use a custom CSS file (if needed)
 
-# -- Options for todo extension ----------------------------------------------
-# https://www.sphinx-doc.org/en/master/usage/extensions/todo.html#configuration
 
-todo_include_todos = True
+# -- General configuration ---------------------------------------------------
+# Files or directories to ignore during build
+exclude_patterns = ["**/setup.rst", "**/tests.rst", "_build", "Thumbs.db", ".DS_Store"]
