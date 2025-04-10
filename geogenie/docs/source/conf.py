@@ -24,7 +24,7 @@ extensions = [
     "sphinxcontrib.bibtex",  # For bibliography management
 ]
 
-bibtex_bibfiles = ["docs/references.bib"]  # Path to the bibliography file
+bibtex_bibfiles = ["../references.bib"]  # Path to the bibliography file
 
 # Enable displaying todos
 todo_include_todos = True
