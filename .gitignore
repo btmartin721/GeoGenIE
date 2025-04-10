@@ -11,6 +11,7 @@ __pycache__/
 *.Rhistory
 .DS_Store
 .venv/
+.venv_gg_final/
 .vscode/
 
 # Data Files
@@ -36,3 +37,5 @@ locator.py
 scripts/summary_scripts/*
 scripts/run_all_combos2_1.sh
 scripts/run_all_combos2.sh
+
+dist/
