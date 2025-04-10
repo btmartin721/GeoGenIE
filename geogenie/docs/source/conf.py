@@ -22,7 +22,17 @@ extensions = [
     "sphinx.ext.todo",  # To-do directives in documentation
     "sphinx.ext.viewcode",  # Add links to highlighted source code
     "sphinxcontrib.bibtex",  # For bibliography management
+    "sphinx.ext.intersphinx",  # Link to other projects' documentation
 ]
+
+# Link to sklearn's documentation for intersphinx
+# This allows cross-referencing between different documentation projects
+intersphinx_mapping = {
+    "sklearn": (
+        "https://scikit-learn.org/stable",
+        (None, "./_intersphinx/sklearn-objects.inv"),
+    )
+}
 
 bibtex_bibfiles = ["../references.bib"]  # Path to the bibliography file
 
