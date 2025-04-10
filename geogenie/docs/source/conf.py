@@ -13,7 +13,7 @@ version = release  # Version for the documentation
 
 # -- Path setup --------------------------------------------------------------
 # Add the project's root directory to sys.path
-sys.path.insert(0, os.path.abspath("../../../"))
+sys.path.insert(0, os.path.abspath("../../"))
 
 # -- Sphinx Extensions -------------------------------------------------------
 # Add extensions for autodoc, type hints, and more
