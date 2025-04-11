@@ -82,6 +82,8 @@ You can also leave comments with `# my_comment`. The arguments can be in any ord
 geogenie --config config_files/config.yaml
 ```
 
+A dataset to test the software can be found in the following Open Science Framework repository: https://osf.io/jsqz9 (DOI: 10.17605/OSF.IO/JSQZ9)
+
 | **Option**                | **Description**                                                                                           | **Default**         | **Notes**                                                                                       |
 |---------------------------|-----------------------------------------------------------------------------------------------------------|---------------------|------------------------------------------------------------------------------------------------|
 | `--vcf`                   | Path to the VCF file with SNPs.                                                                          | None                | Required input file.                                                                            |
