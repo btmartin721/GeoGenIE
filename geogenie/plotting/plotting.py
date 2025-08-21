@@ -887,7 +887,7 @@ class PlotGenIE:
         # )
 
         # for i, a in enumerate([ax]):
-            # Plot the basemap
+        # Plot the basemap
         ax = self.basemap.plot(
             ax=ax,
             color="none",
@@ -1886,7 +1886,7 @@ class PlotGenIE:
         )
 
         # Plot known points
-        if df_known is not None:
+        if df_known is not None and dataset != "pred":
             if df_known.shape[0] == 1:
                 mean_known_lat, mean_known_lon = (
                     gdf_known.geometry.y,
