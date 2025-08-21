@@ -58,7 +58,7 @@ class EarlyStopping:
         self.counter = 0
         self.early_stop = False
         self.best_score = None
-        self.val_loss_min = np.Inf
+        self.val_loss_min = np.inf
 
         self.boot = boot
         self.trial = trial.number if trial is not None else None
@@ -199,7 +199,6 @@ def callback_init(optimizer, args, trial=None, boot=None):
         mode="min",
         factor=args.lr_scheduler_factor,
         patience=args.lr_scheduler_patience,
-        verbose=verbose,
     )
 
     return early_stopping, lr_scheduler
