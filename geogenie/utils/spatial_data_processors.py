@@ -70,7 +70,7 @@ class SpatialDataProcessor:
             # Log the download attempt
             if self.logger is not None:
                 self.logger.info(f"Attempting to download file from {url}")
-            response = requests.get(url, stream=True)
+            response = requests.get(url, stream=True, verify=False)
             response.raise_for_status()
             with open(dest, "wb") as f:
                 for chunk in response.iter_content(chunk_size=8192):

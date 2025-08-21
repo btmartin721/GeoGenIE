@@ -526,6 +526,7 @@ class Bootstrap:
         bootstrap_test_preds, bootstrap_val_preds = [], []
         bootstrap_test_metrics, bootstrap_val_metrics = [], []
         bootstrap_test_sids, bootstrap_val_sids = [], []
+        bootstrap_pred_preds, bootstrap_pred_sids = [], []
 
         for boot, (
             model,
@@ -570,15 +571,30 @@ class Bootstrap:
                 is_val=True,
             )
 
+            pred_preds, pred_samples = pred_func(
+                model,
+                pred_loader,
+                None,
+                return_truths=False,
+                use_rf=self.args.use_gradient_boosting,
+                bootstrap=True,
+                is_val=False,
+            )
+
             test_preds_d = dict(zip(test_samples, test_preds))
             val_preds_d = dict(zip(val_samples, val_preds))
+            pred_preds_d = dict(zip(pred_samples, pred_preds))
 
             bootstrap_test_preds.append(test_preds_d)
             bootstrap_val_preds.append(val_preds_d)
+            bootstrap_pred_preds.append(pred_preds_d)
+
             bootstrap_test_metrics.append(test_metrics)
             bootstrap_val_metrics.append(val_metrics)
+
             bootstrap_test_sids.append(test_samples)
             bootstrap_val_sids.append(val_samples)
+            bootstrap_pred_sids.append(pred_samples)
 
             self.save_bootstrap_results(
                 boot,
@@ -594,6 +610,9 @@ class Bootstrap:
                 "val",
                 test_metrics=val_metrics,
             )
+            self.save_bootstrap_results(
+                boot, pred_preds_d, write_func, "pred", test_metrics=None
+            )
 
             torch.save(model.state_dict(), bootrep_file)
 
@@ -605,9 +624,13 @@ class Bootstrap:
         boot_val_df = self._process_boot_preds(
             outdir, bootstrap_val_preds, dataset="val"
         )
+        boot_pred_df = self._process_boot_preds(
+            outdir, bootstrap_pred_preds, dataset="pred"
+        )
 
         self.boot_test_df_ = boot_test_df
         self.boot_val_df_ = boot_val_df
+        self.boot_pred_df_ = boot_pred_df
 
         metrics = [bootstrap_test_metrics, bootstrap_val_metrics]
         dfs = {}

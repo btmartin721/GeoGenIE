@@ -2,7 +2,7 @@
 # GeoGenIE Configuration File
 # ==============================================================
 # This configuration file allows you to set all the parameters
-# needed to run GeoGenIE for geographic coordinate predictions 
+# needed to run GeoGenIE for geographic coordinate predictions
 # from SNP data. Each section is grouped for ease of use.
 # ==============================================================
 
@@ -10,108 +10,108 @@
 # Data Input and Preprocessing
 # ==============================================================
 
-vcf: "filename.vcf.gz"  # Important. Path to the VCF file with SNPs.
-sample_data: "data/coords.csv"  # Important. Path to the coordinates file.
-known_sample_data: "data/coords.csv"  # Same as sample_data; used in plots.
-prop_unknowns: 0.1  # Proportion of samples set to "unknown".
-min_mac: 2  # Important. Minimum minor allele count (MAC).
-max_SNPs: null  # Maximum number of SNPs to subset. Null = use all SNPs.
+vcf: "filename.vcf.gz" # Important. Path to the VCF file with SNPs.
+sample_data: "data/coords.csv" # Important. Path to the coordinates file.
+known_sample_data: "data/coords.csv" # Same as sample_data; used in plots.
+prop_unknowns: 0.1 # Proportion of samples set to "unknown".
+min_mac: 2 # Important. Minimum minor allele count (MAC).
+max_SNPs: null # Maximum number of SNPs to subset. Null = use all SNPs.
 
 # ==============================================================
 # Model Configuration
 # ==============================================================
 
-nlayers: 10  # Important. Number of hidden layers in the network.
-width: 256  # Important. Number of neurons per layer.
-dropout_prop: 0.25  # Dropout rate to prevent overfitting.
-criterion: "rmse"  # Loss criterion. Options: rmse, huber, drms.
-dtype: "float32"  # PyTorch data type. Options: float32, float64.
+nlayers: 10 # Important. Number of hidden layers in the network.
+width: 256 # Important. Number of neurons per layer.
+dropout_prop: 0.25 # Dropout rate to prevent overfitting.
+criterion: "rmse" # Loss criterion. Options: rmse, huber, drms.
+dtype: "float32" # PyTorch data type. Options: float32, float64.
 
 # ==============================================================
 # Training Parameters
 # ==============================================================
 
-batch_size: 32  # Important. Training batch size.
-max_epochs: 5000  # Important. Max number of training epochs.
-learning_rate: 0.001  # Important. Optimizer learning rate.
-l2_reg: 0.0  # L2 regularization weight.
-early_stop_patience: 48  # Patience for early stopping.
-train_split: 0.8  # Default: 0.8. Training data proportion.
-val_split: 0.2  # Default: 0.2. Validation data proportion.
-do_bootstrap: false  # Enable bootstrap replicates.
-nboots: 100  # Number of bootstrap replicates.
-do_gridsearch: false  # Perform Optuna parameter search.
-n_iter: 100  # Iterations for parameter optimization.
-lr_scheduler_patience: 16  # Patience for learning rate scheduler.
-lr_scheduler_factor: 0.5  # Factor for reducing learning rate.
-factor: 1.0  # Scaling factor for network widths in successive layers.
-grad_clip: false  # Enable gradient clipping.
+batch_size: 32 # Important. Training batch size.
+max_epochs: 5000 # Important. Max number of training epochs.
+learning_rate: 0.001 # Important. Optimizer learning rate.
+l2_reg: 0.0 # L2 regularization weight.
+early_stop_patience: 48 # Patience for early stopping.
+train_split: 0.8 # Default: 0.8. Training data proportion.
+val_split: 0.2 # Default: 0.2. Validation data proportion.
+do_bootstrap: false # Enable bootstrap replicates.
+nboots: 100 # Number of bootstrap replicates.
+do_gridsearch: false # Perform Optuna parameter search.
+n_iter: 100 # Iterations for parameter optimization.
+lr_scheduler_patience: 16 # Patience for learning rate scheduler.
+lr_scheduler_factor: 0.5 # Factor for reducing learning rate.
+factor: 1.0 # Scaling factor for network widths in successive layers.
+grad_clip: false # Enable gradient clipping.
 
 # ==============================================================
 # Geographic Density Sampler
 # ==============================================================
 
-use_weighted: "none"  # Weighting. Options: none, loss, both.
-oversample_method: "none"  # Oversampling. Options: none, kmeans.
-oversample_neighbors: 5  # Nearest neighbors for oversampling.
-n_bins: 8  # Bins for KMeans resampling.
-use_kmeans: false  # Use KMeans clustering for weights.
-use_kde: false  # Use Kernel Density Estimation for weights.
-use_dbscan: false  # Use DBSCAN clustering (experimental).
-w_power: 1.0  # Power scaling for inverse density weighting.
-max_clusters: 10  # Maximum clusters for KMeans.
-focus_regions: null  # Geographic regions for density weighting.
-normalize_sample_weights: false  # Normalize density-based weights.
+use_weighted: "none" # Weighting. Options: none, loss, both.
+oversample_method: "none" # Oversampling. Options: none, kmeans.
+oversample_neighbors: 5 # Nearest neighbors for oversampling.
+n_bins: 8 # Bins for KMeans resampling.
+use_kmeans: false # Use KMeans clustering for weights.
+use_kde: false # Use Kernel Density Estimation for weights.
+use_dbscan: false # Use DBSCAN clustering (experimental).
+w_power: 1.0 # Power scaling for inverse density weighting.
+max_clusters: 10 # Maximum clusters for KMeans.
+focus_regions: null # Geographic regions for density weighting.
+normalize_sample_weights: false # Normalize density-based weights.
 
 # ==============================================================
 # Outlier Detection
 # ==============================================================
 
-detect_outliers: false  # Enable outlier detection.
-min_nn_dist: 1000  # Minimum nearest neighbor distance (meters).
-scale_factor: 100  # Geographic distance scaling factor.
-significance_level: 0.05  # Significance level for outliers.
-maxk: 50  # Maximum nearest neighbors for outlier detection.
+detect_outliers: false # Enable outlier detection.
+min_nn_dist: 1000 # Minimum nearest neighbor distance (meters).
+scale_factor: 100 # Geographic distance scaling factor.
+significance_level: 0.05 # Significance level for outliers.
+maxk: 50 # Maximum nearest neighbors for outlier detection.
 
 # ==============================================================
 # Plot Settings
 # ==============================================================
 
-show_plots: false  # Show inline plots.
-fontsize: 24  # Font size for plots.
-filetype: "png"  # File type for plots.
-plot_dpi: 300  # DPI for raster format plots.
-remove_splines: false  # Remove axis splines from plots.
-shapefile: "https://www2.census.gov/geo/tiger/GENZ2018/shp/cb_2018_us_county_500k.zip"  # Shapefile URL or path.
-basemap_fips: null  # FIPS code for basemap (state zoom).
-highlight_basemap_counties: null  # Highlight specific counties on map.
-samples_to_plot: null  # Sample IDs to plot.
-n_contour_levels: 20  # Number of contour levels for Kriging plots.
-min_colorscale: 0  # Minimum color scale value for plots.
-max_colorscale: 300  # Maximum color scale value for plots.
-sample_point_scale: 2  # Scale factor for sample point size.
-bbox_buffer: 0.1  # Buffer for bounding box on visualizations.
+show_plots: false # Show inline plots.
+fontsize: 24 # Font size for plots.
+filetype: "png" # File type for plots.
+plot_dpi: 300 # DPI for raster format plots.
+remove_splines: false # Remove axis splines from plots.
+shapefile: "https://www2.census.gov/geo/tiger/GENZ2018/shp/cb_2018_us_county_500k.zip" # Shapefile URL or path.
+basemap_fips: null # FIPS code for basemap (state zoom).
+highlight_basemap_counties: null # Highlight specific counties on map.
+samples_to_plot: null # Sample IDs to plot.
+n_contour_levels: 20 # Number of contour levels for Kriging plots.
+min_colorscale: 0 # Minimum color scale value for plots.
+max_colorscale: 300 # Maximum color scale value for plots.
+sample_point_scale: 2 # Scale factor for sample point size.
+bbox_buffer: 0.1 # Buffer for bounding box on visualizations.
 
 # ==============================================================
 # Embedding Settings
 # ==============================================================
 
-embedding_type: "none"  # Type of embedding to use. Options: 'pca', 'kernelpca', 'nmf', 'lle', 'mca', 'mds', 'polynomial', 'tsne', and 'none' (no embedding). Default: 'none' (no embedding)."
-n_components: null  # Number of components for PCA or tSNE.
-embedding_sensitivity: 1.0  # Sensitivity for optimal component selection.
-tsne_perplexity: 30  # Perplexity setting for t-SNE embedding.
-polynomial_degree: 2  # Degree for polynomial embedding.
-n_init: 4  # Initialization runs for MDS embedding.
+embedding_type: "none" # Type of embedding to use. Options: 'pca', 'kernelpca', 'nmf', 'lle', 'mca', 'mds', 'polynomial', 'tsne', and 'none' (no embedding). Default: 'none' (no embedding)."
+n_components: null # Number of components for PCA or tSNE.
+embedding_sensitivity: 1.0 # Sensitivity for optimal component selection.
+tsne_perplexity: 30 # Perplexity setting for t-SNE embedding.
+polynomial_degree: 2 # Degree for polynomial embedding.
+n_init: 4 # Initialization runs for MDS embedding.
 
 # ==============================================================
 # Output and Miscellaneous
 # ==============================================================
 
-prefix: "output"  # Output file prefix.
-sqldb: null  # SQLite3 database directory for Optuna.
-output_dir: "./output"  # Directory for output files.
-seed: null  # Random seed for reproducibility.
-gpu_number: null  # GPU number for computation.
-n_jobs: -1  # Number of CPU jobs. Default: -1 (use all CPUs).
-verbose: 1  # Verbosity level. 0 (silent) to 3 (most verbose).
-debug: false  # Enable debugging mode.
+prefix: "output" # Output file prefix.
+sqldb: null # SQLite3 database directory for Optuna.
+output_dir: "./output" # Directory for output files.
+seed: null # Random seed for reproducibility.
+gpu_number: null # GPU number for computation.
+n_jobs: -1 # Number of CPU jobs. Default: -1 (use all CPUs).
+verbose: 1 # Verbosity level. 0 (silent) to 3 (most verbose).
+debug: false # Enable debugging mode.

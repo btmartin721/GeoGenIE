@@ -693,6 +693,7 @@ class GeoGenIE:
                     data = torch.tensor(data, dtype=self.dtype).to(self.device)
                     output = model(data)
                     predictions.append(output.cpu().numpy())
+                    samples.append(sample_ids)
 
         predictions = np.concatenate(predictions, axis=0)
 
@@ -707,6 +708,7 @@ class GeoGenIE:
                 self.logger.error(msg)
                 raise TypeError(msg)
             geo_coords_is_valid(predictions)
+            samples = np.concatenate(samples, axis=0)
         else:
             # Rescale predictions and ground truth to original scale
             ground_truth = np.concatenate(ground_truth, axis=0)
