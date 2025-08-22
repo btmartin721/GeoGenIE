@@ -768,13 +768,15 @@ class Bootstrap:
         gdf = self.plotting.processor.to_geopandas(df)
 
         for i, (group, sample_id, dfk, resd) in enumerate(
-            self.plotting.processor.calculate_statistics(gdf, known_coords=df_known)
+            self.plotting.processor.calculate_statistics(
+                gdf, known_coords=df_known if dataset != "pred" else None
+            )
         ):
             if i in plot_indices:
                 self.plotting.plot_sample_with_density(
                     group,
                     sample_id,
-                    df_known=dfk,
+                    df_known=dfk if dataset != "pred" else None,
                     dataset=dataset,
                     gray_counties=self.args.highlight_basemap_counties,
                 )
