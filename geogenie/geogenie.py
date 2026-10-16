@@ -935,7 +935,7 @@ class GeoGenIE:
         percentiles = np.percentile(haversine_errors, [25, 50, 75])
 
         # Percentage of predictions within <N> km error
-        percentage_within_20km = within_threshold(haversine_errors, 25) * 100
+        percentage_within_20km = within_threshold(haversine_errors, 20) * 100
         percentage_within_50km = within_threshold(haversine_errors, 50) * 100
         percentage_within_75km = within_threshold(haversine_errors, 75) * 100
 

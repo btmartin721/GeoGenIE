@@ -229,8 +229,8 @@ class SpatialDataProcessor:
         """Calculate haversine distance between two sets of points.
 
         Args:
-            coords1 (np.ndarray): First set of coordinates.
-            coords2 (np.ndarray): Second set of coordinates.
+            coords1 (np.ndarray): First set of coordinates, columns (longitude, latitude).
+            coords2 (np.ndarray): Second set of coordinates, columns (longitude, latitude).
 
         Returns:
             np.ndarray: Haversine distance between coords1 and coords2.
@@ -240,8 +240,8 @@ class SpatialDataProcessor:
         c2 = self._ensure_is_numpy(coords2)
 
         R = 6371.0  # Earth's radius in kilometers
-        lat1, lon1 = np.radians(c1[:, 0]), np.radians(c1[:, 1])
-        lat2, lon2 = np.radians(c2[:, 0]), np.radians(c2[:, 1])
+        lon1, lat1 = np.radians(c1[:, 0]), np.radians(c1[:, 1])
+        lon2, lat2 = np.radians(c2[:, 0]), np.radians(c2[:, 1])
         dlat = lat2 - lat1
         dlon = lon2 - lon1
         a = np.sin(dlat / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2) ** 2
@@ -335,8 +335,8 @@ class SpatialDataProcessor:
                     dfk = self.to_pandas(gdfk)
 
                     haversine_err = self.haversine_distance(
-                        np.array([[mean_lat, mean_lon]]),
-                        np.array([[known_lat, known_lon]]),
+                        np.array([[mean_lon, mean_lat]]),
+                        np.array([[known_lon, known_lat]]),
                     )
                     geodesic_err = self.geodesic_distance(
                         np.array([[mean_lat, mean_lon]]),
