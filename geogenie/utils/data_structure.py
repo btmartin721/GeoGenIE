@@ -582,6 +582,33 @@ class DataStructure:
 
         return train_split, validation_split, test_split
 
+    def _cluster_split(self, indices, frac, seed, args):
+        """Split row indices in two, stratified by KMeans clusters of their coordinates.
+
+        Args:
+            indices (numpy.ndarray): Rows of self.X / self.y to split.
+            frac (float): Proportion of each cluster to place in the first set.
+            seed (int): Random seed for KMeans.
+            args (argparse.Namespace): Argument namespace containing additional parameters.
+
+        Returns:
+            tuple: Rows in the first set and rows in the second set.
+        """
+        y_sub = self.y[indices]
+        optimal_k = self._find_optimal_clusters(y_sub, args)
+        kmeans = KMeans(n_clusters=optimal_k, random_state=seed)
+        cluster_labels = kmeans.fit_predict(y_sub)
+
+        first, second = [], []
+        for cluster_id in range(optimal_k):
+            # Labels are positions within indices; map them back to rows.
+            cluster_indices = indices[cluster_labels == cluster_id]
+            np.random.shuffle(cluster_indices)
+            split_index = int(len(cluster_indices) * frac)
+            first.append(cluster_indices[:split_index])
+            second.append(cluster_indices[split_index:])
+        return np.concatenate(first), np.concatenate(second)
+
     def split_train_test(self, train_split, val_split, seed, args):
         """Splits the data into training, validation, and test datasets.
 
@@ -612,148 +639,56 @@ class DataStructure:
             )
 
         val_split /= 2
-        val_size = val_split / (train_split + val_split)
 
         if train_split + val_split >= 1:
             raise ValueError("The sum of train_split and val_split must be < 1.")
-
-        (
-            X_train_val,
-            X_test,
-            y_train_val,
-            y_test,
-            train_val_indices,
-            test_indices,
-        ) = train_test_split(
-            self.X,
-            self.y,
-            np.arange(self.X.shape[0]),
-            train_size=train_split + val_split,
-            random_state=seed,
-            shuffle=True,
-        )
-
-        # Ensure no overlap between train/val and test sets
-        assert not set(train_val_indices).intersection(
-            test_indices
-        ), "Data leakage detected between train + val and test sets!"
-
-        optimal_k = self._find_optimal_clusters(y_train_val, args)
-        kmeans = KMeans(n_clusters=optimal_k, random_state=seed)
-        cluster_labels = kmeans.fit_predict(y_train_val)
-
-        X_train_val_list, X_test_list, X_train_list, X_val_list = [], [], [], []
-        y_train_val_list, y_test_list, y_train_list, y_val_list = [], [], [], []
-        train_val_indices_list, val_indices_list, test_indices_list = [], [], []
-        train_val_samples_list, test_samples_list = [], []
-        train_val_weights_list, test_weights_list = [], []
-
-        for cluster_id in range(optimal_k):
-            cluster_indices = np.where(cluster_labels == cluster_id)[0]
-            np.random.shuffle(cluster_indices)
-            cluster_size = len(cluster_indices)
-
-            split_index = int(cluster_size * (train_split + val_split))
-
-            train_val_indices_cluster = cluster_indices[:split_index]
-            test_indices_cluster = cluster_indices[split_index:]
-
-            X_train_val_list.append(self.X[train_val_indices_cluster])
-            y_train_val_list.append(self.y[train_val_indices_cluster])
-            train_val_indices_list.append(train_val_indices_cluster)
-            train_val_samples_list.append(self.samples[train_val_indices_cluster])
-            train_val_weights_list.append(weights[train_val_indices_cluster])
-
-            X_test_list.append(self.X[test_indices_cluster])
-            y_test_list.append(self.y[test_indices_cluster])
-            test_indices_list.append(test_indices_cluster)
-            test_samples_list.append(self.samples[test_indices_cluster])
-            test_weights_list.append(weights[test_indices_cluster])
-
-        X_train_val = np.concatenate(X_train_val_list, axis=0)
-        y_train_val = np.concatenate(y_train_val_list, axis=0)
-        train_val_indices = np.concatenate(train_val_indices_list, axis=0)
-
-        X_test = np.concatenate(X_test_list, axis=0)
-        y_test = np.concatenate(y_test_list, axis=0)
-        test_indices = np.concatenate(test_indices_list, axis=0)
-        test_samples = np.concatenate(test_samples_list, axis=0)
-        test_weights = np.concatenate(test_weights_list, axis=0)
-
-        (
-            X_train,
-            X_val,
-            y_train,
-            y_val,
-            train_indices,
-            val_indices,
-        ) = train_test_split(
-            X_train_val,
-            y_train_val,
-            train_val_indices,
-            test_size=val_size,
-            random_state=seed,
-            shuffle=True,
-        )
-
-        # Ensure no overlap between train and val sets
-        assert not set(train_indices).intersection(
-            val_indices
-        ), "Data leakage detected between train and val sets!"
 
         if args.use_gradient_boosting:
             raise NotImplementedError(
                 "Gradient Boosting is not yet supported with clustering-based sampling."
             )
-            (
-                X_val,
-                X_train_val,
-                y_val,
-                y_train_val,
-                train_indices,
-                train_val_indices,
-            ) = train_test_split(X_val, y_val, val_indices, test_size=0.5)
 
-        optimal_k = self._find_optimal_clusters(y_train_val, args)
-        kmeans = KMeans(n_clusters=optimal_k, random_state=seed)
-        cluster_labels = kmeans.fit_predict(y_train_val)
+        # Spatially stratified splits over all known samples: train + val vs.
+        # test, then train vs. val within train + val.
+        train_val_indices, test_indices = self._cluster_split(
+            np.arange(self.X.shape[0]), train_split + val_split, seed, args
+        )
+        train_indices, val_indices = self._cluster_split(
+            train_val_indices, train_split / (train_split + val_split), seed, args
+        )
 
-        X_train_list, y_train_list, train_indices_list = [], [], []
-        X_val_list, y_val_list, val_indices_list = [], [], []
-        train_samples_list, val_samples_list = [], []
-        train_weights_list, val_weights_list = [], []
+        train_samples = self.samples[train_indices]
+        val_samples = self.samples[val_indices]
+        test_samples = self.samples[test_indices]
 
-        for cluster_id in range(optimal_k):
-            cluster_indices = np.where(cluster_labels == cluster_id)[0]
-            np.random.shuffle(cluster_indices)
-            split_index = int(
-                len(cluster_indices) * (train_split / (train_split + val_split))
-            )
-            train_indices_cluster = cluster_indices[:split_index]
-            val_indices_cluster = cluster_indices[split_index:]
+        # Ensure no sample is in more than one dataset.
+        for (a, sa), (b, sb) in (
+            (("train", train_samples), ("val", val_samples)),
+            (("train", train_samples), ("test", test_samples)),
+            (("val", val_samples), ("test", test_samples)),
+        ):
+            shared = set(sa).intersection(sb)
+            assert not shared, f"{len(shared)} samples shared between {a} and {b}."
 
-            X_train_list.append(self.X[train_indices_cluster])
-            y_train_list.append(self.y[train_indices_cluster])
-            train_indices_list.append(train_indices_cluster)
-            train_samples_list.append(self.samples[train_indices_cluster])
-            train_weights_list.append(weights[train_indices_cluster])
+        X_train_val, y_train_val = self.X[train_val_indices], self.y[train_val_indices]
+        X_train, y_train = self.X[train_indices], self.y[train_indices]
+        X_val, y_val = self.X[val_indices], self.y[val_indices]
+        X_test, y_test = self.X[test_indices], self.y[test_indices]
+        train_weights = weights[train_indices]
+        val_weights = weights[val_indices]
+        test_weights = weights[test_indices]
 
-            X_val_list.append(self.X[val_indices_cluster])
-            y_val_list.append(self.y[val_indices_cluster])
-            val_indices_list.append(val_indices_cluster)
-            val_samples_list.append(self.samples[val_indices_cluster])
-            val_weights_list.append(weights[val_indices_cluster])
-
-        X_train = np.concatenate(X_train_list, axis=0)
-        y_train = np.concatenate(y_train_list, axis=0)
-        train_indices = np.concatenate(train_indices_list, axis=0)
-        X_val = np.concatenate(X_val_list, axis=0)
-        y_val = np.concatenate(y_val_list, axis=0)
-        val_indices = np.concatenate(val_indices_list, axis=0)
-        train_samples = np.concatenate(train_samples_list, axis=0)
-        val_samples = np.concatenate(val_samples_list, axis=0)
-        train_weights = np.concatenate(train_weights_list, axis=0)
-        val_weights = np.concatenate(val_weights_list, axis=0)
+        # Write the sample IDs in each dataset to file.
+        split_dir = Path(args.output_dir, "data")
+        split_dir.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame(
+            {
+                "sampleID": np.concatenate([train_samples, val_samples, test_samples]),
+                "dataset": ["train"] * len(train_samples)
+                + ["val"] * len(val_samples)
+                + ["test"] * len(test_samples),
+            }
+        ).to_csv(split_dir / f"{args.prefix}_dataset_splits.csv", index=False)
 
         self.train_samples = train_samples
         self.val_samples = val_samples
