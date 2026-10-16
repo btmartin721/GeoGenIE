@@ -1180,7 +1180,7 @@ class DataStructure:
             filter_stage_indices (List[np.ndarray]): List of filter stage indices.
 
         Returns:
-            numpy.ndarray: Array of outlier indices.
+            numpy.ndarray: Outlier indices, mapped to rows of the full sample array.
 
         Raises:
             OutlierDetectionError: If an error occurs during outlier detection.
@@ -1217,7 +1217,7 @@ class DataStructure:
             # Remove mapped outliers from data
             self.mask[np.isin(self.all_indices, mapped_all_outliers)] = False
 
-            return all_outliers
+            return mapped_all_outliers
         except Exception as e:
             raise OutlierDetectionError(f"Error occurred during outlier detection: {e}")
 
