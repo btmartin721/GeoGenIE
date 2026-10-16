@@ -139,7 +139,7 @@ def assign_to_bins(
             n_clusters=n_bins, random_state=random_state, n_init="auto", max_iter=1000
         )
     else:
-        coordinates = df[[lat_col, long_col]].to_numpy()
+        coordinates = np.radians(df[[lat_col, long_col]].to_numpy(dtype=float))
         if min_samples is None:
             min_samples = 4
 

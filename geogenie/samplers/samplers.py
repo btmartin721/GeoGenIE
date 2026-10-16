@@ -227,6 +227,10 @@ class GeographicDensitySampler:
         else:
             return cluster_weights
 
+    def _latlon_radians(self):
+        """Return coordinates as (latitude, longitude) in radians, as sklearn's haversine metric expects."""
+        return np.radians(self.data[["y", "x"]].to_numpy(dtype=float))
+
     def _calculate_kde_weights(self):
         """Compute weights using Kernel Density Estimation.
 
@@ -235,14 +239,15 @@ class GeographicDensitySampler:
         Returns:
             np.ndarray: KDE-based weights.
         """
+        coords = self._latlon_radians()
         kde = KernelDensity(
-            bandwidth=0.03,
+            bandwidth=np.radians(0.03),
             kernel="gaussian",
             metric="haversine",
             algorithm="ball_tree",
         )
-        kde.fit(self.data)
-        log_density = kde.score_samples(self.data)
+        kde.fit(coords)
+        log_density = kde.score_samples(coords)
         density = np.exp(log_density)
         self.density = density
 
@@ -267,8 +272,8 @@ class GeographicDensitySampler:
         Returns:
             float: Optimal eps for DBSCAN.
         """
-        # Compute pairwise distances
-        distances = pairwise_distances(data)
+        # Compute pairwise haversine distances (data: latitude, longitude in radians)
+        distances = pairwise_distances(data, metric="haversine")
 
         # k-th nearest neighbor distances
         k_distances = np.sort(distances, axis=1)[:, k]
@@ -288,12 +293,13 @@ class GeographicDensitySampler:
         Returns:
             np.ndarray: DBSCAN-based weights.
         """
-        eps = self._determine_eps(self.data)
+        coords = self._latlon_radians()
+        eps = self._determine_eps(coords)
 
         dbscan = DBSCAN(
             eps=eps, min_samples=2, metric="haversine", algorithm="ball_tree"
         )
-        labels = dbscan.fit_predict(self.data)
+        labels = dbscan.fit_predict(coords)
 
         weights = np.ones(len(self.data))
         unique_labels = np.unique(labels)
@@ -333,10 +339,10 @@ class GeographicDensitySampler:
         for region in self.focus_regions:
             lon_min, lon_max, lat_min, lat_max = region
             in_region = (
-                (self.data["longitude"] >= lon_min)
-                & (self.data["longitude"] <= lon_max)
-                & (self.data["latitude"] >= lat_min)
-                & (self.data["latitude"] <= lat_max)
+                (self.data["x"] >= lon_min)
+                & (self.data["x"] <= lon_max)
+                & (self.data["y"] >= lat_min)
+                & (self.data["y"] <= lat_max)
             )
             weights[in_region] *= 2  # Multiplicative adjustment
         return weights

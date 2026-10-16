@@ -258,7 +258,9 @@ class SpatialDataProcessor:
         Returns:
             np.ndarray: Haversine error between points 1 and 2.
         """
-        return self.haversine_distance(point1.y, point1.x, point2.y, point2.x)
+        return self.haversine_distance(
+            np.array([[point1.x, point1.y]]), np.array([[point2.x, point2.y]])
+        )
 
     def calculate_statistics(self, gdf, max_boots=None, seed=None, known_coords=None):
         """Calculate statistics on properly projected data."""
