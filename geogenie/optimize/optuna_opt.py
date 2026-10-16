@@ -196,7 +196,7 @@ class Optimize:
             self.logger.error(msg)
             raise ValueError(msg)
 
-        loss = self.evaluate_model(self.test_loader, trained_model, criterion)
+        loss = self.evaluate_model(self.val_loader, trained_model, criterion)
         return loss
 
     def extract_features_labels(self, train_subset):
@@ -355,12 +355,12 @@ class Optimize:
         }
 
     def evaluate_model(self, test_loader, model, criterion):
-        """Evaluate the model using the test dataset.
+        """Evaluate the model on a dataset.
 
-        This method evaluates the model using the test dataset and returns the loss value.
+        This method evaluates the model on the given DataLoader and returns the loss value.
 
         Args:
-            test_loader (DataLoader): DataLoader for the test dataset.
+            test_loader (DataLoader): DataLoader to evaluate on.
             model (MLPRegressor or XGBoost): Trained model.
             criterion (callable): Loss function.
 
