@@ -396,10 +396,11 @@ class DataStructure:
             self.logger.error(msg)
             raise SampleOrderingError(msg)
 
-        # Compute sort_indices from self.samples based on
-        # sorted filtered_samples
+        # Compute sort_indices relative to the filtered sample array,
+        # so they are valid after filter_mask is applied.
+        filtered_array = np.array(self.samples)[mask]
         self.sort_indices = [
-            np.where(self.samples == x)[0][0] for x in filtered_samples_sorted
+            np.where(filtered_array == x)[0][0] for x in filtered_samples_sorted
         ]
 
         # Store the mask and indices for later use in subsetting and
