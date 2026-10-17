@@ -1,6 +1,7 @@
 # Standard library imports
 import logging
 import os
+from pathlib import Path
 
 # Third party imports
 import jenkspy
@@ -13,6 +14,7 @@ from geopy.distance import great_circle
 from imblearn.combine import SMOTEENN
 from imblearn.over_sampling import SMOTE
 from imblearn.under_sampling import EditedNearestNeighbours
+from kneed import KneeLocator
 from scipy import optimize
 from scipy.spatial.distance import cdist
 from scipy.stats import gaussian_kde
@@ -34,9 +36,35 @@ os.environ["TQDM_DISABLE"] = "true"
 
 import numpy as np
 from sklearn.cluster import DBSCAN, KMeans
-from sklearn.metrics import pairwise_distances
+from sklearn.metrics import pairwise_distances, silhouette_score
 from sklearn.neighbors import KernelDensity, NearestNeighbors
 from sklearn.preprocessing import MinMaxScaler
+
+
+def as_generator(seed=None):
+    """Return a NumPy random Generator for ``seed``.
+
+    Args:
+        seed (int, np.random.Generator, or None): Seed or an existing Generator. None gives a Generator seeded from fresh OS entropy (it never uses the global NumPy RNG).
+
+    Returns:
+        np.random.Generator: Random number generator.
+    """
+    if isinstance(seed, np.random.Generator):
+        return seed
+    return np.random.default_rng(seed)
+
+
+def sklearn_seed(rng):
+    """Draw an integer ``random_state`` for scikit-learn estimators from ``rng``.
+
+    Args:
+        rng (np.random.Generator): Random number generator.
+
+    Returns:
+        int: Seed in [0, 2**31 - 1).
+    """
+    return int(rng.integers(0, 2**31 - 1))
 
 
 class GeographicDensitySampler:
@@ -58,6 +86,10 @@ class GeographicDensitySampler:
         verbose (int): Verbosity level.
         logger (logging.Logger): Logger instance.
         dtype (np.dtype): Data type for calculations.
+        kde_bandwidth (float): KDE bandwidth in radians of great-circle arc.
+        rng (np.random.Generator): Random number generator used for KMeans and sampling.
+        output_dir (str or None): Output directory for the sample weight plot.
+        prefix (str): Output file prefix for the sample weight plot.
     """
 
     def __init__(
@@ -75,13 +107,17 @@ class GeographicDensitySampler:
         verbose=0,
         logger=None,
         dtype=np.float32,
+        kde_bandwidth=None,
+        seed=None,
+        output_dir=None,
+        prefix="output",
     ):
         """Geographic Density Sampler for weighting based on spatial density.
 
         This class provides a method to sample data points based on spatial density using KMeans, KDE, and DBSCAN.
 
         Args:
-            data (pandas DataFrame): DataFrame with 'longitude' and 'latitude'.
+            data (pandas DataFrame): DataFrame with 'x' (longitude) and 'y' (latitude) columns, in degrees.
             focus_regions (list of tuples): Regions of interest.
             use_kmeans (bool): Use KMeans clustering for weights.
             use_kde (bool): Use KernelDensity Estimation for weights.
@@ -90,10 +126,14 @@ class GeographicDensitySampler:
             max_clusters (int): Max clusters for KMeans.
             max_neighbors (int): Max neighbors for adaptive bandwidth.
             indices (np.ndarray): Indices for sampling.
-            normalize (bool): Normalize weights.
+            normalize (bool): If True, min-max scale the weights to [1, 10]. If False, the weights are rescaled to a mean of 1 (their ratios are unchanged).
             verbose (int): Verbosity level.
             logger (logging.Logger): Logger instance.
             dtype (np.dtype): Data type for calculations.
+            kde_bandwidth (float, optional): Bandwidth of the haversine KDE used by ``use_kde``, in radians of great-circle arc. If None, uses np.radians(0.03) (about 3.3 km). Defaults to None.
+            seed (int, np.random.Generator, or None, optional): Seed or Generator for KMeans and for sampling. If None, a fresh, unseeded Generator is used. Defaults to None.
+            output_dir (str, optional): If given, the sample weight plot is saved to ``<output_dir>/plots/<prefix>_sample_weights.png``. If None, no plot is made. Defaults to None.
+            prefix (str, optional): Output file prefix for the sample weight plot. Defaults to "output".
         """
         self.data = data
         self.focus_regions = focus_regions
@@ -106,6 +146,12 @@ class GeographicDensitySampler:
         self.normalize = normalize
         self.verbose = verbose
         self.dtype = dtype
+        self.kde_bandwidth = (
+            np.radians(0.03) if kde_bandwidth is None else float(kde_bandwidth)
+        )
+        self.rng = as_generator(seed)
+        self.output_dir = output_dir
+        self.prefix = prefix
 
         if indices is None:
             self.indices = np.arange(len(data))
@@ -119,12 +165,13 @@ class GeographicDensitySampler:
 
         self.density = None
         self.weights = self.calculate_weights()
-        self._plot_cluster_weights(self.weights)
+        if self.output_dir is not None:
+            self._plot_cluster_weights(self.weights)
 
     def _plot_cluster_weights(self, weights):
         """Plot the sample weights.
 
-        This method plots the sample weights on a scatter plot of the data points.
+        This method plots the sample weights on a scatter plot of the data points and saves it to ``<output_dir>/plots/<prefix>_sample_weights.png``.
 
         Args:
             weights (np.ndarray): Array of sample weights.
@@ -158,9 +205,10 @@ class GeographicDensitySampler:
             fontsize=24,
         )
 
-        fig.savefig(
-            "sample_weights.png", bbox_inches="tight", facecolor="white", dpi=300
-        )
+        outfile = Path(self.output_dir, "plots", f"{self.prefix}_sample_weights.png")
+        outfile.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(outfile, bbox_inches="tight", facecolor="white", dpi=300)
+        plt.close(fig)
 
     def calculate_weights(self):
         """Calculate sample weights using KMeans, KDE, DBSCAN, and focus regions.
@@ -173,6 +221,13 @@ class GeographicDensitySampler:
         if self.verbose >= 1:
             self.logger.info("Calculating sample weights...")
         weights = np.ones(len(self.data))
+
+        if not (
+            self.use_kmeans or self.use_kde or self.use_dbscan or self.focus_regions
+        ):
+            self.logger.warning(
+                "Sample weighting was requested, but none of 'use_kmeans', 'use_kde', 'use_dbscan', or 'focus_regions' is set; all sample weights are 1."
+            )
 
         # KMeans-based weights
         if self.use_kmeans:
@@ -202,6 +257,10 @@ class GeographicDensitySampler:
             self.logger.info("Normalizing weights...")
             scaler = MinMaxScaler(feature_range=(1, 10))
             weights = scaler.fit_transform(weights.reshape(-1, 1)).squeeze()
+        else:
+            # Rescale to a mean of 1 so the loss scale (and its balance against
+            # weight decay) does not depend on the raw density units.
+            weights = weights / np.mean(weights)
 
         self.logger.info("Weight calculation complete.")
         return weights
@@ -215,7 +274,9 @@ class GeographicDensitySampler:
             np.ndarray: KMeans-based weights.
         """
         n_clusters = self.find_optimal_clusters()
-        kmeans = KMeans(n_clusters=n_clusters, n_init="auto")
+        kmeans = KMeans(
+            n_clusters=n_clusters, n_init=10, random_state=sklearn_seed(self.rng)
+        )
         labels = kmeans.fit_predict(self.data)
         cluster_counts = np.bincount(labels, minlength=n_clusters)
         cluster_weights = 1 / (cluster_counts[labels] + 1e-5)
@@ -241,7 +302,7 @@ class GeographicDensitySampler:
         """
         coords = self._latlon_radians()
         kde = KernelDensity(
-            bandwidth=np.radians(0.03),
+            bandwidth=self.kde_bandwidth,
             kernel="gaussian",
             metric="haversine",
             algorithm="ball_tree",
@@ -366,18 +427,48 @@ class GeographicDensitySampler:
         """
         Find optimal number of clusters for KMeans using the Elbow Method.
 
+        The elbow is the knee of the inertia curve over k = 2..max_clusters (``kneed.KneeLocator``, convex and decreasing). If no knee is found, the k with the highest silhouette score is used.
+
         Returns:
             int: Optimal number of clusters.
         """
+        max_k = min(self.max_clusters, len(self.data) - 1)
+        if max_k < 2:
+            return 1
+
         distortions = []
-        cluster_range = range(2, self.max_clusters + 1)
+        labels = []
+        cluster_range = list(range(2, max_k + 1))
         for n_clusters in cluster_range:
-            kmeans = KMeans(n_clusters=n_clusters, n_init="auto")
-            kmeans.fit(self.data)
+            # Several initialisations so a poor local optimum does not distort
+            # the inertia curve.
+            kmeans = KMeans(
+                n_clusters=n_clusters,
+                n_init=10,
+                random_state=sklearn_seed(self.rng),
+            )
+            labels.append(kmeans.fit_predict(self.data))
             distortions.append(kmeans.inertia_)
 
-        elbow_index = np.argmin(np.gradient(distortions))
-        return cluster_range[elbow_index]
+        knee = None
+        if len(cluster_range) >= 3:
+            knee = KneeLocator(
+                cluster_range,
+                distortions,
+                curve="convex",
+                direction="decreasing",
+            ).knee
+
+        if knee is None:
+            sils = [
+                silhouette_score(self.data, lab) if len(np.unique(lab)) > 1 else -1
+                for lab in labels
+            ]
+            knee = cluster_range[int(np.argmax(sils))]
+
+        if self.verbose >= 1:
+            self.logger.info(f"Optimal number of KMeans clusters for weights: {knee}")
+        return int(knee)
 
     def __iter__(self):
         """Allows use as a PyTorch sampler.
@@ -385,14 +476,12 @@ class GeographicDensitySampler:
         Returns:
             iterator: An iterator for the sampler.
         """
-        return (
-            self.indices[i]
-            for i in np.random.choice(
-                self.indices,
-                size=len(self.indices),
-                p=self.weights / np.sum(self.weights),
-            )
+        positions = self.rng.choice(
+            len(self.indices),
+            size=len(self.indices),
+            p=self.weights / np.sum(self.weights),
         )
+        return (self.indices[i] for i in positions)
 
     def __len__(self):
         """Returns the number of samples.
@@ -400,7 +489,7 @@ class GeographicDensitySampler:
         Returns:
             int: The number of samples
         """
-        return len(self.data)
+        return len(self.indices)
 
 
 def synthetic_resampling(
