@@ -69,11 +69,18 @@ def read_csv_with_dynamic_sep(file_path):
     if sep == " ":
         with open(file_path, "r") as file:
             data = file.read().replace(" ", "\t")
-        data_io = StringIO(data)
+        source = StringIO(data)
         sep = "\t"
-        return pd.read_csv(data_io, sep=sep)
     else:
-        return pd.read_csv(file_path, sep=sep)
+        source = file_path
+
+    # Read sample IDs (first column) as text, so IDs such as "0012" keep their
+    # form; the remaining columns are numeric.
+    df = pd.read_csv(source, sep=sep, dtype=str)
+    df[df.columns[0]] = df[df.columns[0]].str.strip()
+    for col in df.columns[1:]:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+    return df
 
 
 @contextmanager
