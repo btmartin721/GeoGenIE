@@ -73,6 +73,8 @@ class EarlyStopping:
     def __call__(self, val_loss, model):
         """Call method to check if early stopping condition is met.
 
+        A non-finite validation loss (NaN or Inf) is never treated as an improvement; it counts toward the patience like any other epoch without improvement.
+
         Args:
             val_loss (float): Current validation loss.
             model (torch.nn.Module): The model being trained.
@@ -80,7 +82,14 @@ class EarlyStopping:
         Returns:
             bool: True if early stopping is triggered, False otherwise.
         """
-        if self.best_score is None:
+        if not np.isfinite(val_loss):
+            self.counter += 1
+            self.logger.warning(
+                f"Non-finite validation loss ({val_loss}); not saving a checkpoint. EarlyStopping counter: {self.counter}/{self.patience}"
+            )
+            if self.counter >= self.patience:
+                self.early_stop = True
+        elif self.best_score is None:
             self.best_score = val_loss
             self.save_checkpoint(val_loss, model)
         elif val_loss > self.best_score - self.delta:
@@ -135,6 +144,12 @@ class EarlyStopping:
         Raises:
             FileNotFoundError: If the checkpoint file is not found.
         """
+        if self.best_score is None:
+            self.logger.warning(
+                "No finite validation loss was recorded, so no checkpoint was saved; returning the model unchanged."
+            )
+            return model
+
         chkdir = Path(self.output_dir, "models")
 
         if self.boot is not None:
