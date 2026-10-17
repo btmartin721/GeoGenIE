@@ -175,33 +175,59 @@ class MCA(BaseEstimator, TransformerMixin):
 class MinMaxScalerGeo(BaseEstimator, TransformerMixin):
     """Class to scale geographic coordinates to a specified range.
 
+    The scaling is fitted on the data passed to ``fit`` (the training coordinates). With ``isotropic=True`` (default),
+    longitude is first multiplied by cos(mean latitude) and both axes share one scale factor, so Euclidean distance in
+    the scaled space is proportional to distance on the ground; the longer axis spans [scale_min, scale_max]. With
+    ``isotropic=False`` each axis is min-max scaled to [scale_min, scale_max] separately.
+
     Attributes:
-        lat_range (tuple): Minimum and maximum values for latitude.
-        lon_range (tuple): Minimum and maximum values for longitude.
+        lat_range (tuple): Minimum and maximum latitude seen in fit.
+        lon_range (tuple): Minimum and maximum longitude seen in fit.
         scale_min (float): Minimum value of the scaled range.
         scale_max (float): Maximum value of the scaled range.
+        isotropic (bool): Whether both axes share one distance-preserving scale.
         logger (logging.Logger): Logger object for the class.
     """
 
     def __init__(
-        self, lat_range=(-90, 90), lon_range=(-180, 180), scale_min=0, scale_max=1
+        self,
+        lat_range=(-90, 90),
+        lon_range=(-180, 180),
+        scale_min=0,
+        scale_max=1,
+        isotropic=True,
     ):
-        """Initialize the MinMaxScalerGeo with specified ranges.
-
-        This class scales geographic coordinates to a specified range.
+        """Initialize the MinMaxScalerGeo.
 
         Args:
-            lat_range (tuple): Minimum and maximum values for latitude.
-            lon_range (tuple): Minimum and maximum values for longitude.
+            lat_range (tuple): Initial latitude range; replaced by the data range in fit.
+            lon_range (tuple): Initial longitude range; replaced by the data range in fit.
             scale_min (float): Minimum value of the scaled range.
             scale_max (float): Maximum value of the scaled range.
+            isotropic (bool): Use one distance-preserving scale for both axes. Default: True.
         """
         self.lat_range = lat_range
         self.lon_range = lon_range
         self.scale_min = scale_min
         self.scale_max = scale_max
+        self.isotropic = isotropic
 
         self.logger = logging.getLogger(__name__)
+        self._set_axis_spans()
+
+    def _set_axis_spans(self):
+        """Compute the per-axis multipliers and spans used by transform and inverse_transform."""
+        lon_min, lon_max = self.lon_range
+        lat_min, lat_max = self.lat_range
+        if self.isotropic:
+            self.lon_factor_ = np.cos(np.radians((lat_min + lat_max) / 2))
+            span = max((lon_max - lon_min) * self.lon_factor_, lat_max - lat_min)
+            self.lon_span_ = span / self.lon_factor_
+            self.lat_span_ = span
+        else:
+            self.lon_factor_ = 1.0
+            self.lon_span_ = lon_max - lon_min
+            self.lat_span_ = lat_max - lat_min
 
     def fit(self, X, y=None):
         """Set the longitude and latitude ranges from the data.
@@ -225,76 +251,45 @@ class MinMaxScalerGeo(BaseEstimator, TransformerMixin):
 
         self.lon_range = (lon_min, lon_max)
         self.lat_range = (lat_min, lat_max)
+        self._set_axis_spans()
         return self
 
     def transform(self, X):
-        """Scale the geographic coordinates based on the provided ranges.
+        """Scale geographic coordinates.
 
         Args:
-            X (array-like): The input coordinates to transform. Expected shape (n_samples, 2) where
-                            X[:, 0] should be longitude and X[:, 1] should be latitude.
+            X (array-like): Coordinates, shape (n_samples, 2), columns (longitude, latitude).
 
         Returns:
-            np.array: Transformed coordinates, where each feature is scaled to [scale_min, scale_max].
+            np.array: Scaled coordinates.
         """
-        # Ensure input is a numpy array
-        X = np.asarray(X)
-
-        # Unpack the ranges
-        lon_min, lon_max = self.lon_range
-        lat_min, lat_max = self.lat_range
-
-        # Initialize the scaled array
+        X = np.asarray(X, dtype=float)
+        width = self.scale_max - self.scale_min
         X_scaled = np.empty_like(X, dtype=float)
-
-        # Transform longitudes
-        X_scaled[:, 0] = (X[:, 0] - lon_min) / (lon_max - lon_min) * (
-            self.scale_max - self.scale_min
-        ) + self.scale_min
-
-        # Transform latitudes
-        X_scaled[:, 1] = (X[:, 1] - lat_min) / (lat_max - lat_min) * (
-            self.scale_max - self.scale_min
-        ) + self.scale_min
+        X_scaled[:, 0] = (X[:, 0] - self.lon_range[0]) / self.lon_span_ * width + self.scale_min
+        X_scaled[:, 1] = (X[:, 1] - self.lat_range[0]) / self.lat_span_ * width + self.scale_min
 
         self.logger.debug(
             f"Transformed Coordinates: {X_scaled}, Shape: {X_scaled.shape}"
         )
-
         return X_scaled
 
     def inverse_transform(self, X_scaled):
-        """Scale back the coordinates to their original range.
+        """Scale coordinates back to longitude and latitude.
 
         Args:
-            X_scaled (array-like): The scaled coordinates to revert.
+            X_scaled (array-like): Scaled coordinates.
 
         Returns:
-            np.array: Original geographic coordinates.
+            np.array: Coordinates, columns (longitude, latitude).
         """
-        # Ensure input is a numpy array
-        if not isinstance(X_scaled, np.ndarray):
-            X_scaled = np.asarray(X_scaled)
-
-        # Initialize the original array
+        X_scaled = np.asarray(X_scaled, dtype=float)
+        width = self.scale_max - self.scale_min
         X_original = np.empty_like(X_scaled, dtype=float)
-
-        # Unpack the ranges
-        lon_min, lon_max = self.lon_range
-        lat_min, lat_max = self.lat_range
-
-        # Inverse transform longitudes
-        X_original[:, 0] = (X_scaled[:, 0] - self.scale_min) / (
-            self.scale_max - self.scale_min
-        ) * (lon_max - lon_min) + lon_min
-
-        # Inverse transform latitudes
-        X_original[:, 1] = (X_scaled[:, 1] - self.scale_min) / (
-            self.scale_max - self.scale_min
-        ) * (lat_max - lat_min) + lat_min
+        X_original[:, 0] = (X_scaled[:, 0] - self.scale_min) / width * self.lon_span_ + self.lon_range[0]
+        X_original[:, 1] = (X_scaled[:, 1] - self.scale_min) / width * self.lat_span_ + self.lat_range[0]
 
         self.logger.debug(
             f"Inverse Transformed Coordinates: {X_original}, Shape: {X_original.shape}"
         )
-
         return X_original
