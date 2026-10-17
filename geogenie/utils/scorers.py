@@ -6,6 +6,7 @@ import numpy as np
 import scipy.stats as stats
 from sklearn.manifold import LocallyLinearEmbedding
 from sklearn.metrics import root_mean_squared_error
+from statsmodels.stats.diagnostic import lilliefors
 
 from geogenie.utils.spatial_data_processors import SpatialDataProcessor
 
@@ -14,20 +15,29 @@ processor = SpatialDataProcessor(output_dir=None, logger=logger)
 
 
 def kstest(y_true, y_pred, sample_weight=None):
-    """Perform the Kolmogorov-Smirnov test on the Haversine errors."""
+    """Test whether the Haversine errors are normally distributed.
+
+    The normal distribution's mean and standard deviation are estimated from the same errors, so the plain Kolmogorov-Smirnov p-value would be too large. The Lilliefors correction of the Kolmogorov-Smirnov test is used instead (``statsmodels.stats.diagnostic.lilliefors``), which accounts for the estimated parameters.
+
+    Args:
+        y_true (np.ndarray): Ground truth coordinates (longitude, latitude).
+        y_pred (np.ndarray): Predicted coordinates (longitude, latitude).
+        sample_weight (np.ndarray, optional): Not used. Defaults to None.
+
+    Returns:
+        tuple: Kolmogorov-Smirnov (Lilliefors) statistic, its p-value, and the skewness of the errors.
+    """
     # Calculate Haversine error for each pair of points
     haversine_errors = processor.haversine_distance(y_true, y_pred)
-    errors = haversine_errors.copy()
+    errors = np.asarray(haversine_errors, dtype=float).copy()
 
     # Statistical Distribution Analysis
-    mean_error = np.mean(errors)
-    std_dev_error = np.std(errors)
     skewness_error = stats.skew(errors)
 
-    # Kolmogorov-Smirnov Test
-    ks_statistic, p_value = stats.kstest(
-        errors, "norm", args=(mean_error, std_dev_error)
-    )
+    # Kolmogorov-Smirnov test with estimated parameters (Lilliefors).
+    if errors.size < 4 or np.std(errors) == 0:
+        return np.nan, np.nan, skewness_error
+    ks_statistic, p_value = lilliefors(errors, dist="norm", pvalmethod="table")
 
     return (
         ks_statistic,
@@ -62,6 +72,8 @@ class LocallyLinearEmbeddingWrapper(LocallyLinearEmbedding):
 def calculate_r2_knn(predicted_data, actual_data):
     """Calculate the coefficient of determination (R^2) for predictions.
 
+    The squared Pearson correlation is computed separately for each column (e.g., longitude and latitude, or each locus) and averaged over the columns where it is defined (columns with zero variance are skipped).
+
     Args:
         predicted_data (np.array): Predicted data from KNN.
         actual_data (np.array): Actual data.
@@ -69,9 +81,21 @@ def calculate_r2_knn(predicted_data, actual_data):
     Returns:
         float: R^2 value.
     """
-    correlation_matrix = np.corrcoef(predicted_data, actual_data)
-    r_squared = correlation_matrix[0, 1] ** 2
-    return np.mean(r_squared)
+    predicted_data = np.asarray(predicted_data, dtype=float)
+    actual_data = np.asarray(actual_data, dtype=float)
+    if predicted_data.ndim == 1:
+        predicted_data = predicted_data[:, None]
+        actual_data = actual_data[:, None]
+    with np.errstate(divide="ignore", invalid="ignore"):
+        r_squared = np.array(
+            [
+                np.corrcoef(predicted_data[:, j], actual_data[:, j])[0, 1] ** 2
+                for j in range(predicted_data.shape[1])
+            ]
+        )
+    if np.all(np.isnan(r_squared)):
+        return np.nan
+    return np.nanmean(r_squared)
 
 
 def calculate_rmse(preds, targets):

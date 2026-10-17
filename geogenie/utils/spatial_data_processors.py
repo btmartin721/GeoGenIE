@@ -7,8 +7,8 @@ import numpy as np
 import pandas as pd
 import requests
 from geopy.distance import geodesic
-from scipy.spatial import cKDTree
 from sklearn.cluster import DBSCAN
+from sklearn.neighbors import BallTree
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
@@ -66,22 +66,26 @@ class SpatialDataProcessor:
         fn = url.split("/")[-1]
         dest = self.output_dir / "shapefile" / fn
 
-        try:
-            # Log the download attempt
-            if self.logger is not None:
-                self.logger.info(f"Attempting to download file from {url}")
-            response = requests.get(url, stream=True, verify=False)
-            response.raise_for_status()
-            with open(dest, "wb") as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    f.write(chunk)
-            if self.logger is not None:
-                self.logger.info(f"Successfully downloaded file to {dest}")
-        except requests.RequestException as e:
-            msg = f"Error downloading shapefile from {url}: {e}"
-            if self.logger is not None:
-                self.logger.error(msg)
-            raise e
+        if Path(url).is_file():
+            # Local file: read it in place instead of downloading.
+            dest = Path(url)
+        else:
+            try:
+                # Log the download attempt
+                if self.logger is not None:
+                    self.logger.info(f"Attempting to download file from {url}")
+                response = requests.get(url, stream=True, verify=False)
+                response.raise_for_status()
+                with open(dest, "wb") as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                if self.logger is not None:
+                    self.logger.info(f"Successfully downloaded file to {dest}")
+            except requests.RequestException as e:
+                msg = f"Error downloading shapefile from {url}: {e}"
+                if self.logger is not None:
+                    self.logger.error(msg)
+                raise e
 
         if not Path(dest).is_file():
             msg = f"Could not find shapefile in provided path: {dest}"
@@ -211,7 +215,7 @@ class SpatialDataProcessor:
             TypeError: If the data is not a valid format.
         """
         if not isinstance(gdf, gpd.GeoDataFrame):
-            if isinstance(gdf, np.ndarray) and gdf.shape == 2:
+            if isinstance(gdf, np.ndarray) and gdf.ndim == 2 and gdf.shape[1] == 2:
                 return self.to_geopandas(pd.DataFrame(gdf, columns=["x", "y"]))
             elif isinstance(gdf, pd.DataFrame):
                 if "x" not in gdf.columns or "y" not in gdf.columns:
@@ -229,8 +233,8 @@ class SpatialDataProcessor:
         """Calculate haversine distance between two sets of points.
 
         Args:
-            coords1 (np.ndarray): First set of coordinates.
-            coords2 (np.ndarray): Second set of coordinates.
+            coords1 (np.ndarray): First set of coordinates, columns (longitude, latitude).
+            coords2 (np.ndarray): Second set of coordinates, columns (longitude, latitude).
 
         Returns:
             np.ndarray: Haversine distance between coords1 and coords2.
@@ -240,8 +244,8 @@ class SpatialDataProcessor:
         c2 = self._ensure_is_numpy(coords2)
 
         R = 6371.0  # Earth's radius in kilometers
-        lat1, lon1 = np.radians(c1[:, 0]), np.radians(c1[:, 1])
-        lat2, lon2 = np.radians(c2[:, 0]), np.radians(c2[:, 1])
+        lon1, lat1 = np.radians(c1[:, 0]), np.radians(c1[:, 1])
+        lon2, lat2 = np.radians(c2[:, 0]), np.radians(c2[:, 1])
         dlat = lat2 - lat1
         dlon = lon2 - lon1
         a = np.sin(dlat / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2) ** 2
@@ -258,43 +262,68 @@ class SpatialDataProcessor:
         Returns:
             np.ndarray: Haversine error between points 1 and 2.
         """
-        return self.haversine_distance(point1.y, point1.x, point2.y, point2.x)
+        return self.haversine_distance(
+            np.array([[point1.x, point1.y]]), np.array([[point2.x, point2.y]])
+        )
 
     def calculate_statistics(self, gdf, max_boots=None, seed=None, known_coords=None):
-        """Calculate statistics on properly projected data."""
+        """Calculate per-sample summary statistics of bootstrap replicate predictions.
+
+        Replicate predictions are grouped by ``sampleID``. All statistics are computed from every replicate of a sample (duplicated replicate predictions are counted as often as they occur). Coordinates are (longitude, latitude) in decimal degrees.
+
+        The spread statistics describe the variability of the bootstrap replicate predictions only (model variance under the bootstrap resampling scheme). They are not calibrated prediction regions for the sample's true location.
+
+        Columns of each yielded ``resd`` dictionary:
+
+        - ``sampleID``: Sample identifier.
+        - ``x_mean``, ``y_mean``: Mean replicate longitude and latitude (degrees). This is the reported point estimate.
+        - ``x_median``, ``y_median``: Per-axis median of the replicate longitudes and latitudes (degrees).
+        - ``std_dev_x``, ``std_dev_y``: Sample standard deviation (ddof=1) of the replicate longitudes and latitudes (degrees).
+        - ``q025_x``, ``q975_x``, ``q025_y``, ``q975_y``: 2.5th and 97.5th percentiles of the replicate longitudes and latitudes (degrees), i.e., a per-axis 95% interval of the replicate predictions.
+        - ``half95_x``, ``half95_y``: 1.96 * ``std_dev_x`` / ``std_dev_y`` (degrees), the normal-approximation half-width of a 95% interval of the replicate predictions. Previously reported as ``se_x`` / ``se_y``.
+        - ``mean_ci95_x``, ``mean_ci95_y``: 1.96 * SD / sqrt(n_replicates) (degrees), the half-width of a 95% confidence interval for the mean replicate prediction (``x_mean``/``y_mean``). It shrinks as the number of replicates grows and describes Monte Carlo error of the mean only, not the uncertainty of the sample's location. Previously reported as ``ci_95_x`` / ``ci_95_y``.
+        - ``drms_km``: Distance root mean square (km), sqrt(mean(d_i^2)) where d_i is the haversine distance of replicate i from (``x_mean``, ``y_mean``). Replaces ``drms``, which was in mixed degree units.
+        - ``r95_km``: 95th percentile of the replicate haversine distances d_i from (``x_mean``, ``y_mean``) (km); the radius of a circle around the mean that contains 95% of the replicate predictions.
+        - ``n_replicates``: Number of replicate predictions for the sample.
+        - ``haversine_error``, ``geodesic_error``: Distance (km) between (``x_mean``, ``y_mean``) and the known coordinates. Only present if ``known_coords`` is provided and contains the sample.
+
+        Args:
+            gdf (geopandas.GeoDataFrame or pandas.DataFrame): Replicate predictions with columns 'sampleID', 'x' (longitude), and 'y' (latitude), or point geometries.
+            max_boots (int, optional): If provided, the yielded replicate group is randomly subsampled to at most ``max_boots`` rows (e.g., for plotting). Statistics are always computed from all replicates. Defaults to None.
+            seed (int, optional): Random seed for the ``max_boots`` subsampling. Defaults to None.
+            known_coords (pandas.DataFrame, optional): Known coordinates with columns 'sampleID', 'x', and 'y'. Defaults to None.
+
+        Yields:
+            tuple: (group, sample_id, dfk, resd), where ``group`` is the (possibly subsampled) GeoDataFrame of the sample's replicate predictions, ``dfk`` is a DataFrame with the sample's known coordinates (or None), and ``resd`` is the dictionary of statistics described above.
+        """
 
         gdf = self._ensure_is_gdf(gdf)
 
         for sample_id, group in gdf.groupby("sampleID"):
-            # Centroid calculations.
-            mean_lon = group.dissolve().centroid.x
-            mean_lat = group.dissolve().centroid.y
-
-            median_lon = group.dissolve(aggfunc={"x": "median"}).centroid.x
-            median_lat = group.dissolve(aggfunc={"y": "median"}).centroid.y
-
-            if isinstance(mean_lat, pd.Series):
-                mean_lat = mean_lat.iloc[0]
-            if isinstance(mean_lon, pd.Series):
-                mean_lon = mean_lon.iloc[0]
-            if isinstance(median_lat, pd.Series):
-                median_lat = median_lat.iloc[0]
-            if isinstance(median_lon, pd.Series):
-                median_lon = median_lon.iloc[0]
-
-            std_dev_x, std_dev_y = group.geometry.x.std(), group.geometry.y.std()
-
+            lon = group.geometry.x.to_numpy(dtype=float)
+            lat = group.geometry.y.to_numpy(dtype=float)
             n = len(group)
+
+            # Arithmetic mean and median over all replicates.
+            mean_lon, mean_lat = float(np.mean(lon)), float(np.mean(lat))
+            median_lon, median_lat = float(np.median(lon)), float(np.median(lat))
+
+            std_dev_x = float(np.std(lon, ddof=1)) if n > 1 else np.nan
+            std_dev_y = float(np.std(lat, ddof=1)) if n > 1 else np.nan
+
+            q025_x, q975_x = np.percentile(lon, [2.5, 97.5])
+            q025_y, q975_y = np.percentile(lat, [2.5, 97.5])
+
+            # Haversine distance (km) of each replicate from the mean location.
+            dists = self.haversine_distance(
+                np.column_stack([lon, lat]),
+                np.tile([mean_lon, mean_lat], (n, 1)),
+            )
+            drms_km = float(np.sqrt(np.mean(dists**2)))
+            r95_km = float(np.percentile(dists, 95))
 
             if max_boots is not None and n > max_boots:
                 group = group.sample(n=max_boots, axis=0, random_state=seed)
-
-            ci_95_x = 1.96 * std_dev_x / sqrt(n)
-            ci_95_y = 1.96 * std_dev_y / sqrt(n)
-
-            se_x = 1.96 * std_dev_x
-            se_y = 1.96 * std_dev_y
-            drms = sqrt(std_dev_x**2 + std_dev_y**2)
 
             resd = {
                 "sampleID": sample_id,
@@ -304,11 +333,17 @@ class SpatialDataProcessor:
                 "y_median": median_lat,
                 "std_dev_x": std_dev_x,
                 "std_dev_y": std_dev_y,
-                "ci_95_x": ci_95_x,
-                "ci_95_y": ci_95_y,
-                "se_x": se_x,
-                "se_y": se_y,
-                "drms": drms,
+                "q025_x": float(q025_x),
+                "q975_x": float(q975_x),
+                "q025_y": float(q025_y),
+                "q975_y": float(q975_y),
+                "half95_x": 1.96 * std_dev_x,
+                "half95_y": 1.96 * std_dev_y,
+                "mean_ci95_x": 1.96 * std_dev_x / sqrt(n),
+                "mean_ci95_y": 1.96 * std_dev_y / sqrt(n),
+                "drms_km": drms_km,
+                "r95_km": r95_km,
+                "n_replicates": n,
             }
 
             dfk = None
@@ -320,8 +355,8 @@ class SpatialDataProcessor:
                     self.logger.warning(
                         f"Duplicate sampleIDs found in known coordinates file."
                     )
-                    known_lat = gdfk.dissolve().centroid.y
-                    known_lon = gdfk.dissolve().centroid.x
+                    known_lat = gdfk.geometry.y.mean()
+                    known_lon = gdfk.geometry.x.mean()
                 elif not gdfk.empty:
                     known_lat = gdfk.geometry.y.iloc[0]
                     known_lon = gdfk.geometry.x.iloc[0]
@@ -335,8 +370,8 @@ class SpatialDataProcessor:
                     dfk = self.to_pandas(gdfk)
 
                     haversine_err = self.haversine_distance(
-                        np.array([[mean_lat, mean_lon]]),
-                        np.array([[known_lat, known_lon]]),
+                        np.array([[mean_lon, mean_lat]]),
+                        np.array([[known_lon, known_lat]]),
                     )
                     geodesic_err = self.geodesic_distance(
                         np.array([[mean_lat, mean_lon]]),
@@ -368,7 +403,14 @@ class SpatialDataProcessor:
         return err
 
     def spherical_mean(self, gdf):
-        """Calculate spherical mean of geographic points."""
+        """Calculate spherical mean of geographic points.
+
+        Args:
+            gdf (geopandas.GeoDataFrame): Points with (longitude, latitude) geometries in degrees.
+
+        Returns:
+            tuple: (longitude, latitude) of the spherical mean in degrees.
+        """
 
         gdf = self._ensure_is_gdf(gdf)
 
@@ -388,7 +430,7 @@ class SpatialDataProcessor:
         hyp = sqrt(x * x + y * y)
         lat = atan2(z, hyp)
 
-        return degrees(lat), degrees(lon)
+        return degrees(lon), degrees(lat)
 
     def calculate_bounding_box(self, gdf):
         """Calculate the bounding box for the dataset."""
@@ -396,12 +438,19 @@ class SpatialDataProcessor:
         return gdf.total_bounds
 
     def nearest_neighbor(self, gdf):
-        """Calculate the nearest neighbor for each point."""
+        """Calculate the great-circle distance (km) to the nearest other point.
+
+        Args:
+            gdf (geopandas.GeoDataFrame): Points with (longitude, latitude) geometries in degrees.
+
+        Returns:
+            np.ndarray: Haversine distance (km) from each point to its nearest neighbor.
+        """
         gdf = self._ensure_is_gdf(gdf)
-        points = np.array([gdf.geometry.x, gdf.geometry.y]).T
-        tree = cKDTree(points)
+        points = np.radians(np.array([gdf.geometry.y, gdf.geometry.x]).T)
+        tree = BallTree(points, metric="haversine")
         distances, _ = tree.query(points, k=2)
-        nearest = distances[:, 1]
+        nearest = distances[:, 1] * 6371.0
         return nearest
 
     def calculate_convex_hull(self, gdf):
@@ -410,18 +459,40 @@ class SpatialDataProcessor:
         return gdf.unary_union.convex_hull
 
     def detect_clusters(self, gdf, eps=0.5, min_samples=5):
-        """Detect clusters using DBSCAN."""
+        """Detect clusters using DBSCAN with haversine distances.
+
+        Args:
+            gdf (geopandas.GeoDataFrame): Points with (longitude, latitude) geometries in degrees.
+            eps (float, optional): DBSCAN neighborhood radius in km. Defaults to 0.5.
+            min_samples (int, optional): DBSCAN min_samples. Defaults to 5.
+
+        Returns:
+            geopandas.GeoDataFrame: Input with a 'cluster' column of DBSCAN labels.
+        """
         gdf = self._ensure_is_gdf(gdf)
-        coords = np.array([gdf.geometry.x, gdf.geometry.y]).T
-        clustering = DBSCAN(eps=eps, min_samples=min_samples).fit(coords)
+        coords = np.radians(np.array([gdf.geometry.y, gdf.geometry.x]).T)
+        clustering = DBSCAN(
+            eps=eps / 6371.0, min_samples=min_samples, metric="haversine"
+        ).fit(coords)
         gdf["cluster"] = clustering.labels_
         return gdf
 
     def detect_outliers(self, gdf, threshold=2):
-        """Identify outliers based on distance from the mean."""
+        """Identify outliers based on haversine distance (km) from the mean location.
+
+        Args:
+            gdf (geopandas.GeoDataFrame): Points with (longitude, latitude) geometries in degrees.
+            threshold (float, optional): Number of standard deviations above the mean distance. Defaults to 2.
+
+        Returns:
+            geopandas.GeoDataFrame: Input with a boolean 'is_outlier' column.
+        """
         gdf = self._ensure_is_gdf(gdf)
-        mean_point = gdf.geometry.unary_union.centroid
-        distances = gdf.geometry.apply(lambda p: mean_point.distance(p))
+        coords = self.to_numpy(gdf)
+        mean_point = np.tile(coords.mean(axis=0), (len(coords), 1))
+        distances = pd.Series(
+            self.haversine_distance(coords, mean_point), index=gdf.index
+        )
         gdf["is_outlier"] = distances > distances.mean() + threshold * distances.std()
         return gdf
 

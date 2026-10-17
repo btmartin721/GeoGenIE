@@ -471,7 +471,10 @@ class DataStructure:
             numpy.ndarray: Filtered genotypes.
         """
         if min_mac > 1:
-            mac = 2 * allele_counts[:, 2] + allele_counts[:, 1]
+            # Minor allele count: the smaller of the ALT and REF allele counts.
+            alt = 2 * allele_counts[:, 2] + allele_counts[:, 1]
+            ref = 2 * allele_counts[:, 0] + allele_counts[:, 1]
+            mac = np.minimum(alt, ref)
             gt = gt[mac >= min_mac, :]
 
         if max_snps is not None:
@@ -495,12 +498,13 @@ class DataStructure:
         max_k = args.maxk
         silhouette_scores = []
 
-        for k in range(3, max_k + 1):
+        k_values = list(range(3, max(max_k, 3) + 1))
+        for k in k_values:
             kmeans = KMeans(n_clusters=k, n_init="auto", random_state=args.seed)
             cluster_labels = kmeans.fit_predict(features)
             silhouette_scores.append(silhouette_score(features, cluster_labels))
 
-        optimal_k = np.argmax(silhouette_scores) + 2  # +2 to get the K value
+        optimal_k = k_values[int(np.argmax(silhouette_scores))]
         return optimal_k
 
     def _determine_bandwidth(self, data):
@@ -595,19 +599,44 @@ class DataStructure:
         Returns:
             tuple: Rows in the first set and rows in the second set.
         """
-        y_sub = self.y[indices]
-        optimal_k = self._find_optimal_clusters(y_sub, args)
+        first_pos, second_pos = self._cluster_split_positions(
+            self.y[indices], frac, seed, args
+        )
+        # Positions are within indices; map them back to rows.
+        return indices[first_pos], indices[second_pos]
+
+    def _cluster_split_positions(self, coords, frac, seed, args):
+        """Split positions 0..len(coords)-1 in two, stratified by KMeans clusters of coords.
+
+        Each cluster contributes in proportion to its size, and the first set has exactly
+        round(frac * len(coords)) positions (largest-remainder allocation across clusters).
+
+        Args:
+            coords (numpy.ndarray): Coordinates, columns (longitude, latitude).
+            frac (float): Proportion to place in the first set.
+            seed (int): Random seed for KMeans and shuffling.
+            args (argparse.Namespace): Argument namespace containing additional parameters.
+
+        Returns:
+            tuple: Positions in the first set and positions in the second set.
+        """
+        rng = np.random.default_rng(seed)
+        optimal_k = self._find_optimal_clusters(coords, args)
         kmeans = KMeans(n_clusters=optimal_k, random_state=seed)
-        cluster_labels = kmeans.fit_predict(y_sub)
+        cluster_labels = kmeans.fit_predict(coords)
+
+        clusters = [np.where(cluster_labels == c)[0] for c in range(optimal_k)]
+        sizes = np.array([len(c) for c in clusters])
+        ideal = sizes * frac
+        n_first = np.floor(ideal).astype(int)
+        remainder = int(round(frac * len(coords))) - n_first.sum()
+        n_first[np.argsort(-(ideal - n_first), kind="stable")[:remainder]] += 1
 
         first, second = [], []
-        for cluster_id in range(optimal_k):
-            # Labels are positions within indices; map them back to rows.
-            cluster_indices = indices[cluster_labels == cluster_id]
-            np.random.shuffle(cluster_indices)
-            split_index = int(len(cluster_indices) * frac)
-            first.append(cluster_indices[:split_index])
-            second.append(cluster_indices[split_index:])
+        for members, n in zip(clusters, n_first):
+            members = rng.permutation(members)
+            first.append(members[:n])
+            second.append(members[n:])
         return np.concatenate(first), np.concatenate(second)
 
     def split_train_test(self, train_split, val_split, seed, args):
@@ -624,21 +653,6 @@ class DataStructure:
                 "Splitting data into train, validation, and test datasets."
             )
 
-        weighted_sampler = self.get_sample_weights(self.y, args)
-
-        weights = (
-            np.ones(self.y.shape[0])
-            if weighted_sampler is None
-            else weighted_sampler.weights
-        )
-
-        self.samples_weight = weights
-
-        if self.verbose >= 1:
-            self.logger.info(
-                "Splitting data into train, validation, and test datasets."
-            )
-
         val_split /= 2
 
         if train_split + val_split >= 1:
@@ -650,10 +664,16 @@ class DataStructure:
             )
 
         # Spatially stratified splits over all known samples: train + val vs.
-        # test, then train vs. val within train + val.
-        train_val_indices, test_indices = self._cluster_split(
-            np.arange(self.X.shape[0]), train_split + val_split, seed, args
-        )
+        # test, then train vs. val within train + val. If the test set was already
+        # chosen before outlier detection, use it.
+        if getattr(self, "preselected_test_samples", None) is not None:
+            is_test = np.isin(self.samples, self.preselected_test_samples)
+            test_indices = np.where(is_test)[0]
+            train_val_indices = np.where(~is_test)[0]
+        else:
+            train_val_indices, test_indices = self._cluster_split(
+                np.arange(self.X.shape[0]), train_split + val_split, seed, args
+            )
         train_indices, val_indices = self._cluster_split(
             train_val_indices, train_split / (train_split + val_split), seed, args
         )
@@ -675,9 +695,17 @@ class DataStructure:
         X_train, y_train = self.X[train_indices], self.y[train_indices]
         X_val, y_val = self.X[val_indices], self.y[val_indices]
         X_test, y_test = self.X[test_indices], self.y[test_indices]
-        train_weights = weights[train_indices]
-        val_weights = weights[val_indices]
-        test_weights = weights[test_indices]
+
+        # Sample weights are estimated from the training coordinates only.
+        weighted_sampler = self.get_sample_weights(y_train, args)
+        train_weights = (
+            np.ones(len(train_indices))
+            if weighted_sampler is None
+            else np.asarray(weighted_sampler.weights, dtype=float)
+        )
+        val_weights = np.ones(len(val_indices))
+        test_weights = np.ones(len(test_indices))
+        self.samples_weight = train_weights
 
         # Write the sample IDs in each dataset to file.
         split_dir = Path(args.output_dir, "data")
@@ -901,9 +929,24 @@ class DataStructure:
             raise ValueError(msg)
 
         all_outliers = None
+        self.preselected_test_samples = None
         if args.detect_outliers:
+            # Choose the test set first, so outlier detection uses only non-test
+            # samples and never removes a test sample.
+            frac = args.train_split + args.val_split / 2
+            nontest_pos, test_pos = self._cluster_split_positions(
+                y, frac, args.seed, args
+            )
+            nontest_pos = np.sort(nontest_pos)
+            self.preselected_test_samples = np.asarray(index)[test_pos]
+
             all_outliers = self.run_outlier_detection(
-                args, X, indices, y, index, filter_stage_indices
+                args,
+                X[nontest_pos],
+                indices,
+                y[nontest_pos],
+                np.asarray(index)[nontest_pos],
+                [self.true_indices[nontest_pos]],
             )
 
         # Here X has not been imputed.
@@ -933,7 +976,7 @@ class DataStructure:
                     f"{self.X.shape[0]} samples remaining after removing {len(all_outliers)} outliers and {len(self.X_pred)} samples with unknown localities."
                 )
 
-            self.plotting.plot_outliers(self.mask, self.locs)
+            self.plotting.plot_outliers(self.mask, self.locs, known_mask=self.pred_mask)
 
         # placeholder=True makes it not do transform.
         self.split_train_test(args.train_split, args.val_split, args.seed, args)
@@ -1035,6 +1078,7 @@ class DataStructure:
             self.data["y_val"],
             self.data["y_test"],
             is_target=True,
+            target_scaler=self.norm,
         )
 
         if args.use_gradient_boosting:
@@ -1202,10 +1246,12 @@ class DataStructure:
                 verbose=args.verbose,
             )
 
+            p_adjust = getattr(args, "outlier_p_adjust", "fdr_bh")
             outliers = outlier_detector.composite_outlier_detection(
                 sig_level=args.significance_level,
                 maxk=args.maxk,
                 min_nn_dist=args.min_nn_dist,
+                p_adjust=None if p_adjust == "none" else p_adjust,
             )
 
             all_outliers = np.concatenate((outliers["geographic"], outliers["genetic"]))
@@ -1638,6 +1684,9 @@ class DataStructure:
                 verbose=args.verbose,
                 logger=self.logger,
                 dtype=self.dtype,
+                seed=args.seed,
+                output_dir=args.output_dir,
+                prefix=args.prefix,
             )
 
             if args.verbose >= 1:
