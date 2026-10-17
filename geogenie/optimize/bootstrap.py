@@ -63,6 +63,8 @@ class Bootstrap:
         self.sample_data = sample_data
         self.samples = samples
         self.args = args
+        self._init_lock = threading.Lock()
+        self.replicate_seeds = {}
         self.ds = ds
         self.best_params = best_params
         self.nboots = args.nboots
@@ -210,7 +212,7 @@ class Bootstrap:
         Args:
             model (nn.Module): The model to reinitialize.
         """
-        for layer in model.children():
+        for layer in model.modules():
             if hasattr(layer, "reset_parameters"):
                 layer.reset_parameters()
 
@@ -233,10 +235,13 @@ class Bootstrap:
         # Clear the current model and optimizer
         torch.cuda.empty_cache()
 
-        # Reinitialize the model
-        model = ModelClass(**model_params).to(model_params["device"])
-
-        self.reset_weights(model)
+        # Reinitialize the model. The global torch RNG is seeded per replicate under a
+        # lock, so initial weights are reproducible when replicates run in threads.
+        with self._init_lock:
+            if self.replicate_seeds.get(boot) is not None:
+                torch.manual_seed(self.replicate_seeds[boot])
+            model = ModelClass(**model_params).to(model_params["device"])
+            self.reset_weights(model)
 
         # Reinitialize the optimizer
         optimizer = self.extract_best_params(self.best_params, model)
@@ -265,8 +270,9 @@ class Bootstrap:
         replicate_seed = (
             self.args.seed + boot
             if self.args.seed is not None
-            else np.random.choice(1e7)
+            else int(np.random.default_rng().integers(1e7))
         )
+        self.replicate_seeds[boot] = replicate_seed
         thread_name = threading.current_thread().name
         self.logger.info(
             f"Bootstrap {boot} (seed={replicate_seed}) running on thread {thread_name}"
