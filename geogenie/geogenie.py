@@ -411,7 +411,7 @@ class GeoGenIE:
     ):
         """Trains a given model using specified parameters and data loaders.
 
-        This method supports early stopping and learning rate scheduling, and evaluates the model's performance on the validation dataset.
+        This method supports early stopping and learning rate scheduling, and evaluates the model's performance on the validation dataset. The model returned always has the weights of the epoch with the lowest validation loss (the best checkpoint), whether training ends by early stopping or by reaching ``max_epochs``. If synthetic oversampling is enabled, the oversampled data are used only for training; ``self.ds.train_loader`` is not modified.
 
         Args:
             train_loader (torch.utils.data.DataLoader): DataLoader for training data.
@@ -449,6 +449,7 @@ class GeoGenIE:
 
         train_losses, val_losses = [initial_train_loss], [initial_val_loss]
 
+        # Loader actually used for training (oversampled if requested).
         self.train_loader_interp = train_loader
         centroids = None
         if (
@@ -459,9 +460,9 @@ class GeoGenIE:
             (
                 train_loader,
                 centroids,
-                features,
-                labels,
-                sample_weights,
+                _,
+                _,
+                _,
             ) = run_genotype_interpolator(
                 train_loader, self.args, self.ds, self.dtype, self.plotting
             )
@@ -501,24 +502,22 @@ class GeoGenIE:
 
             lr_scheduler.step(avg_val_loss)
 
-            if trial is not None and trial.should_prune():
-                raise optuna.exceptions.TrialPruned()
+            if trial is not None:
+                trial.report(avg_val_loss, epoch)
+                if trial.should_prune():
+                    raise optuna.exceptions.TrialPruned()
+
+        if not early_stopping.early_stop:
+            # max_epochs reached before early stopping: restore the best
+            # checkpoint instead of returning the last-epoch weights.
+            if self.args.verbose >= 2 or self.args.debug:
+                self.logger.info(
+                    f"Reached max_epochs ({self.args.max_epochs}); restoring the best checkpoint."
+                )
+            model = early_stopping.load_best_model(model)
 
         if objective_mode or do_bootstrap:
             return model, sample_ids_val
-
-        if self.args.oversample_method.lower() != "none":
-            features = torch.tensor(features, dtype=self.dtype)
-            labels = torch.tensor(labels, dtype=self.dtype)
-            if sample_weights is not None:
-                sample_weights = torch.tensor(sample_weights, dtype=self.dtype)
-            else:
-                sample_weights = torch.ones(
-                    (features.numpy().shape[0]), dtype=self.dtype
-                )
-            self.ds.train_loader.dataset.features = features
-            self.ds.train_loader.dataset.labels = labels
-            self.ds.train_loader.dataset.sample_weights = sample_weights
 
         return model, train_losses, val_losses, centroids
 
@@ -532,15 +531,23 @@ class GeoGenIE:
             grad_clip (float): Value for gradient clipping.
             objective_mode (bool): If True, the method is used for optimization objectives.
 
+        Batches with a single sample are skipped: BatchNorm cannot normalise a batch of one in train mode. The returned loss is the mean of the batch losses weighted by batch size.
+
         Returns:
             float or None: The average training loss or None if training failed.
         """
         model.train()
         total_loss = 0
+        n_samples = 0
         batch_losses = []
 
         for batch in train_loader:
             data, targets, sample_weight, _ = self._batch_init(model, batch)
+            if data.size(0) < 2:
+                self.logger.debug(
+                    "Skipping a training batch with a single sample (BatchNorm needs > 1 sample in train mode)."
+                )
+                continue
             optimizer.zero_grad()
 
             try:
@@ -559,9 +566,14 @@ class GeoGenIE:
 
             batch_loss = loss.item()
             batch_losses.append(batch_loss)
-            total_loss += batch_loss
+            total_loss += batch_loss * data.size(0)
+            n_samples += data.size(0)
 
-        avg_loss = total_loss / len(train_loader)
+        if n_samples == 0:
+            self.logger.warning("No training batch with more than one sample.")
+            return None
+
+        avg_loss = total_loss / n_samples
         return avg_loss
 
     def test_step(self, val_loader, model):
@@ -571,24 +583,25 @@ class GeoGenIE:
             val_loader (torch.utils.data.DataLoader): DataLoader for validation data.
             model (torch.nn.Module): The PyTorch model to validate.
 
+        The loss is computed once over all samples in ``val_loader`` (not averaged over batches), so it does not depend on the batch size.
+
         Returns:
             float: The average validation loss.
         """
         model.eval()
-        total_val_loss = 0
-        batch_losses = []
+        all_outputs = []
+        all_targets = []
         sample_ids = []
         with torch.no_grad():
             for batch in val_loader:
                 data, targets, _, sids = self._batch_init(model, batch)
-                outputs = model(data)
-                val_loss = self.criterion(outputs, targets)
-                batch_loss = val_loss.item()
-                batch_losses.append(batch_loss)
-                total_val_loss += batch_loss
+                all_outputs.append(model(data))
+                all_targets.append(targets)
                 sample_ids.append(sids)
 
-        avg_val_loss = total_val_loss / len(val_loader)
+            outputs = torch.cat(all_outputs, dim=0)
+            targets = torch.cat(all_targets, dim=0)
+            avg_val_loss = self.criterion(outputs, targets).item()
         return avg_val_loss, sample_ids
 
     def _batch_init(self, model, batch):
@@ -609,10 +622,11 @@ class GeoGenIE:
             targets = torch.tensor(targets, dtype=self.dtype)
         if not isinstance(sample_weight, torch.Tensor):
             sample_weight = torch.tensor(sample_weight, dtype=self.dtype)
+        # Cast to the model dtype (datasets may be float32 with --dtype float64).
         return (
-            data.to(model.device),
-            targets.to(model.device),
-            sample_weight.to(model.device),
+            data.to(model.device, dtype=self.dtype),
+            targets.to(model.device, dtype=self.dtype),
+            sample_weight.to(model.device, dtype=self.dtype),
             sample_ids,
         )
 
@@ -806,21 +820,19 @@ class GeoGenIE:
         if not bootstrap and not is_train:
             self.plotting.plot_error_distribution(haversine_errors, outfile)
 
-            outfile2 = str(outfile).split("/")[-1]
-            outfile2 = outfile2.split("_")
-            for part in outfile2:
-                if part.startswith("val"):
-                    dataset = "validation"
-                elif part == "test":
-                    dataset = "test"
-                else:
-                    dataset = "train"
+            # Name the plots after the dataset being evaluated.
+            if dataset is None:
+                dataset_name = "train"
+            elif dataset.startswith("val"):
+                dataset_name = "validation"
+            else:
+                dataset_name = dataset
 
             outfile_cumulative_dist = (
-                f"{self.args.prefix}_{dataset}_cumulative_error_distribution.png"
+                f"{self.args.prefix}_{dataset_name}_cumulative_error_distribution.png"
             )
 
-            outfile_zscores = f"{self.args.prefix}_{dataset}_zscores.png"
+            outfile_zscores = f"{self.args.prefix}_{dataset_name}_zscores.png"
 
             self.plotting.plot_cumulative_error_distribution(
                 haversine_errors,
@@ -891,6 +903,11 @@ class GeoGenIE:
         """
         Computes various statistics for predictions and ground truth.
 
+        Notes:
+            - ``rho`` is the mean of the per-axis Spearman correlations (longitude and latitude), and ``rho_p`` is the larger of the two per-axis p-values. Ranking longitude and latitude together in one vector would give a high correlation even for predictions with no skill.
+            - ``kolmogorov_smirnov`` / ``kolmogorov_smirnov_pval`` test the errors for normality with the Lilliefors correction (parameters estimated from the same errors).
+            - ``mean_absolute_z_score`` is the mean absolute z-score of the errors. It is scale-free (about 0.8-0.9 for most error distributions) and describes the shape of the error distribution, not accuracy.
+
         Args:
             predictions (np.ndarray): Predictions from the model.
             ground_truth (np.ndarray): Ground truth values.
@@ -922,7 +939,10 @@ class GeoGenIE:
             pearson_p_value_y,
         ) = self.get_correlation_coef(predictions, ground_truth, pearsonr)
 
-        rho, rho_p = spearmanr(predictions.ravel(), ground_truth.ravel())
+        # Combine the per-axis correlations. Pooling longitude and latitude
+        # into one vector inflates the rank correlation.
+        rho = np.mean([spearman_corr_x, spearman_corr_y])
+        rho_p = np.max([spearman_p_value_x, spearman_p_value_y])
 
         # Calculate median absolute deviation for Haversine distances
         haversine_mad = mad(haversine_errors)
@@ -935,7 +955,7 @@ class GeoGenIE:
         percentiles = np.percentile(haversine_errors, [25, 50, 75])
 
         # Percentage of predictions within <N> km error
-        percentage_within_20km = within_threshold(haversine_errors, 25) * 100
+        percentage_within_20km = within_threshold(haversine_errors, 20) * 100
         percentage_within_50km = within_threshold(haversine_errors, 50) * 100
         percentage_within_75km = within_threshold(haversine_errors, 75) * 100
 
@@ -1023,7 +1043,7 @@ class GeoGenIE:
             )
 
         self.logger.info(
-            f"Mean Absolute Z-scores of Prediction Error (km) = {metrics['mean_absolute_z_score']}"
+            f"Mean Absolute Z-scores of Prediction Error (scale-free; describes the error distribution shape, not accuracy) = {metrics['mean_absolute_z_score']}"
         )
 
         self.logger.info(
@@ -1038,6 +1058,9 @@ class GeoGenIE:
         self.logger.info(
             f"Pearson's Correlation Coefficient for Latitude = {metrics['pearson_corr_latitude']}, P-value = {metrics['pearson_pvalue_latitude']}"
         )
+        self.logger.info(
+            f"Mean of per-axis Spearman's Correlation Coefficients (rho) = {metrics['rho']}, max P-value = {metrics['rho_p']}"
+        )
 
         # 0 is best, positive means more undeerestimations
         # negative means more overestimations.
@@ -1047,7 +1070,7 @@ class GeoGenIE:
         # Small P-value means poor fit.
         # I.e., significantly deviates from reference distribution.
         self.logger.info(
-            f"Kolmogorov-Smirnov Test = {metrics['kolmogorov_smirnov']}, P-value = {metrics['kolmogorov_smirnov_pval']}"
+            f"Kolmogorov-Smirnov (Lilliefors) Normality Test = {metrics['kolmogorov_smirnov']}, P-value = {metrics['kolmogorov_smirnov_pval']}"
         )
 
     def get_correlation_coef(self, predictions, ground_truth, corr_func):
@@ -1161,17 +1184,44 @@ class GeoGenIE:
         Returns:
             torch.optim.Optimizer: Optimizer for the model.
         """
-        lr = best_params["lr"] if "lr" in best_params else best_params["learning_rate"]
-
-        l2 = (
-            best_params["l2_weight"]
-            if "l2_weight" in best_params
-            else best_params["l2_reg"]
-        )
+        lr, l2 = self.resolve_optimizer_params(best_params, log=False)
 
         # Define the criterion and optimizer
         optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=l2)
         return optimizer
+
+    def resolve_optimizer_params(self, best_params, log=True):
+        """Get the learning rate and L2 weight to use with the optimizer.
+
+        Tuned parameter names from Optuna or ``--load_best_params`` (``lr``, ``l2_weight``) take precedence over the CLI/config names (``learning_rate``, ``l2_reg``), because they hold the tuned result.
+
+        Args:
+            best_params (dict): Dictionary of parameters.
+            log (bool, optional): If True, log which value is used, and warn when the two names disagree. Defaults to True.
+
+        Returns:
+            tuple: Learning rate and L2 regularization weight.
+        """
+        resolved = []
+        for tuned_key, cli_key in (("lr", "learning_rate"), ("l2_weight", "l2_reg")):
+            if tuned_key in best_params:
+                value = best_params[tuned_key]
+                if log:
+                    cli_value = best_params.get(cli_key)
+                    if cli_value is not None and cli_value != value:
+                        self.logger.warning(
+                            f"Using {tuned_key}={value} from the tuned parameters (Optuna or --load_best_params); this overrides {cli_key}={cli_value} from the command line/config."
+                        )
+                    else:
+                        self.logger.info(
+                            f"Using {tuned_key}={value} from the tuned parameters."
+                        )
+            else:
+                value = best_params[cli_key]
+                if log:
+                    self.logger.info(f"Using {cli_key}={value}.")
+            resolved.append(value)
+        return tuple(resolved)
 
     def write_pred_locations(self, pred_locations, filename, sample_ids):
         """
@@ -1363,18 +1413,8 @@ class GeoGenIE:
             self.logger.error(msg)
             raise ValueError(msg)
 
-        y_train = self.ds.train_loader.dataset.labels.numpy()
-        X_train = self.ds.train_loader.dataset.features.numpy()
-        y_train = self.ds.norm.inverse_transform(y_train)
-
         if centroids is not None:
             centroids = self.ds.norm.inverse_transform(centroids)
-
-        if use_rf:
-            y_train_pred = model.predict(X_train)
-        else:
-            y_train_pred = model(torch.tensor(X_train, dtype=self.dtype))
-            y_train_pred = y_train_pred.detach().numpy()
 
         outdir = Path(outdir)
         fn = f"{prefix}_{middir}_error_distributions.{self.args.filetype}"
@@ -1389,9 +1429,11 @@ class GeoGenIE:
             dataset=dataset,
         )
 
+        # Train metrics use the real training samples only (no synthetic
+        # oversampled samples).
         train_preds, train_metrics, y_train, train_samples = self.predict_locations(
             model,
-            self.train_loader_interp,
+            self.ds.train_loader,
             None,  # Don't make errordist plot for train data.
             return_truths=True,
             use_rf=use_rf,
@@ -1478,7 +1520,7 @@ class GeoGenIE:
             y_true, val_preds, dataset, dtype=self.dtype
         )
         self.plotting.polynomial_regression_plot(
-            self.train_loader_interp.dataset.labels.cpu().numpy(),
+            y_train,
             train_preds,
             "train",
             dtype=self.dtype,
@@ -1601,12 +1643,14 @@ class GeoGenIE:
             self.logger.info("Creating output directory structure.")
 
         outdir = self.args.output_dir
-        prefix = self.args.prefix
 
         try:
             # Creates DataStructure instance.
             # Loads and preprocesses data.
             self.load_data()
+
+            # load_data() updates the prefix (adds sample and locus counts).
+            prefix = self.args.prefix
             self.ds.define_params(self.args)
             best_params = self.ds.params
 
@@ -1615,7 +1659,8 @@ class GeoGenIE:
             elif self.args.criterion == "rmse":
                 self.criterion = weighted_rmse_loss
             elif self.args.criterion == "huber":
-                self.criterion = WeightedHuberLoss(delta=0.5, smoothing_factor=0.1)
+                # delta is in normalised target units.
+                self.criterion = WeightedHuberLoss(delta=0.5)
             else:
                 msg = f"Invalid '--criterion' argument provided. Expected one of 'drms', 'rmse', or 'huber', but got: {self.args.criterion}"
                 self.logger.error(msg)
@@ -1652,6 +1697,10 @@ class GeoGenIE:
                     self.logger.info(
                         f"Best parameters loaded from parent directory {self.args.load_best_params}: {best_params}"
                     )
+
+            if modelclass != "GB":
+                # Log which learning rate / L2 weight will be used.
+                self.resolve_optimizer_params(best_params, log=True)
 
             # Model Training
             if self.args.do_bootstrap:

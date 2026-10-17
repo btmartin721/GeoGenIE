@@ -55,6 +55,114 @@ def validate_positive_float(value):
     return fvalue
 
 
+def validate_nonnegative_float(value):
+    """Validate that the provided value is a float >= 0."""
+    fvalue = float(value)
+    if fvalue < 0:
+        raise argparse.ArgumentTypeError(f"{value} must be a float >= 0.")
+    return fvalue
+
+
+def validate_proportion(value):
+    """Validate that the provided value is a float in the range [0, 1)."""
+    fvalue = float(value)
+    if fvalue < 0 or fvalue >= 1:
+        raise argparse.ArgumentTypeError(f"{value} must be >= 0 and < 1.")
+    return fvalue
+
+
+_TRUE_STRINGS = {"true", "yes", "y", "on", "1"}
+_FALSE_STRINGS = {"false", "no", "n", "off", "0"}
+
+
+def _parse_bool(value):
+    """Convert a configuration file value to a bool.
+
+    Args:
+        value (bool, int, or str): Value from the configuration file.
+
+    Returns:
+        bool: The converted value.
+
+    Raises:
+        ValueError: If the value cannot be interpreted as a boolean.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int) and value in {0, 1}:
+        return bool(value)
+    if isinstance(value, str):
+        v = value.strip().lower()
+        if v in _TRUE_STRINGS:
+            return True
+        if v in _FALSE_STRINGS:
+            return False
+    raise ValueError(f"Expected a boolean (true/false), but got: {value!r}")
+
+
+def convert_config_values(parser, config, config_path=None):
+    """Convert and validate configuration file values with the parser's own rules.
+
+    Each value is passed through the same ``type`` conversion, ``choices`` check, and flag handling that the matching command-line option uses, so configuration values and command-line values are validated identically.
+
+    Args:
+        parser (argparse.ArgumentParser): The argument parser.
+        config (dict): Values loaded from the YAML configuration file.
+        config_path (str, optional): Path of the configuration file (used in messages). Defaults to None.
+
+    Returns:
+        dict: Converted values, keyed by argument destination.
+    """
+    actions = {a.dest: a for a in parser._actions}
+    converted = {}
+
+    for key, value in config.items():
+        if key == "config":
+            continue
+
+        if key not in actions or key == "help":
+            msg = f"Unknown option '{key}' in configuration file {config_path}; ignoring it."
+            logger.warning(msg)
+            warnings.warn(msg)
+            continue
+
+        action = actions[key]
+
+        try:
+            if value is None:
+                pass
+            elif isinstance(
+                action, (argparse._StoreTrueAction, argparse._StoreFalseAction)
+            ):
+                value = _parse_bool(value)
+            elif isinstance(action, EvaluateAction):
+                if isinstance(value, str):
+                    value = ast.literal_eval(value)
+            elif isinstance(value, (list, tuple, dict)):
+                pass
+            elif action.type is not None:
+                if isinstance(value, bool):
+                    raise ValueError(f"Expected a value, but got a boolean: {value}")
+                value = action.type(str(value))
+
+            if (
+                value is not None
+                and action.choices is not None
+                and value not in action.choices
+            ):
+                raise ValueError(
+                    f"invalid choice: {value!r} (choose from {', '.join(map(repr, action.choices))})"
+                )
+        except Exception as e:
+            parser.error(
+                f"Invalid value for '{key}' in configuration file {config_path}: {value!r} ({e})"
+            )
+
+        converted[key] = value
+
+    return converted
+
+
 def validate_gpu_number(value):
     """
     Validate the provided GPU number.
@@ -164,7 +272,9 @@ def setup_parser(test_mode=False):
 
     # Optional argument for the configuration file
     parser.add_argument(
-        "--config", type=str, help="Path to the configuration YAML file."
+        "--config",
+        type=str,
+        help="Path to the configuration YAML file. Values in the file replace the defaults; options given explicitly on the command line take precedence over the file.",
     )
 
     # Data Input and Preprocessing Arguments
@@ -227,6 +337,7 @@ def setup_parser(test_mode=False):
     )
     embed_group.add_argument(
         "--n_components",
+        type=validate_positive_int,
         default=None,
         help="Number of components to use with 'pca' or 'tsne' embeddings. If not specified, then 'n_components' will be optimized if using PCA, otherwise a value is required.'. Default: Search for optimal 'n_components.' parameter. Default: None (Search optimal components).",
     )
@@ -273,15 +384,15 @@ def setup_parser(test_mode=False):
     )
     model_group.add_argument(
         "--dropout_prop",
-        type=validate_positive_float,
+        type=validate_proportion,
         default=0.25,
-        help="Dropout rate (0-1) to prevent overfitting. Default: 0.2.",
+        help="Dropout rate (>= 0 and < 1) to prevent overfitting. Default: 0.25.",
     )
     model_group.add_argument(
         "--criterion",
         type=validate_lower_str,
         default="rmse",
-        help=f"Model loss criterion to use. Valid options include: 'rmse', 'huber', and 'drms'. RMSE is Root Mean Squared Error (i.e., euclidean distance) and 'drms' is Distance Root Mean Square. 'huber' is Huber loss. All criteria are weighted if using the '--use_weighted' argument with 'loss', 'sampler', or 'both'.",
+        help=f"Model loss criterion to use. Valid options include: 'rmse', 'huber', and 'drms'. 'rmse' is the mean Euclidean distance between predicted and true coordinates, 'drms' is the Distance Root Mean Square (square root of the mean squared distance), and 'huber' is the Huber loss on each coordinate (delta = 0.5). All criteria are computed on the normalised coordinates, and are weighted if using '--use_weighted loss'. Default: 'rmse'.",
     )
     model_group.add_argument(
         "--load_best_params",
@@ -325,7 +436,7 @@ def setup_parser(test_mode=False):
     )
     training_group.add_argument(
         "--l2_reg",
-        type=validate_positive_float,
+        type=validate_nonnegative_float,
         default=0.0,
         help="`--l2_reg`: L2 regularization weight. Can help to reduce overfitting. Default: 0.0 (no regularization).",
     )
@@ -333,19 +444,19 @@ def setup_parser(test_mode=False):
         "--early_stop_patience",
         type=validate_positive_int,
         default=48,
-        help="Epochs to wait after no improvement before activating early stopping mechanism. Default: 100.",
+        help="Epochs to wait after no improvement before activating early stopping mechanism. Default: 48.",
     )
     training_group.add_argument(
         "--train_split",
         type=validate_split,
         default=0.8,
-        help="Training data proportion. `--val_split` + `--train_split` must sum to 1.0. NOTE: `--train_split` will be further reduced by `--train_split - `--val_split` to create a 'test sample' hold-out subset. Default: 0.8",
+        help="Training data proportion. The validation set is `--val_split` / 2 and the test set is the remainder, 1 - `--train_split` - `--val_split` / 2 (with the defaults: train 0.8, validation 0.05, test 0.15). Set `--train_split` + `--val_split` = 1.0 for equal validation and test sets. Default: 0.8",
     )
     training_group.add_argument(
         "--val_split",
         type=validate_split,
         default=0.1,
-        help="--val_split`: Validation data proportion. `--val_split` + `--train_split` must sum to 1.0. Default: 0.2.",
+        help="`--val_split`: Validation plus test proportion when `--train_split` + `--val_split` = 1.0. The validation set is `--val_split` / 2 and the test set is 1 - `--train_split` - `--val_split` / 2. Default: 0.1.",
     )
     training_group.add_argument(
         "--do_bootstrap",
@@ -358,6 +469,13 @@ def setup_parser(test_mode=False):
         type=validate_positive_int,
         default=100,
         help="`--nboots`: Number of bootstrap replicates. Has no effect if `--do_bootstrap` is disabled. Default: 100.",
+    )
+    training_group.add_argument(
+        "--bootstrap_method",
+        type=str,
+        choices=["samples", "loci", "none"],
+        default="samples",
+        help="`--bootstrap_method`: What each bootstrap replicate resamples. 'samples': training samples with replacement, all loci kept. 'loci': loci with replacement. 'none': no resampling; replicates differ only in initialization and training order. Default: 'samples'.",
     )
     training_group.add_argument(
         "--do_gridsearch",
@@ -375,7 +493,7 @@ def setup_parser(test_mode=False):
         "--lr_scheduler_patience",
         default=16,
         type=validate_positive_int,
-        help="Learning rate scheduler patience.",
+        help="Learning rate scheduler patience. Default: 16.",
     )
     training_group.add_argument(
         "--lr_scheduler_factor",
@@ -387,7 +505,7 @@ def setup_parser(test_mode=False):
         "--factor",
         type=validate_positive_float,
         default=1.0,
-        help="Factor to scale neural network widths with each successive hidden layer. Default: 1.0 (no width reduction).",
+        help="Not implemented: the value is ignored and all hidden layers have width `--width`. Kept for compatibility with existing configuration files. Default: 1.0.",
     )
     training_group.add_argument(
         "--grad_clip",
@@ -414,6 +532,12 @@ def setup_parser(test_mode=False):
         type=validate_positive_int,
         default=5,
         help="Number of nearest neighbors to use with oversampling method. Default: 5.",
+    )
+    geo_sampler_group.add_argument(
+        "--max_oversample_factor",
+        type=validate_positive_int,
+        default=5,
+        help="Maximum number of rows (the sample plus synthetic children) generated per training sample when oversampling. Default: 5.",
     )
     geo_sampler_group.add_argument(
         "--n_bins",
@@ -465,7 +589,7 @@ def setup_parser(test_mode=False):
     geo_sampler_group.add_argument(
         "--normalize_sample_weights",
         action="store_true",
-        help="Whether to normalize density-based sample weights from 0 to 1. Default: False (no normalization).",
+        help="Whether to rescale density-based sample weights to the range [1, 10]. Without it, weights are rescaled to mean 1. Default: False.",
     )
 
     outlier_detection_group = parser.add_argument_group(
@@ -497,6 +621,13 @@ def setup_parser(test_mode=False):
         type=validate_positive_float,
         default=0.05,
         help="Adjust the significance level (alpha) for P-values to determine significant outliers. Outliers <= 'significance_level' are removed. Must be in the range (0, 1). Default: 0.05.",
+    )
+    outlier_detection_group.add_argument(
+        "--outlier_p_adjust",
+        type=str,
+        choices=["fdr_bh", "none"],
+        default="fdr_bh",
+        help="Multiple-testing adjustment of outlier P-values: 'fdr_bh' (Benjamini-Hochberg) or 'none'. Default: 'fdr_bh'.",
     )
     outlier_detection_group.add_argument(
         "--maxk",
@@ -641,7 +772,7 @@ def setup_parser(test_mode=False):
         "--sample_point_scale",
         type=validate_positive_int,
         default=2,
-        help="Scale factor for sample point size on Kriging plot. If the sample points are too large or do not appear, decrease or increase this value, respectively. Default: 3.",
+        help="Scale factor for sample point size on Kriging plot. If the sample points are too large or do not appear, decrease or increase this value, respectively. Default: 2.",
     )
     plotting_group.add_argument(
         "--bbox_buffer",
@@ -649,14 +780,35 @@ def setup_parser(test_mode=False):
         default=0.1,
         help="Buffer to add to the sampling bounding box on map visualizations. Adjust to your liking. Default: 0.1.",
     )
+    # Apply the configuration file (if any) as new defaults, then parse the
+    # command line again so that explicitly given options take precedence.
+    pre_parser = argparse.ArgumentParser(add_help=False)
+    pre_parser.add_argument("--config", type=str, default=None)
+    pre_args, _ = pre_parser.parse_known_args()
+    if pre_args.config:
+        if not os.path.exists(pre_args.config):
+            parser.error(f"Configuration file not found: {pre_args.config}")
+        config = load_config(pre_args.config) or {}
+        if not isinstance(config, dict):
+            parser.error(
+                f"Configuration file {pre_args.config} must contain a mapping of option names to values."
+            )
+        parser.set_defaults(
+            **convert_config_values(parser, config, config_path=pre_args.config)
+        )
+
     args = parser.parse_args()
+
+    if args.factor != 1.0:
+        msg = f"'--factor' is not implemented and is ignored (got {args.factor}); all hidden layers have width '--width'."
+        logger.warning(msg)
+        warnings.warn(msg)
 
     if args.use_gradient_boosting:
         msg = "Gradient Boosting is currently not supported. Please use the deep learning model. This feature may be removed in a future version."
         logger.error(msg)
         parser.error(msg)
 
-    # Load and apply configuration file if provided
     validate_inputs(parser, args, test_mode=test_mode)
     validate_significance_levels(parser, args)
     validate_max_neighbors(parser, args)
@@ -677,6 +829,10 @@ def setup_parser(test_mode=False):
 
 
 def validate_str2list(arg):
+    if isinstance(arg, (list, tuple)):
+        return [str(x).strip() for x in arg]
+    if isinstance(arg, int) and not isinstance(arg, bool):
+        return str(arg)
     if arg is not None:
         if not arg.isdigit():
             if isinstance(arg, str):
@@ -815,16 +971,8 @@ def validate_significance_levels(parser, args):
 
 
 def validate_inputs(parser, args, test_mode=False):
-    if args.config:
-        if not os.path.exists(args.config):
-            parser.error(f"Configuration file not found: {args.config}")
-        config = load_config(args.config)
-
-        # Update default values based on the configuration file
-        for arg in vars(args):
-            if arg in config:
-                setattr(args, arg, config[arg])
-
+    # The configuration file is applied in setup_parser() before parsing,
+    # so explicitly given command-line options take precedence over it.
     if args.sample_data is None and not test_mode:
         logger.error("--sample_data argument is required.")
         parser.error("--sample_data argument is required.")

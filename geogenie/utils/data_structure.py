@@ -396,10 +396,11 @@ class DataStructure:
             self.logger.error(msg)
             raise SampleOrderingError(msg)
 
-        # Compute sort_indices from self.samples based on
-        # sorted filtered_samples
+        # Compute sort_indices relative to the filtered sample array,
+        # so they are valid after filter_mask is applied.
+        filtered_array = np.array(self.samples)[mask]
         self.sort_indices = [
-            np.where(self.samples == x)[0][0] for x in filtered_samples_sorted
+            np.where(filtered_array == x)[0][0] for x in filtered_samples_sorted
         ]
 
         # Store the mask and indices for later use in subsetting and
@@ -470,7 +471,10 @@ class DataStructure:
             numpy.ndarray: Filtered genotypes.
         """
         if min_mac > 1:
-            mac = 2 * allele_counts[:, 2] + allele_counts[:, 1]
+            # Minor allele count: the smaller of the ALT and REF allele counts.
+            alt = 2 * allele_counts[:, 2] + allele_counts[:, 1]
+            ref = 2 * allele_counts[:, 0] + allele_counts[:, 1]
+            mac = np.minimum(alt, ref)
             gt = gt[mac >= min_mac, :]
 
         if max_snps is not None:
@@ -494,12 +498,13 @@ class DataStructure:
         max_k = args.maxk
         silhouette_scores = []
 
-        for k in range(3, max_k + 1):
+        k_values = list(range(3, max(max_k, 3) + 1))
+        for k in k_values:
             kmeans = KMeans(n_clusters=k, n_init="auto", random_state=args.seed)
             cluster_labels = kmeans.fit_predict(features)
             silhouette_scores.append(silhouette_score(features, cluster_labels))
 
-        optimal_k = np.argmax(silhouette_scores) + 2  # +2 to get the K value
+        optimal_k = k_values[int(np.argmax(silhouette_scores))]
         return optimal_k
 
     def _determine_bandwidth(self, data):
@@ -582,6 +587,58 @@ class DataStructure:
 
         return train_split, validation_split, test_split
 
+    def _cluster_split(self, indices, frac, seed, args):
+        """Split row indices in two, stratified by KMeans clusters of their coordinates.
+
+        Args:
+            indices (numpy.ndarray): Rows of self.X / self.y to split.
+            frac (float): Proportion of each cluster to place in the first set.
+            seed (int): Random seed for KMeans.
+            args (argparse.Namespace): Argument namespace containing additional parameters.
+
+        Returns:
+            tuple: Rows in the first set and rows in the second set.
+        """
+        first_pos, second_pos = self._cluster_split_positions(
+            self.y[indices], frac, seed, args
+        )
+        # Positions are within indices; map them back to rows.
+        return indices[first_pos], indices[second_pos]
+
+    def _cluster_split_positions(self, coords, frac, seed, args):
+        """Split positions 0..len(coords)-1 in two, stratified by KMeans clusters of coords.
+
+        Each cluster contributes in proportion to its size, and the first set has exactly
+        round(frac * len(coords)) positions (largest-remainder allocation across clusters).
+
+        Args:
+            coords (numpy.ndarray): Coordinates, columns (longitude, latitude).
+            frac (float): Proportion to place in the first set.
+            seed (int): Random seed for KMeans and shuffling.
+            args (argparse.Namespace): Argument namespace containing additional parameters.
+
+        Returns:
+            tuple: Positions in the first set and positions in the second set.
+        """
+        rng = np.random.default_rng(seed)
+        optimal_k = self._find_optimal_clusters(coords, args)
+        kmeans = KMeans(n_clusters=optimal_k, random_state=seed)
+        cluster_labels = kmeans.fit_predict(coords)
+
+        clusters = [np.where(cluster_labels == c)[0] for c in range(optimal_k)]
+        sizes = np.array([len(c) for c in clusters])
+        ideal = sizes * frac
+        n_first = np.floor(ideal).astype(int)
+        remainder = int(round(frac * len(coords))) - n_first.sum()
+        n_first[np.argsort(-(ideal - n_first), kind="stable")[:remainder]] += 1
+
+        first, second = [], []
+        for members, n in zip(clusters, n_first):
+            members = rng.permutation(members)
+            first.append(members[:n])
+            second.append(members[n:])
+        return np.concatenate(first), np.concatenate(second)
+
     def split_train_test(self, train_split, val_split, seed, args):
         """Splits the data into training, validation, and test datasets.
 
@@ -596,164 +653,71 @@ class DataStructure:
                 "Splitting data into train, validation, and test datasets."
             )
 
-        weighted_sampler = self.get_sample_weights(self.y, args)
-
-        weights = (
-            np.ones(self.y.shape[0])
-            if weighted_sampler is None
-            else weighted_sampler.weights
-        )
-
-        self.samples_weight = weights
-
-        if self.verbose >= 1:
-            self.logger.info(
-                "Splitting data into train, validation, and test datasets."
-            )
-
         val_split /= 2
-        val_size = val_split / (train_split + val_split)
 
         if train_split + val_split >= 1:
             raise ValueError("The sum of train_split and val_split must be < 1.")
-
-        (
-            X_train_val,
-            X_test,
-            y_train_val,
-            y_test,
-            train_val_indices,
-            test_indices,
-        ) = train_test_split(
-            self.X,
-            self.y,
-            np.arange(self.X.shape[0]),
-            train_size=train_split + val_split,
-            random_state=seed,
-            shuffle=True,
-        )
-
-        # Ensure no overlap between train/val and test sets
-        assert not set(train_val_indices).intersection(
-            test_indices
-        ), "Data leakage detected between train + val and test sets!"
-
-        optimal_k = self._find_optimal_clusters(y_train_val, args)
-        kmeans = KMeans(n_clusters=optimal_k, random_state=seed)
-        cluster_labels = kmeans.fit_predict(y_train_val)
-
-        X_train_val_list, X_test_list, X_train_list, X_val_list = [], [], [], []
-        y_train_val_list, y_test_list, y_train_list, y_val_list = [], [], [], []
-        train_val_indices_list, val_indices_list, test_indices_list = [], [], []
-        train_val_samples_list, test_samples_list = [], []
-        train_val_weights_list, test_weights_list = [], []
-
-        for cluster_id in range(optimal_k):
-            cluster_indices = np.where(cluster_labels == cluster_id)[0]
-            np.random.shuffle(cluster_indices)
-            cluster_size = len(cluster_indices)
-
-            split_index = int(cluster_size * (train_split + val_split))
-
-            train_val_indices_cluster = cluster_indices[:split_index]
-            test_indices_cluster = cluster_indices[split_index:]
-
-            X_train_val_list.append(self.X[train_val_indices_cluster])
-            y_train_val_list.append(self.y[train_val_indices_cluster])
-            train_val_indices_list.append(train_val_indices_cluster)
-            train_val_samples_list.append(self.samples[train_val_indices_cluster])
-            train_val_weights_list.append(weights[train_val_indices_cluster])
-
-            X_test_list.append(self.X[test_indices_cluster])
-            y_test_list.append(self.y[test_indices_cluster])
-            test_indices_list.append(test_indices_cluster)
-            test_samples_list.append(self.samples[test_indices_cluster])
-            test_weights_list.append(weights[test_indices_cluster])
-
-        X_train_val = np.concatenate(X_train_val_list, axis=0)
-        y_train_val = np.concatenate(y_train_val_list, axis=0)
-        train_val_indices = np.concatenate(train_val_indices_list, axis=0)
-
-        X_test = np.concatenate(X_test_list, axis=0)
-        y_test = np.concatenate(y_test_list, axis=0)
-        test_indices = np.concatenate(test_indices_list, axis=0)
-        test_samples = np.concatenate(test_samples_list, axis=0)
-        test_weights = np.concatenate(test_weights_list, axis=0)
-
-        (
-            X_train,
-            X_val,
-            y_train,
-            y_val,
-            train_indices,
-            val_indices,
-        ) = train_test_split(
-            X_train_val,
-            y_train_val,
-            train_val_indices,
-            test_size=val_size,
-            random_state=seed,
-            shuffle=True,
-        )
-
-        # Ensure no overlap between train and val sets
-        assert not set(train_indices).intersection(
-            val_indices
-        ), "Data leakage detected between train and val sets!"
 
         if args.use_gradient_boosting:
             raise NotImplementedError(
                 "Gradient Boosting is not yet supported with clustering-based sampling."
             )
-            (
-                X_val,
-                X_train_val,
-                y_val,
-                y_train_val,
-                train_indices,
-                train_val_indices,
-            ) = train_test_split(X_val, y_val, val_indices, test_size=0.5)
 
-        optimal_k = self._find_optimal_clusters(y_train_val, args)
-        kmeans = KMeans(n_clusters=optimal_k, random_state=seed)
-        cluster_labels = kmeans.fit_predict(y_train_val)
-
-        X_train_list, y_train_list, train_indices_list = [], [], []
-        X_val_list, y_val_list, val_indices_list = [], [], []
-        train_samples_list, val_samples_list = [], []
-        train_weights_list, val_weights_list = [], []
-
-        for cluster_id in range(optimal_k):
-            cluster_indices = np.where(cluster_labels == cluster_id)[0]
-            np.random.shuffle(cluster_indices)
-            split_index = int(
-                len(cluster_indices) * (train_split / (train_split + val_split))
+        # Spatially stratified splits over all known samples: train + val vs.
+        # test, then train vs. val within train + val. If the test set was already
+        # chosen before outlier detection, use it.
+        if getattr(self, "preselected_test_samples", None) is not None:
+            is_test = np.isin(self.samples, self.preselected_test_samples)
+            test_indices = np.where(is_test)[0]
+            train_val_indices = np.where(~is_test)[0]
+        else:
+            train_val_indices, test_indices = self._cluster_split(
+                np.arange(self.X.shape[0]), train_split + val_split, seed, args
             )
-            train_indices_cluster = cluster_indices[:split_index]
-            val_indices_cluster = cluster_indices[split_index:]
+        train_indices, val_indices = self._cluster_split(
+            train_val_indices, train_split / (train_split + val_split), seed, args
+        )
 
-            X_train_list.append(self.X[train_indices_cluster])
-            y_train_list.append(self.y[train_indices_cluster])
-            train_indices_list.append(train_indices_cluster)
-            train_samples_list.append(self.samples[train_indices_cluster])
-            train_weights_list.append(weights[train_indices_cluster])
+        train_samples = self.samples[train_indices]
+        val_samples = self.samples[val_indices]
+        test_samples = self.samples[test_indices]
 
-            X_val_list.append(self.X[val_indices_cluster])
-            y_val_list.append(self.y[val_indices_cluster])
-            val_indices_list.append(val_indices_cluster)
-            val_samples_list.append(self.samples[val_indices_cluster])
-            val_weights_list.append(weights[val_indices_cluster])
+        # Ensure no sample is in more than one dataset.
+        for (a, sa), (b, sb) in (
+            (("train", train_samples), ("val", val_samples)),
+            (("train", train_samples), ("test", test_samples)),
+            (("val", val_samples), ("test", test_samples)),
+        ):
+            shared = set(sa).intersection(sb)
+            assert not shared, f"{len(shared)} samples shared between {a} and {b}."
 
-        X_train = np.concatenate(X_train_list, axis=0)
-        y_train = np.concatenate(y_train_list, axis=0)
-        train_indices = np.concatenate(train_indices_list, axis=0)
-        X_val = np.concatenate(X_val_list, axis=0)
-        y_val = np.concatenate(y_val_list, axis=0)
-        val_indices = np.concatenate(val_indices_list, axis=0)
-        train_samples = np.concatenate(train_samples_list, axis=0)
-        val_samples = np.concatenate(val_samples_list, axis=0)
-        train_weights = np.concatenate(train_weights_list, axis=0)
-        val_weights = np.concatenate(val_weights_list, axis=0)
+        X_train_val, y_train_val = self.X[train_val_indices], self.y[train_val_indices]
+        X_train, y_train = self.X[train_indices], self.y[train_indices]
+        X_val, y_val = self.X[val_indices], self.y[val_indices]
+        X_test, y_test = self.X[test_indices], self.y[test_indices]
+
+        # Sample weights are estimated from the training coordinates only.
+        weighted_sampler = self.get_sample_weights(y_train, args)
+        train_weights = (
+            np.ones(len(train_indices))
+            if weighted_sampler is None
+            else np.asarray(weighted_sampler.weights, dtype=float)
+        )
+        val_weights = np.ones(len(val_indices))
+        test_weights = np.ones(len(test_indices))
+        self.samples_weight = train_weights
+
+        # Write the sample IDs in each dataset to file.
+        split_dir = Path(args.output_dir, "data")
+        split_dir.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame(
+            {
+                "sampleID": np.concatenate([train_samples, val_samples, test_samples]),
+                "dataset": ["train"] * len(train_samples)
+                + ["val"] * len(val_samples)
+                + ["test"] * len(test_samples),
+            }
+        ).to_csv(split_dir / f"{args.prefix}_dataset_splits.csv", index=False)
 
         self.train_samples = train_samples
         self.val_samples = val_samples
@@ -965,9 +929,24 @@ class DataStructure:
             raise ValueError(msg)
 
         all_outliers = None
+        self.preselected_test_samples = None
         if args.detect_outliers:
+            # Choose the test set first, so outlier detection uses only non-test
+            # samples and never removes a test sample.
+            frac = args.train_split + args.val_split / 2
+            nontest_pos, test_pos = self._cluster_split_positions(
+                y, frac, args.seed, args
+            )
+            nontest_pos = np.sort(nontest_pos)
+            self.preselected_test_samples = np.asarray(index)[test_pos]
+
             all_outliers = self.run_outlier_detection(
-                args, X, indices, y, index, filter_stage_indices
+                args,
+                X[nontest_pos],
+                indices,
+                y[nontest_pos],
+                np.asarray(index)[nontest_pos],
+                [self.true_indices[nontest_pos]],
             )
 
         # Here X has not been imputed.
@@ -997,7 +976,7 @@ class DataStructure:
                     f"{self.X.shape[0]} samples remaining after removing {len(all_outliers)} outliers and {len(self.X_pred)} samples with unknown localities."
                 )
 
-            self.plotting.plot_outliers(self.mask, self.locs)
+            self.plotting.plot_outliers(self.mask, self.locs, known_mask=self.pred_mask)
 
         # placeholder=True makes it not do transform.
         self.split_train_test(args.train_split, args.val_split, args.seed, args)
@@ -1099,6 +1078,7 @@ class DataStructure:
             self.data["y_val"],
             self.data["y_test"],
             is_target=True,
+            target_scaler=self.norm,
         )
 
         if args.use_gradient_boosting:
@@ -1245,7 +1225,7 @@ class DataStructure:
             filter_stage_indices (List[np.ndarray]): List of filter stage indices.
 
         Returns:
-            numpy.ndarray: Array of outlier indices.
+            numpy.ndarray: Outlier indices, mapped to rows of the full sample array.
 
         Raises:
             OutlierDetectionError: If an error occurs during outlier detection.
@@ -1266,10 +1246,12 @@ class DataStructure:
                 verbose=args.verbose,
             )
 
+            p_adjust = getattr(args, "outlier_p_adjust", "fdr_bh")
             outliers = outlier_detector.composite_outlier_detection(
                 sig_level=args.significance_level,
                 maxk=args.maxk,
                 min_nn_dist=args.min_nn_dist,
+                p_adjust=None if p_adjust == "none" else p_adjust,
             )
 
             all_outliers = np.concatenate((outliers["geographic"], outliers["genetic"]))
@@ -1282,7 +1264,7 @@ class DataStructure:
             # Remove mapped outliers from data
             self.mask[np.isin(self.all_indices, mapped_all_outliers)] = False
 
-            return all_outliers
+            return mapped_all_outliers
         except Exception as e:
             raise OutlierDetectionError(f"Error occurred during outlier detection: {e}")
 
@@ -1702,6 +1684,9 @@ class DataStructure:
                 verbose=args.verbose,
                 logger=self.logger,
                 dtype=self.dtype,
+                seed=args.seed,
+                output_dir=args.output_dir,
+                prefix=args.prefix,
             )
 
             if args.verbose >= 1:

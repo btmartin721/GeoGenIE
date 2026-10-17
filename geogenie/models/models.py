@@ -108,14 +108,12 @@ class MLPRegressor(nn.Module):
     def forward(self, x):
         """Forward pass through the neural network.
 
+        The input BatchNorm layer is always applied. In eval mode it uses its running statistics, so any batch size (including 1) works. In train mode a batch of one sample cannot be batch-normalised; the training loop drops such batches.
+
         Args:
             x (torch.Tensor): The input tensor to the neural network.
 
         Returns:
             torch.Tensor: The output tensor after passing through the network.
         """
-        if x.size(0) == 1:  # Check if batch size is 1
-            return self.seqmodel[1:](x)  # Skip the first layer (BatchNorm)
-        else:
-            # Pass the input 'x' through the sequential model
-            return self.seqmodel(x)
+        return self.seqmodel(x)

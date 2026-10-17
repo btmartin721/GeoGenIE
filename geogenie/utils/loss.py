@@ -1,21 +1,41 @@
+import warnings
+
 import torch
 import torch.nn as nn
+
+
+def _weighted_mean(values, sample_weight=None):
+    """Mean of per-sample values, weighted by ``sample_weight`` if given.
+
+    Args:
+        values (torch.Tensor): Per-sample values, shape (n_samples,).
+        sample_weight (torch.Tensor, optional): Per-sample weights, shape (n_samples,) or (n_samples, 1). Defaults to None (unweighted mean).
+
+    Returns:
+        torch.Tensor: Scalar weighted mean, ``sum(values * w) / sum(w)``.
+    """
+    if sample_weight is None:
+        return values.mean()
+    sample_weight = sample_weight.view(-1).to(values.dtype)
+    return (values * sample_weight).sum() / sample_weight.sum()
 
 
 class WeightedDRMSLoss(nn.Module):
     """Custom loss class to compute the Distance Root Mean Square (DRMS) for
     longitude and latitude coordinates.
 
+    The loss is computed on the coordinates passed to it, which during training are the normalised targets produced by the target scaler (``MinMaxScalerGeo``). Haversine distance is only meaningful for coordinates in degrees, so the distance used here is the Euclidean distance in the normalised space. With a distance-preserving target scaler (longitude scaled by cos(mean latitude) and one common scale factor for both axes) this is proportional to the distance in km. The returned value is ``sqrt(sum(w * d^2) / sum(w))``.
+
     Attributes:
-        radius (float): Radius of the Earth in kilometers. Default is 6371 km.
+        radius (float): Kept for backwards compatibility; not used.
     """
 
     def __init__(self, radius=6371):
         """
-        Initializes the WeightedDRMSLoss class with the Earth's radius.
+        Initializes the WeightedDRMSLoss class.
 
         Args:
-            radius (float): Radius of the Earth in kilometers. Default is 6371 km.
+            radius (float): Kept for backwards compatibility; not used, because the loss is computed in normalised coordinate space. Default is 6371.
         """
         super(WeightedDRMSLoss, self).__init__()
         self.radius = radius
@@ -25,44 +45,24 @@ class WeightedDRMSLoss(nn.Module):
         Forward pass to compute the Distance Root Mean Square (DRMS) loss.
 
         Args:
-            preds (torch.Tensor): Predicted longitude and latitude coordinates.
-            targets (torch.Tensor): Actual longitude and latitude coordinates.
+            preds (torch.Tensor): Predicted (normalised) longitude and latitude coordinates.
+            targets (torch.Tensor): Actual (normalised) longitude and latitude coordinates.
             sample_weight (torch.Tensor): Sample weights to make some samples more or less important than others. Defaults to None.
 
         Returns:
-            torch.Tensor: DRMS loss.
+            torch.Tensor: DRMS loss, in normalised coordinate units.
         """
         if preds.shape != targets.shape:
             raise ValueError("Predictions and targets must have the same shape")
 
-        lon1, lat1 = preds[:, 0], preds[:, 1]
-        lon2, lat2 = targets[:, 0], targets[:, 1]
-
-        lon1, lat1, lon2, lat2 = map(torch.deg2rad, [lon1, lat1, lon2, lat2])
-
-        dlon = lon2 - lon1
-        dlat = lat2 - lat1
-        a = torch.sin(dlat / 2).pow(2) + torch.cos(lat1) * torch.cos(lat2) * torch.sin(
-            dlon / 2
-        ).pow(2)
-        c = 2 * torch.asin(torch.clamp(torch.sqrt(a), min=-1, max=1))
-
-        km_dist = self.radius * c
-        squared_dist = km_dist.pow(2)
-
-        if sample_weight is not None:
-            weighted_squared_dist = squared_dist * sample_weight
-            mean_weighted_squared_dist = torch.mean(weighted_squared_dist)
-        else:
-            mean_weighted_squared_dist = torch.mean(squared_dist)
-
-        return torch.sqrt(mean_weighted_squared_dist)
+        squared_dist = torch.sum((preds - targets) ** 2, dim=1)
+        return torch.sqrt(_weighted_mean(squared_dist, sample_weight))
 
 
 def weighted_rmse_loss(y_true, y_pred, sample_weight=None):
-    """Custom PyTorch weighted RMSE loss function.
+    """Custom PyTorch weighted mean Euclidean distance loss function.
 
-    This method computes the weighted RMSE loss between the ground truth and predictions.
+    Despite its name (kept for backwards compatibility), this computes the (weighted) mean of the per-sample Euclidean distances between predictions and ground truth, not the root of the mean squared error: ``sum(w * d) / sum(w)`` with ``d = ||y_pred - y_true||``. The distance is in the units of the inputs (normalised coordinates during training).
 
     Args:
         y_true (torch.Tensor): Ground truth values.
@@ -70,33 +70,40 @@ def weighted_rmse_loss(y_true, y_pred, sample_weight=None):
         sample_weight (torch.Tensor): Sample weights (1-dimensional).
 
     Returns:
-        float: Weighted RMSE loss.
+        torch.Tensor: Weighted mean Euclidean distance.
     """
-    rmse = torch.sqrt(torch.sum((y_pred - y_true) ** 2, axis=1)).mean()
+    dist = torch.sqrt(torch.sum((y_pred - y_true) ** 2, axis=1))
     if sample_weight is not None:
-        rmse_scaled = rmse * sample_weight
-        return rmse_scaled.mean()
-    return rmse
+        # Weight each sample's error, then take the weighted mean.
+        return (dist * sample_weight).sum() / sample_weight.sum()
+    return dist.mean()
 
 
 class WeightedHuberLoss(nn.Module):
     """Custom loss class to compute the Weighted Huber Loss.
 
+    The Huber loss is applied to each coordinate error. ``delta`` is in the units of the targets passed to the loss, which during training are the normalised coordinates produced by the target scaler, not degrees or km.
+
     Attributes:
-        delta (float): The threshold for the Huber loss. Default is 1.0.
-        smoothing_factor (float): The smoothing factor for the target. Default is 0.1.
+        delta (float): The threshold for the Huber loss, in normalised target units. Default is 1.0.
+        smoothing_factor (float): Deprecated and ignored. Default is 0.0.
     """
 
-    def __init__(self, delta=1.0, smoothing_factor=0.1):
+    def __init__(self, delta=1.0, smoothing_factor=0.0):
         """Instantiate the WeightedHuberLoss class.
 
         Args:
-            delta (float, optional): _description_. Defaults to 1.0.
-            smoothing_factor (float, optional): _description_. Defaults to 0.1.
+            delta (float, optional): Threshold between the quadratic and linear parts of the loss, in normalised target units. Defaults to 1.0.
+            smoothing_factor (float, optional): Deprecated and ignored. Earlier versions blended the targets toward the batch mean, which biased predictions toward the centroid of the training data. Defaults to 0.0.
         """
         super(WeightedHuberLoss, self).__init__()
         self.delta = delta
         self.smoothing_factor = smoothing_factor
+        if smoothing_factor:
+            warnings.warn(
+                "WeightedHuberLoss 'smoothing_factor' is deprecated and ignored; targets are not smoothed.",
+                UserWarning,
+            )
 
     def forward(self, input, target, sample_weight=None):
         """Forward pass to compute the Weighted Huber Loss."""
@@ -123,11 +130,7 @@ class WeightedHuberLoss(nn.Module):
             if torch.any(torch.isinf(target)):
                 raise ValueError("Targets contain INF values")
 
-        target_smoothed = (
-            1 - self.smoothing_factor
-        ) * target + self.smoothing_factor * torch.mean(target, dim=0)
-
-        error = torch.abs(input - target_smoothed)
+        error = torch.abs(input - target)
         is_small_error = error < self.delta
 
         small_error_loss = 0.5 * (error**2)
@@ -140,7 +143,5 @@ class WeightedHuberLoss(nn.Module):
                 torch.isinf(sample_weight)
             ):
                 raise ValueError("Sample weight contains NaN or Inf values")
-            sample_weight = sample_weight.view(-1, 1)
-            weighted_loss = loss * sample_weight
-            return weighted_loss.mean()
-        return loss.mean()
+        # Mean over coordinates, then (weighted) mean over samples.
+        return _weighted_mean(loss.mean(dim=1), sample_weight)

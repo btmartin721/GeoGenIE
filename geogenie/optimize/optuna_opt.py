@@ -190,13 +190,13 @@ class Optimize:
         elif self.args.criterion == "rmse":
             criterion = weighted_rmse_loss
         elif self.args.criterion == "huber":
-            criterion = WeightedHuberLoss(delta=0.5, smoothing_factor=0.1)
+            criterion = WeightedHuberLoss(delta=0.5)
         else:
             msg = f"Invalid '--criterion' argument provided. Expected one of 'drms', 'rmse', or 'huber', but got: {self.args.criterion}"
             self.logger.error(msg)
             raise ValueError(msg)
 
-        loss = self.evaluate_model(self.test_loader, trained_model, criterion)
+        loss = self.evaluate_model(self.val_loader, trained_model, criterion)
         return loss
 
     def extract_features_labels(self, train_subset):
@@ -338,9 +338,10 @@ class Optimize:
         """
         lr = trial.suggest_float("lr", 1e-4, 1e-1, log=True)
         l2_weight = trial.suggest_float("l2_weight", 1e-5, 1e-1, log=True)
-        width = trial.suggest_int(
-            "width", 8, self.train_loader.dataset.tensors[0].shape[1] - 1
-        )
+        # Hidden width between 8 and the number of input features (at most 1024).
+        n_features = self.train_loader.dataset.tensors[0].shape[1]
+        max_width = max(2, min(n_features - 1, 1024))
+        width = trial.suggest_int("width", min(8, max_width - 1), max_width)
         width_factor = 1.0
         nlayers = trial.suggest_int("nlayers", 2, 20)
         dropout_prop = trial.suggest_float("dropout_prop", 0.0, 0.5)
@@ -355,12 +356,12 @@ class Optimize:
         }
 
     def evaluate_model(self, test_loader, model, criterion):
-        """Evaluate the model using the test dataset.
+        """Evaluate the model on a dataset.
 
-        This method evaluates the model using the test dataset and returns the loss value.
+        This method evaluates the model on the given DataLoader and returns the loss value.
 
         Args:
-            test_loader (DataLoader): DataLoader for the test dataset.
+            test_loader (DataLoader): DataLoader to evaluate on.
             model (MLPRegressor or XGBoost): Trained model.
             criterion (callable): Loss function.
 
@@ -439,6 +440,7 @@ class Optimize:
         sampler = samplers.TPESampler(
             n_startup_trials=self.n_startup_trials,
             n_ei_candidates=24,
+            seed=self.args.seed,
         )
         pruner = pruners.MedianPruner()
 
@@ -479,6 +481,9 @@ class Optimize:
 
         outdir = Path(self.output_dir)
         cv_outfile = outdir / "optimize" / f"{self.prefix}_cv_results.csv"
+        cv_outfile.parent.mkdir(parents=True, exist_ok=True)
+        # One row per trial: parameters, validation loss, and state.
+        self.cv_results = study.trials_dataframe()
         self.cv_results.to_csv(cv_outfile, header=True, index=False)
 
         if self.verbose >= 1:
@@ -513,8 +518,13 @@ class Optimize:
         with open(jfn, "w") as f:
             json.dump(best_params, f, indent=2)
 
-        # Generate and save plots and output files.
-        self.plotting.make_optuna_plots(study)
+        # Generate and save plots and output files. Plot export depends on
+        # optional packages (plotly/kaleido); a failure there is logged and the
+        # run continues with the parameters already saved.
+        try:
+            self.plotting.make_optuna_plots(study)
+        except Exception as e:
+            self.logger.warning(f"Could not save Optuna plots: {e}")
         self.write_optuna_study_details(study)
 
         enable_default_handler()

@@ -28,7 +28,6 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import PolynomialFeatures
 
 # Local application imports
-from geogenie.samplers.samplers import GeographicDensitySampler
 from geogenie.utils.exceptions import TimeoutException
 from geogenie.utils.spatial_data_processors import SpatialDataProcessor
 from geogenie.utils.utils import time_limit
@@ -472,8 +471,8 @@ class PlotGenIE:
 
         df_corr.rename(
             columns={
-                "pearson_corr_longitude": "$R^2$ (Longitude)",
-                "pearson_corr_latitude": "$R^2$ (Latitude)",
+                "pearson_corr_longitude": "Pearson's r (Longitude)",
+                "pearson_corr_latitude": "Pearson's r (Latitude)",
                 "spearman_corr_longitude": "Rho (Longitude)",
                 "spearman_corr_latitude": "Rho (Latitude)",
             },
@@ -602,8 +601,8 @@ class PlotGenIE:
             "percentile_25": "25th Percentile of Error",
             "percentile_50": "50th Percentile of Error",
             "percentiles_75": "75th Percentile of Error",  # typo in original data
-            "pearson_corr_longitude": "$R^2$ (Longitude)",
-            "pearson_corr_latitude": "$R^2$ (Latitude)",
+            "pearson_corr_longitude": "Pearson's r (Longitude)",
+            "pearson_corr_latitude": "Pearson's r (Latitude)",
             "spearman_corr_longitude": "Rho (Longitude)",
             "spearman_corr_latitude": "Rho (Latitude)",
             "skewness": "Skewness",
@@ -766,7 +765,7 @@ class PlotGenIE:
             min_colorscale (int, optional): Minimum value for the color scale. Defaults to 0.
             max_colorscale (int, optional): Maximum value for the color scale. Defaults to 300.
             n_contour_levels (int, optional): Number of contour levels in the plot. Defaults to 20.
-            centroids (np.array or geopandas.GeoDataFrame, optional): Array of centroids to be plotted. Defaults to None.
+            centroids (np.array or geopandas.GeoDataFrame, optional): Array of centroids to be plotted, columns (longitude, latitude) in degrees (not normalized). Centroids outside the plotted extent are not drawn. Defaults to None.
 
         Notes:
             - This method produces two subplots: one showing the spatial distribution of prediction errors and the others showing the uncertainty of these predictions.
@@ -777,6 +776,22 @@ class PlotGenIE:
 
         if centroids is not None:
             gdf_centroids = self.processor.to_geopandas(centroids)
+            cxy = self.processor.to_numpy(gdf_centroids)
+            pad_x = max(buffer, 0) + 0.5 * (xmax - xmin)
+            pad_y = max(buffer, 0) + 0.5 * (ymax - ymin)
+            in_extent = (
+                (cxy[:, 0] >= xmin - pad_x)
+                & (cxy[:, 0] <= xmax + pad_x)
+                & (cxy[:, 1] >= ymin - pad_y)
+                & (cxy[:, 1] <= ymax + pad_y)
+            )
+            if not np.all(in_extent):
+                self.logger.warning(
+                    f"{np.sum(~in_extent)} of {len(cxy)} centroids lie outside the plotted extent and are not drawn. Centroids must be (longitude, latitude) in degrees, not normalized coordinates."
+                )
+            gdf_centroids = gdf_centroids[in_extent]
+            if gdf_centroids.empty:
+                centroids = None
 
         actual_coords = self.processor.to_numpy(gdf_actual)
         predicted_coords = self.processor.to_numpy(gdf_pred)
@@ -808,10 +823,8 @@ class PlotGenIE:
         # Customization.
 
         if not self.remove_splines:
-            ax.set_xlabel("Latitude")
-            ax.set_ylabel("Longitude")
-            # ax2.set_xlabel("Latitude")
-            # ax2.set_ylabel("Longitude")
+            ax.set_xlabel("Longitude")
+            ax.set_ylabel("Latitude")
 
         # Ensure correct scale and aspect ratio
         ax.set_aspect("equal", "box")
@@ -1171,6 +1184,7 @@ class PlotGenIE:
         outfile = self.outbasepath.with_name(fn)
         outfile = outfile.with_suffix("." + self.filetype)
         plt.savefig(outfile, facecolor="white", bbox_inches="tight")
+        plt.close()
 
     def _fill_kde_with_gradient(self, xdata, cmap, norm, ax=None, ydata=None):
         """Fill a KDE plot with a gradient following the X-axis values.
@@ -1263,6 +1277,7 @@ class PlotGenIE:
         outfile = self.outbasepath.with_name(fn)
         outfile = outfile.with_suffix("." + self.filetype)
         plt.savefig(outfile, facecolor="white", bbox_inches="tight")
+        plt.close()
 
     def plot_error_distribution(self, errors, outfile):
         """Plot the distribution of errors using a histogram, box plot, and Q-Q plot.
@@ -1299,9 +1314,9 @@ class PlotGenIE:
         # Add Gradient Fill
         self._fill_kde_with_gradient(x_values, cmap, norm, ydata=kde_values)
 
-        plt.title("Prediction Error x Sampling Density")
+        plt.title("Prediction Error Distribution (KDE)")
         plt.xlabel("Haversine Error (km)")
-        plt.ylabel("Sampling Density")
+        plt.ylabel("Probability Density")
 
         # Box Plot
         plt.subplot(1, 3, 2)
@@ -1335,6 +1350,34 @@ class PlotGenIE:
         plt.savefig(outfile, facecolor="white", bbox_inches="tight")
         plt.close()
 
+    def _local_sample_density(self, coords, reference_coords=None, radius_km=25.0):
+        """Compute the local sampling density around each point, in samples per km^2.
+
+        The density at point i is the number of reference samples within ``radius_km`` (haversine distance) of point i divided by the area of that circle (pi * radius_km^2). If ``reference_coords`` is None, the reference set is ``coords`` itself and each point is excluded from its own count (leave-one-out).
+
+        Args:
+            coords (np.ndarray): Evaluation points, columns (longitude, latitude) in degrees.
+            reference_coords (np.ndarray, optional): Reference samples, columns (longitude, latitude) in degrees. Defaults to None (use ``coords``, leave-one-out).
+            radius_km (float, optional): Radius of the counting window in km. Defaults to 25.0.
+
+        Returns:
+            np.ndarray: Local sampling density (samples / km^2) for each point in ``coords``.
+        """
+        coords = np.asarray(coords, dtype=float)
+        loo = reference_coords is None
+        ref = coords if loo else np.asarray(reference_coords, dtype=float)
+
+        counts = np.zeros(coords.shape[0], dtype=float)
+        for i in range(coords.shape[0]):
+            d = self.processor.haversine_distance(
+                np.tile(coords[i], (ref.shape[0], 1)), ref
+            )
+            within = d <= radius_km
+            if loo:
+                within[i] = False
+            counts[i] = np.sum(within)
+        return counts / (np.pi * radius_km**2)
+
     def polynomial_regression_plot(
         self,
         actual_coords,
@@ -1345,25 +1388,32 @@ class PlotGenIE:
         max_ylim=None,
         max_xlim=None,
         n_xticks=5,
+        reference_coords=None,
+        density_radius_km=25.0,
     ):
-        """Creates a polynomial regression plot with the specified degree.
+        """Plots prediction error against local sampling density with a polynomial fit of the specified degree.
+
+        The x-axis is the local sampling density at each sample's true location, in samples per 1,000 km^2: the number of reference samples within ``density_radius_km`` divided by the circle's area (see ``_local_sample_density``). By default the reference set is the evaluated samples themselves, with each sample excluded from its own count. Pass the training coordinates as ``reference_coords`` to relate error to training-set density.
+
+        The y-axis is the haversine prediction error (km). The polynomial fit is drawn as a curve, and the knee of the fitted curve (if one is found) is marked. The knee is a descriptive feature of the fitted curve only and is not an estimate of an optimal sampling density.
 
         Args:
-            actual_coords (np.array): Array of actual geographical coordinates.
-            predicted_coords (np.array): Array of predicted geographical coordinates by the model.
-            dataset (str): Specifies the dataset being used, should be either 'test' or 'validation'.
+            actual_coords (np.array): Array of actual geographical coordinates (longitude, latitude) in degrees.
+            predicted_coords (np.array): Array of predicted geographical coordinates (longitude, latitude) in degrees.
+            dataset (str): Specifies the dataset being used, should be either 'train', 'test' or 'validation'.
             degree (int): Polynomial degree to fit. Defaults to 3.
-            dtype (torch.dtype): PyTorch data type to use. Defaults to torch.float32.
+            dtype (torch.dtype): Unused; kept for backwards compatibility. Defaults to torch.float32.
             max_ylim (int): Maximum y-axis (prediction error) value to plot. Defaults to None (don't adjust y-axis limits). Defaults to None.
-            max_xlim (float): Maximum X-axis (sample density) value to plot. Defaults to None (don't adjust x-axis limits). Defaults to None.
+            max_xlim (float): Maximum X-axis (sample density, samples / 1,000 km^2) value to plot. Defaults to None (don't adjust x-axis limits). Defaults to None.
             n_xticks (int): Number of major X-axis ticks to use. Only applied if max_xlim is not None. Defaults to 5.
+            reference_coords (np.array, optional): Reference sample coordinates (longitude, latitude) in degrees used to compute the density, e.g. the training set. If None, the evaluated samples are used with leave-one-out counting. Defaults to None.
+            density_radius_km (float, optional): Radius (km) of the density counting window. Defaults to 25.0.
 
         Raises:
-            ValueError: If the dataset parameter is not 'test' or does not start with 'val'.
+            ValueError: If the dataset parameter is not 'train', 'test', or does not start with 'val'.
 
         Notes:
-            - This function calculates the Haversine error for each pair of actual and predicted coordinates.
-            - It then computes the KDE values for these errors and plots a regression to analyze the relationship.
+            - Both coordinate arrays must be in degrees (not normalized) and in the same sample order.
         """
         if (
             dataset != "test"
@@ -1378,113 +1428,27 @@ class PlotGenIE:
 
         gdf_actual = self.processor.to_geopandas(actual_coords)
         gdf_pred = self.processor.to_geopandas(predicted_coords)
+        actual_np = self.processor.to_numpy(gdf_actual)
 
-        # Project to UTM zone (adjust the zone number as per the location)
-        # Arkansas is generally in UTM zone 15N
-        gdf_basemap = self.basemap.copy()
-        gdf_basemap = gdf_basemap.to_crs(epsg=32615)
+        if reference_coords is not None:
+            reference_coords = self.processor.to_numpy(
+                self.processor.to_geopandas(reference_coords)
+            )
 
-        # Calculate area in square meters and convert to square kilometers
-        gdf_basemap["Area_km2"] = (
-            gdf_basemap["geometry"].area / 1e6
-        )  # convert sq meters to sq km
-
-        sampler = GeographicDensitySampler(
-            self.processor.to_pandas(gdf_actual),
-            use_kde=True,
-            use_kmeans=False,
-            max_clusters=10,
-            max_neighbors=50,
-            verbose=0,
-            dtype=dtype,
+        # Local sampling density, converted to samples / 1,000 km^2.
+        x = (
+            self._local_sample_density(
+                actual_np,
+                reference_coords=reference_coords,
+                radius_km=density_radius_km,
+            )
+            * 1000.0
         )
-
-        x = sampler.density
 
         # Calculate Haversine error for each pair of points
         y = self.processor.haversine_distance(gdf_actual, gdf_pred)
 
-        plt.figure(figsize=(12, 12))
-
-        # Create polynomial features
-        poly_model = make_pipeline(PolynomialFeatures(degree), LinearRegression())
-
-        # Fit to data
-        poly_model.fit(x[:, np.newaxis], y)
-
-        # Generate predictions for plotting
-        xfit = np.linspace(np.min(x), np.max(x), 1000)
-        yfit = poly_model.predict(xfit[:, np.newaxis])
-
-        r, p = stats.pearsonr(x, y)
-        if p < 0.0001:
-            p = "< 0.0001"
-        elif p < 0.001:
-            p = "< 0.001"
-        else:
-            p = f"= {p:.2f}"
-
-        ax = sns.regplot(
-            x=xfit,
-            y=yfit,
-            fit_reg=True,
-            n_boot=1000,
-            line_kws={"lw": 5, "color": "darkorchid"},
-            label=f"Pearson's R = {r:.2f}\nP-value {p}",
-        )
-
-        kneedle = KneeLocator(
-            xfit,
-            yfit,
-            curve="convex",
-            direction="decreasing",
-            interp_method="polynomial",
-            polynomial_degree=3,
-        )
-
-        opt_samp_density = kneedle.knee
-        self.logger.info(f"Optimal sampling density: {opt_samp_density:.2f}")
-
-        # Calculate total area
-        total_area_km2 = gdf_basemap["Area_km2"].sum()
-
-        # Calculate proportional sampling density
-        proportional_density = len(actual_coords) / total_area_km2
-
-        gdf_basemap["Required_Samples"] = (
-            gdf_basemap["Area_km2"] * proportional_density
-        ).astype(int)
-
-        def calculate_95_ci(dataframe, column_name):
-            """
-            Calculate the 95% confidence interval for a given column in a pandas DataFrame.
-
-            Args:
-                dataframe (pd.DataFrame): The input DataFrame.
-                column_name (str): The name of the column for which to calculate the 95% CI.
-
-            Returns:
-                tuple: A tuple containing the lower and upper bounds of the 95% CI.
-            """
-            if column_name not in dataframe:
-                msg = f"Column {column_name} not found in DataFrame."
-                self.logger.error(msg)
-                raise ValueError(msg)
-
-            data = dataframe[column_name].dropna()  # Drop missing values
-            mean = data.mean()
-            sem = stats.sem(data)  # Standard error of the mean
-            margin_of_error = sem * stats.t.ppf(
-                (1 + 0.95) / 2, len(data) - 1
-            )  # 95% confidence level
-
-            lower_bound = mean - margin_of_error
-            upper_bound = mean + margin_of_error
-
-            return lower_bound, upper_bound
-
-        mean_samples_per_county = gdf_basemap["Required_Samples"].mean()
-        lower_95ci, upper_95ci = calculate_95_ci(gdf_basemap, "Required_Samples")
+        fig, ax = plt.subplots(1, 1, figsize=(12, 12))
 
         ds = "validation" if dataset == "val" else dataset
 
@@ -1500,17 +1464,62 @@ class PlotGenIE:
             edgecolors="k",
         )
 
-        ax.axvline(
-            opt_samp_density,
-            label=f"Optimal Sample Density = {opt_samp_density:.2f}"
-            "\n"
-            f"Mean Samples / County: {round(mean_samples_per_county, 2)}"
-            "\n"
-            f"95% CI: {max(round(lower_95ci, 2), 0)}, {round(upper_95ci, 2)}",
-            color="orange",
-            linewidth=2,
-            linestyle="dashed",
-        )
+        if np.unique(x).size > degree:
+            # Create polynomial features
+            poly_model = make_pipeline(PolynomialFeatures(degree), LinearRegression())
+
+            # Fit to data
+            poly_model.fit(x[:, np.newaxis], y)
+
+            # Generate predictions for plotting
+            xfit = np.linspace(np.min(x), np.max(x), 1000)
+            yfit = poly_model.predict(xfit[:, np.newaxis])
+
+            r, p = stats.pearsonr(x, y)
+            if p < 0.0001:
+                p = "< 0.0001"
+            elif p < 0.001:
+                p = "< 0.001"
+            else:
+                p = f"= {p:.2f}"
+
+            ax.plot(
+                xfit,
+                yfit,
+                lw=5,
+                color="darkorchid",
+                label=f"Polynomial fit (degree {degree})\nPearson's r = {r:.2f}, P-value {p}",
+            )
+
+            knee = None
+            try:
+                kneedle = KneeLocator(
+                    xfit,
+                    yfit,
+                    curve="convex",
+                    direction="decreasing",
+                    interp_method="polynomial",
+                    polynomial_degree=3,
+                )
+                knee = kneedle.knee
+            except Exception as e:
+                self.logger.debug(f"KneeLocator failed: {e}")
+
+            if knee is not None:
+                self.logger.info(
+                    f"Knee of fitted error vs. sampling density curve ({ds}): {knee:.3f} samples / 1,000 km^2"
+                )
+                ax.axvline(
+                    knee,
+                    label=f"Knee of fitted curve = {knee:.2f}",
+                    color="orange",
+                    linewidth=2,
+                    linestyle="dashed",
+                )
+        else:
+            self.logger.warning(
+                f"Too few distinct sampling density values to fit a degree {degree} polynomial for the {ds} set."
+            )
 
         def roundup(x):
             x -= x % -100
@@ -1536,7 +1545,11 @@ class PlotGenIE:
             ax.set_xticks(np.linspace(0.0, max_xlim, num=n_xticks, endpoint=True))
 
         ax.set_ylabel("Prediction Error (km)")
-        ax.set_xlabel(r"Sample Density (Samples / $km^2$)")
+        ref = "Training" if reference_coords is not None else ds.capitalize()
+        ax.set_xlabel(
+            f"{ref} Sample Density within {density_radius_km:g} km\n"
+            r"(Samples / 1,000 $km^2$)"
+        )
         ax.legend(loc="upper left", bbox_to_anchor=(0.4, 0.9))
 
         if self.show_plots:
@@ -1544,8 +1557,8 @@ class PlotGenIE:
 
         fn = f"{self.prefix}_kde_error_regression_{dataset}.{self.filetype}"
         outfile = self.outbasepath.with_name(fn)
-        plt.savefig(outfile, facecolor="white", bbox_inches="tight")
-        plt.close()
+        fig.savefig(outfile, facecolor="white", bbox_inches="tight")
+        plt.close(fig)
 
     def plot_mca_curve(self, explained_inertia, optimal_n):
         """Plots the cumulative explained inertia as a function of the number of components in Multiple Correspondence Analysis (MCA).
@@ -1649,14 +1662,15 @@ class PlotGenIE:
         plt.savefig(outfile, facecolor="white", bbox_inches="tight")
         plt.close()
 
-    def plot_outliers(self, mask, y_true):
+    def plot_outliers(self, mask, y_true, known_mask=None):
         """Plots a scatter plot to visualize identified outliers.
 
         This method plots the geographical coordinates of the data points, highlighting the outliers in a different color and size.
 
         Args:
-            mask (np.array): A boolean array where 'True' indicates an outlier.
+            mask (np.array): A boolean array where 'False' indicates a sample removed from the dataset (an outlier) and 'True' a retained sample.
             y_true (np.array): Array of actual coordinates.
+            known_mask (np.array, optional): Boolean array, 'True' for samples with known localities and 'False' for samples to predict (unknowns). Unknowns are not plotted, so that samples excluded from ``mask`` only because they are unknown are not drawn as outliers. If None, all samples with coordinates are plotted. Defaults to None.
 
         Notes:
             - The function visualizes outliers on a geographical map, aiding in the identification of anomalous data points.
@@ -1665,8 +1679,10 @@ class PlotGenIE:
         gdf = self.processor.to_geopandas(y_true)
         df = self.processor.to_pandas(gdf)
 
-        df["Outliers"] = ~mask
+        df["Outliers"] = ~np.asarray(mask, dtype=bool)
         df["Outliers"] = df["Outliers"].astype(str)
+        if known_mask is not None:
+            df = df[np.asarray(known_mask, dtype=bool)]
         df = df[~df["x"].isna()]
         df["Sizes"] = "Non-Outlier"
         df.loc[df["Outliers"] == "True", "Sizes"] = "Outlier"
@@ -1744,9 +1760,16 @@ class PlotGenIE:
         gamma_threshold = gamma.ppf(1 - sig_level, a=shape, scale=scale)
 
         plt.figure(figsize=(16, 12))
-        plt.plot(x, y, color="blue")
+        plt.hist(
+            np.asarray(Dg).ravel(),
+            bins=50,
+            density=True,
+            color="lightgray",
+            edgecolor="k",
+            label="Observed D",
+        )
+        plt.plot(x, y, color="blue", label="Fitted Gamma PDF")
 
-        plt.ylim(0, max(1, np.max(y)))
         plt.axvline(
             x=gamma_threshold,
             color="darkorange",
@@ -1754,7 +1777,7 @@ class PlotGenIE:
             lw=3,
             label=f"P = {sig_level}",
         )
-        plt.xlabel(f"Gamma(α={shape:.2f}, β={scale:.2f})")
+        plt.xlabel(f"D (Gamma fit: shape={shape:.2f}, scale={scale:.2f})")
         plt.ylabel("Density")
         plt.title(plot_main)
 
@@ -1768,12 +1791,38 @@ class PlotGenIE:
         plt.savefig(outfile, facecolor="white", bbox_inches="tight")
         plt.close()
 
+    def _hpd_levels(self, zz, probs):
+        """Compute highest-density-region (HDR) levels from a gridded density.
+
+        For each probability p, the returned level L is the density value such that the region {z >= L} contains a fraction p of the total density mass on the (regular) grid.
+
+        Args:
+            zz (np.ndarray): Density values evaluated on a regular grid.
+            probs (list of float): Probabilities in (0, 1).
+
+        Returns:
+            np.ndarray: One density level per probability, in the order of ``probs``.
+        """
+        z_sorted = np.sort(zz.ravel())[::-1]
+        cumulative_z = np.cumsum(z_sorted)
+        cumulative_z /= cumulative_z[-1]
+        idx = [
+            min(np.searchsorted(cumulative_z, p), len(z_sorted) - 1) for p in probs
+        ]
+        return z_sorted[idx]
+
     def plot_sample_with_density(
-        self, df, sample_id, df_known=None, dataset=None, gray_counties=None
+        self,
+        df,
+        sample_id,
+        df_known=None,
+        dataset=None,
+        gray_counties=None,
+        pred_mean=None,
     ):
         """Method to plot a sample with density contours.
 
-        This method calculates the density contours using KDE and plots them on a map.
+        This method calculates the density of the bootstrap replicate predictions with a Gaussian KDE and plots its 50%, 70%, and 90% highest-density-region contours on a map. Each labelled contour encloses the stated fraction of the KDE probability mass. The KDE grid extends three KDE bandwidths beyond the replicate points so that the contours are not cut off.
 
         Args:
             df (pd.DataFrame): DataFrame containing the sample data.
@@ -1781,6 +1830,7 @@ class PlotGenIE:
             df_known (pd.DataFrame, optional): DataFrame containing known data. Defaults to None.
             dataset (str, optional): Name of the dataset. Defaults to None.
             gray_counties (list, optional): List of counties to highlight in gray. Defaults to
+            pred_mean (tuple of float, optional): (longitude, latitude) of the predicted locality to plot, e.g. (x_mean, y_mean) from the bootstrap summary. If None, the mean of all replicate predictions in ``df`` is used. Defaults to None.
 
         Raises:
             TypeError: If the dataset argument is NoneType.
@@ -1798,60 +1848,79 @@ class PlotGenIE:
         if df_known is not None:
             gdf_known = self.processor.to_geopandas(df_known)
 
-        xmin, ymin, xmax, ymax = self.processor.calculate_bounding_box(gdf)
-
-        # Calculate density contours using KDE
         coords = self.processor.to_numpy(gdf)
-        kde = stats.gaussian_kde(coords.T)
-        xx, yy = np.mgrid[xmin:xmax:100j, ymin:ymax:100j]
-        grid = np.vstack([xx.ravel(), yy.ravel()])
-        zz = kde(grid).reshape(xx.shape)
 
-        # Determine density levels
-        z_sorted = np.sort(zz.ravel())
-        cumulative_z = np.cumsum(z_sorted)
-        total_z = cumulative_z[-1]
-        level_50 = z_sorted[np.searchsorted(cumulative_z, 0.50 * total_z)]
-        level_70 = z_sorted[np.searchsorted(cumulative_z, 0.70 * total_z)]
-        level_90 = z_sorted[np.searchsorted(cumulative_z, 0.90 * total_z)]
-        levels = np.sort([level_50, level_70, level_90])
-
-        # Debug prints
-        self.logger.debug(
-            f"Bootstrap Contour Density Levels: "
-            f"50% -> {level_50}, "
-            f"70% -> {level_70}, "
-            f"90% -> {level_90}"
-        )
+        # Predicted locality: mean of all replicate predictions (same as the
+        # bootstrap summary's x_mean/y_mean), computed before any clipping.
+        if pred_mean is None:
+            mean_lon, mean_lat = coords.mean(axis=0)
+        else:
+            mean_lon, mean_lat = pred_mean
 
         # Plot
         fig, ax = plt.subplots(figsize=(8, 6))
 
-        # Plot density contours
-        colors = ["#E69F00", "#56B4E9", "#CC79A7"]
-        ax.contour(xx, yy, zz, levels=levels, colors=colors)
+        # Highest-density-region contours of the replicate predictions.
+        probs = [0.9, 0.7, 0.5]  # Ascending density level order.
+        colors = ["#CC79A7", "#56B4E9", "#E69F00"]
+        labels = ["90% Density", "70% Density", "50% Density"]
 
-        # Additional plot for KDE visualization
-        fig_kde, ax_kde = plt.subplots(figsize=(8, 6))
-        c = ax_kde.contourf(xx, yy, zz, levels=30, cmap="viridis")
-        fig_kde.colorbar(c, ax=ax_kde)
-        ax_kde.set_title("KDE Density Plot")
+        try:
+            kde = stats.gaussian_kde(coords.T)
+        except (np.linalg.LinAlgError, ValueError) as e:
+            kde = None
+            self.logger.warning(
+                f"Could not compute bootstrap KDE contours for sample {sample_id}: {e}"
+            )
 
-        fn = f"{self.prefix}_kde_contours_{dataset}_{sample_id}.{self.filetype}"
-        outdir = self.outbasepath.parent / "kde_contour_plots"
-        outfile = outdir / fn
-        outdir.mkdir(exist_ok=True, parents=True)
-        fig_kde.savefig(outfile, facecolor="white", bbox_inches="tight")
+        if kde is not None:
+            xmin, ymin = coords.min(axis=0)
+            xmax, ymax = coords.max(axis=0)
+            pad_x, pad_y = 3.0 * np.sqrt(np.diag(kde.covariance))
+            xx, yy = np.mgrid[
+                xmin - pad_x : xmax + pad_x : 200j,
+                ymin - pad_y : ymax + pad_y : 200j,
+            ]
+            grid = np.vstack([xx.ravel(), yy.ravel()])
+            zz = kde(grid).reshape(xx.shape)
+
+            levels = self._hpd_levels(zz, probs)
+
+            self.logger.debug(
+                f"Bootstrap Contour Density Levels: "
+                f"50% -> {levels[2]}, "
+                f"70% -> {levels[1]}, "
+                f"90% -> {levels[0]}"
+            )
+
+            # Plot density contours (levels are increasing: 90%, 70%, 50%).
+            if np.all(np.diff(levels) > 0):
+                ax.contour(xx, yy, zz, levels=levels, colors=colors)
+            else:
+                self.logger.warning(
+                    f"Degenerate bootstrap KDE contour levels for sample {sample_id}; contours not drawn."
+                )
+
+            # Additional plot for KDE visualization
+            fig_kde, ax_kde = plt.subplots(figsize=(8, 6))
+            c = ax_kde.contourf(xx, yy, zz, levels=30, cmap="viridis")
+            fig_kde.colorbar(c, ax=ax_kde)
+            ax_kde.set_title("KDE Density Plot")
+
+            fn = f"{self.prefix}_kde_contours_{dataset}_{sample_id}.{self.filetype}"
+            outdir = self.outbasepath.parent / "kde_contour_plots"
+            outfile = outdir / fn
+            outdir.mkdir(exist_ok=True, parents=True)
+            fig_kde.savefig(outfile, facecolor="white", bbox_inches="tight")
+            plt.close(fig_kde)
 
         # Create custom legend for the contours
         contour_lines = [mlines.Line2D([0], [0], color=color, lw=2) for color in colors]
 
         grays = [mpatches.Patch(facecolor="darkgrey", edgecolor="k")]
 
+        # Clip the replicate points for display only.
         gdf = gdf.clip(self.basemap)
-
-        if df_known is not None:
-            gdf_known = gdf_known.clip(self.basemap)
 
         # Plot the basemap
         ax = self.basemap.plot(
@@ -1866,8 +1935,6 @@ class PlotGenIE:
         if gray_counties is not None:
             self._highlight_counties(gray_counties, self.basemap, ax)
 
-        labels = ["90% Density", "70% Density", "50% Density"]
-
         # Plot bootstrapped points with reduced opacity
         ax.scatter(
             gdf.geometry.x,
@@ -1880,7 +1947,6 @@ class PlotGenIE:
         ax = self._remove_spines(ax)
 
         # Plot mean point
-        mean_lat, mean_lon = gdf.dissolve().centroid.y, gdf.dissolve().centroid.x
         ax.scatter(
             mean_lon, mean_lat, s=200, color="k", marker="X", label="Predicted Locality"
         )
@@ -1894,8 +1960,8 @@ class PlotGenIE:
                 )
             else:
                 mean_known_lat, mean_known_lon = (
-                    gdf_known.dissolve().centroid.y,
-                    gdf_known.dissolve().centroid.x,
+                    gdf_known.geometry.y.mean(),
+                    gdf_known.geometry.x.mean(),
                 )
 
             ax.scatter(
@@ -1929,7 +1995,7 @@ class PlotGenIE:
         outfile = outdir / fn
         outdir.mkdir(exist_ok=True, parents=True)
         fig.savefig(outfile, facecolor="white", bbox_inches="tight")
-        plt.close()
+        plt.close(fig)
 
     def _highlight_counties(self, gray_counties, gdf, ax=None):
         """Highlight specific counties in the basemap.
@@ -1972,12 +2038,15 @@ class PlotGenIE:
         """
         fig, ax = plt.subplots(1, 1, figsize=(10, 8))
 
-        cluster_sizes = np.ones_like(cluster_labels)
-        n_bins = len(np.unique(cluster_labels))
+        cluster_labels = np.asarray(cluster_labels)
+        sample_origin_list = np.asarray(sample_origin_list)
 
-        mask = sample_origin_list == "synthetic"
-        cluster_sizes[mask] *= 100
-        cluster_sizes[~mask] *= 50
+        if not (len(arr) == len(cluster_labels) == len(sample_origin_list)):
+            msg = f"arr, cluster_labels, and sample_origin_list must have the same length, but got: {len(arr)}, {len(cluster_labels)}, {len(sample_origin_list)}"
+            self.logger.error(msg)
+            raise ValueError(msg)
+
+        n_bins = len(np.unique(cluster_labels))
 
         # Get a geopandas GeoDataFrame.
         gdf = self.processor.to_geopandas(arr)
@@ -2036,7 +2105,9 @@ class PlotGenIE:
         fig.savefig(outfile, facecolor="white", bbox_inches="tight")
         plt.close()
 
-    def plot_data_distributions(self, train, val, test, is_target=False):
+    def plot_data_distributions(
+        self, train, val, test, is_target=False, target_scaler=None
+    ):
         """Plot the distributions of the train, validation, and test datasets.
 
         Args:
@@ -2044,6 +2115,7 @@ class PlotGenIE:
             val (np.ndarray): Validation dataset.
             test (np.ndarray): Test dataset.
             is_target (bool, optional): Whether the data is a target. Defaults to False.
+            target_scaler (object, optional): Fitted target scaler with an ``inverse_transform`` method. If provided and ``is_target`` is True, the targets are inverse-transformed to (longitude, latitude) degrees before plotting. If None, targets must already be in degrees. Defaults to None.
 
         Raises:
             ValueError: If the data is not a target and the shape of the arrays is not the same.
@@ -2061,6 +2133,12 @@ class PlotGenIE:
             ax = axs[0]
             ax2 = axs[1]
 
+            if target_scaler is not None:
+                train, val, test = [
+                    target_scaler.inverse_transform(np.asarray(a))
+                    for a in (train, val, test)
+                ]
+
             train = pd.DataFrame(train, columns=["Lon", "Lat"])
             train["Name"] = "train"
             val = pd.DataFrame(val, columns=["Lon", "Lat"])
@@ -2069,7 +2147,6 @@ class PlotGenIE:
             test["Name"] = "test"
             df = pd.concat([train, val, test])
             df_melt = df.melt(id_vars=["Name"])
-            df_melt["value"] = df_melt["value"].round(decimals=4)
             df_lon = df_melt[df_melt["variable"] == "Lon"]
             df_lat = df_melt[df_melt["variable"] == "Lat"]
 
