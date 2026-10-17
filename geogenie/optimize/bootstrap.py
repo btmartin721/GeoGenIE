@@ -746,24 +746,19 @@ class Bootstrap:
 
         n_uniq_samples = len(df["sampleID"].unique())
 
-        if self.args.samples_to_plot is None:
-            plot_indices = np.arange(n_uniq_samples)
-        elif (
-            isinstance(self.args.samples_to_plot, (str, int))
-            and self.args.samples_to_plot.isdigit()
-        ):
-            plot_indices = np.random.choice(
-                np.arange(n_uniq_samples),
-                size=int(self.args.samples_to_plot),
-                replace=False,
-            )
+        uniq_ids = df["sampleID"].unique()
+        s2p = self.args.samples_to_plot
+        if s2p is None:
+            plot_ids = set(uniq_ids)
+        elif str(s2p).strip().isdigit():
+            # A number: plot that many randomly chosen samples.
+            rng = np.random.default_rng(self.args.seed)
+            size = min(int(str(s2p).strip()), n_uniq_samples)
+            plot_ids = set(rng.choice(uniq_ids, size=size, replace=False))
         else:
-            # Is a list of sampleIDs
-            df = df.copy()
-            s2p = self.args.samples_to_plot
-            sids = s2p if isinstance(s2p, list) else s2p.split(",")
-            sids = [x.strip() for x in sids]
-            plot_indices = np.where(np.isin(df["sampleID"].unique(), sids))[0]
+            # A list of sample IDs.
+            sids = s2p if isinstance(s2p, list) else str(s2p).split(",")
+            plot_ids = {str(x).strip() for x in sids}
 
         gdf = self.plotting.processor.to_geopandas(df)
 
@@ -772,13 +767,14 @@ class Bootstrap:
                 gdf, known_coords=df_known if dataset != "pred" else None
             )
         ):
-            if i in plot_indices:
+            if str(sample_id) in {str(x) for x in plot_ids}:
                 self.plotting.plot_sample_with_density(
                     group,
                     sample_id,
                     df_known=dfk if dataset != "pred" else None,
                     dataset=dataset,
                     gray_counties=self.args.highlight_basemap_counties,
+                    pred_mean=(resd["x_mean"], resd["y_mean"]),
                 )
 
             results.append(resd)

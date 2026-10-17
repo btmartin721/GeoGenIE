@@ -534,6 +534,12 @@ def setup_parser(test_mode=False):
         help="Number of nearest neighbors to use with oversampling method. Default: 5.",
     )
     geo_sampler_group.add_argument(
+        "--max_oversample_factor",
+        type=validate_positive_int,
+        default=5,
+        help="Maximum number of rows (the sample plus synthetic children) generated per training sample when oversampling. Default: 5.",
+    )
+    geo_sampler_group.add_argument(
         "--n_bins",
         type=validate_positive_int,
         default=8,
@@ -583,7 +589,7 @@ def setup_parser(test_mode=False):
     geo_sampler_group.add_argument(
         "--normalize_sample_weights",
         action="store_true",
-        help="Whether to normalize density-based sample weights from 0 to 1. Default: False (no normalization).",
+        help="Whether to rescale density-based sample weights to the range [1, 10]. Without it, weights are rescaled to mean 1. Default: False.",
     )
 
     outlier_detection_group = parser.add_argument_group(
@@ -615,6 +621,13 @@ def setup_parser(test_mode=False):
         type=validate_positive_float,
         default=0.05,
         help="Adjust the significance level (alpha) for P-values to determine significant outliers. Outliers <= 'significance_level' are removed. Must be in the range (0, 1). Default: 0.05.",
+    )
+    outlier_detection_group.add_argument(
+        "--outlier_p_adjust",
+        type=str,
+        choices=["fdr_bh", "none"],
+        default="fdr_bh",
+        help="Multiple-testing adjustment of outlier P-values: 'fdr_bh' (Benjamini-Hochberg) or 'none'. Default: 'fdr_bh'.",
     )
     outlier_detection_group.add_argument(
         "--maxk",

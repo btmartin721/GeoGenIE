@@ -190,7 +190,7 @@ class Optimize:
         elif self.args.criterion == "rmse":
             criterion = weighted_rmse_loss
         elif self.args.criterion == "huber":
-            criterion = WeightedHuberLoss(delta=0.5, smoothing_factor=0.1)
+            criterion = WeightedHuberLoss(delta=0.5)
         else:
             msg = f"Invalid '--criterion' argument provided. Expected one of 'drms', 'rmse', or 'huber', but got: {self.args.criterion}"
             self.logger.error(msg)

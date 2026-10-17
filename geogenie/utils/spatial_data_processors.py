@@ -66,22 +66,26 @@ class SpatialDataProcessor:
         fn = url.split("/")[-1]
         dest = self.output_dir / "shapefile" / fn
 
-        try:
-            # Log the download attempt
-            if self.logger is not None:
-                self.logger.info(f"Attempting to download file from {url}")
-            response = requests.get(url, stream=True, verify=False)
-            response.raise_for_status()
-            with open(dest, "wb") as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    f.write(chunk)
-            if self.logger is not None:
-                self.logger.info(f"Successfully downloaded file to {dest}")
-        except requests.RequestException as e:
-            msg = f"Error downloading shapefile from {url}: {e}"
-            if self.logger is not None:
-                self.logger.error(msg)
-            raise e
+        if Path(url).is_file():
+            # Local file: read it in place instead of downloading.
+            dest = Path(url)
+        else:
+            try:
+                # Log the download attempt
+                if self.logger is not None:
+                    self.logger.info(f"Attempting to download file from {url}")
+                response = requests.get(url, stream=True, verify=False)
+                response.raise_for_status()
+                with open(dest, "wb") as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                if self.logger is not None:
+                    self.logger.info(f"Successfully downloaded file to {dest}")
+            except requests.RequestException as e:
+                msg = f"Error downloading shapefile from {url}: {e}"
+                if self.logger is not None:
+                    self.logger.error(msg)
+                raise e
 
         if not Path(dest).is_file():
             msg = f"Could not find shapefile in provided path: {dest}"

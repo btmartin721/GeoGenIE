@@ -976,7 +976,7 @@ class DataStructure:
                     f"{self.X.shape[0]} samples remaining after removing {len(all_outliers)} outliers and {len(self.X_pred)} samples with unknown localities."
                 )
 
-            self.plotting.plot_outliers(self.mask, self.locs)
+            self.plotting.plot_outliers(self.mask, self.locs, known_mask=self.pred_mask)
 
         # placeholder=True makes it not do transform.
         self.split_train_test(args.train_split, args.val_split, args.seed, args)
@@ -1078,6 +1078,7 @@ class DataStructure:
             self.data["y_val"],
             self.data["y_test"],
             is_target=True,
+            target_scaler=self.norm,
         )
 
         if args.use_gradient_boosting:
@@ -1245,10 +1246,12 @@ class DataStructure:
                 verbose=args.verbose,
             )
 
+            p_adjust = getattr(args, "outlier_p_adjust", "fdr_bh")
             outliers = outlier_detector.composite_outlier_detection(
                 sig_level=args.significance_level,
                 maxk=args.maxk,
                 min_nn_dist=args.min_nn_dist,
+                p_adjust=None if p_adjust == "none" else p_adjust,
             )
 
             all_outliers = np.concatenate((outliers["geographic"], outliers["genetic"]))
@@ -1681,6 +1684,9 @@ class DataStructure:
                 verbose=args.verbose,
                 logger=self.logger,
                 dtype=self.dtype,
+                seed=args.seed,
+                output_dir=args.output_dir,
+                prefix=args.prefix,
             )
 
             if args.verbose >= 1:
