@@ -86,20 +86,6 @@ class Bootstrap:
             remove_splines=self.args.remove_splines,
         )
 
-        self.thread_local = threading.local()
-
-    def _get_thread_local_rng(self, replicate_seed=None):
-        """Get a thread-local random generator with a unique seed.
-
-        Args:
-            replicate_seed (int, optional): Seed for the random number generator. Defaults to None.
-
-        Returns:
-            np.random.Generator: Random number generator with a unique seed.
-        """
-        if not hasattr(self.thread_local, "rng"):
-            self.thread_local.rng = np.random.default_rng(replicate_seed)
-        return self.thread_local.rng
 
     def _resample_loaders(
         self, train_loader, val_loader, test_loader, X_pred, replicate_seed=None
@@ -118,21 +104,32 @@ class Bootstrap:
         Returns:
             Tuple containing the original train loader and resampled validation, test, and unknown pred loaders.
         """
-        train_loader, resampled_indices = self._resample_boot(
-            train_loader, None, is_val=False
+        # One generator per replicate, so resampling is reproducible for a given seed.
+        rng = np.random.default_rng(replicate_seed)
+        n_features = train_loader.dataset.features.shape[1]
+        method = getattr(self.args, "bootstrap_method", "samples")
+
+        if method == "loci":
+            # Resample loci (columns) with replacement; applied to every dataset.
+            resampled_indices = rng.choice(n_features, size=n_features, replace=True)
+        else:
+            resampled_indices = np.arange(n_features)
+
+        row_indices = None
+        if method == "samples":
+            # Resample training samples (rows) with replacement; all loci are kept.
+            n_train = train_loader.dataset.features.shape[0]
+            row_indices = rng.choice(n_train, size=n_train, replace=True)
+
+        train_loader, _ = self._resample_boot(
+            train_loader, resampled_indices, is_val=False, row_indices=row_indices
         )
-        val_loader, _ = self._resample_boot(
-            val_loader, resampled_indices, is_val=True, replicate_seed=replicate_seed
-        )
+        val_loader, _ = self._resample_boot(val_loader, resampled_indices, is_val=True)
         test_loader, __ = self._resample_boot(
-            test_loader, resampled_indices, is_val=True, replicate_seed=replicate_seed
+            test_loader, resampled_indices, is_val=True
         )
         pred_loader, ___ = self._resample_boot(
-            X_pred,
-            resampled_indices,
-            is_val=False,
-            is_pred=True,
-            replicate_seed=replicate_seed,
+            X_pred, resampled_indices, is_val=False, is_pred=True
         )
 
         return (train_loader, val_loader, test_loader, pred_loader)
@@ -140,10 +137,10 @@ class Bootstrap:
     def _resample_boot(
         self,
         loader,
-        sampled_feature_indices=None,
+        sampled_feature_indices,
         is_val=False,
         is_pred=False,
-        replicate_seed=None,
+        row_indices=None,
     ):
         """Resamples the data loader with replacement for bootstrapping per columns (loci).
 
@@ -151,10 +148,10 @@ class Bootstrap:
 
         Args:
             loader: DataLoader to resample.
-            sampled_feature_indices: Indices of the features to sample.
+            sampled_feature_indices: Indices of the features (loci) to use.
             is_val: Whether the data loader is for the validation set.
             is_pred: Whether the data loader is for the prediction set.
-            replicate_seed: Seed for the random number generator.
+            row_indices: Indices of the samples (rows) to use; None keeps all rows.
 
         Returns:
             DataLoader: Resampled DataLoader
@@ -174,14 +171,6 @@ class Bootstrap:
             msg = f"Invalid type passed to _resample_loaders(): {type(loader)}"
             self.logger.error(msg)
             raise TypeError(msg)
-
-        # Use thread-local RNG for sampling with unique seed
-        rng = self._get_thread_local_rng(replicate_seed)
-
-        if sampled_feature_indices is None and not is_val and not is_pred:
-            sample_size = int(features.shape[1])
-            idx = np.arange(features.shape[1])
-            sampled_feature_indices = rng.choice(idx, size=sample_size, replace=True)
 
         if sampled_feature_indices is None:
             msg = "sampled_feature_indices was not set correctly."
@@ -204,6 +193,11 @@ class Bootstrap:
             kwargs["dtype"] = self.dtype
             if is_val:
                 kwargs["sample_ids"] = dataset.sample_ids
+
+        if row_indices is not None:
+            features = features[row_indices]
+            kwargs["labels"] = kwargs["labels"][row_indices]
+            kwargs["sample_weights"] = kwargs["sample_weights"][row_indices]
 
         dataset = CustomDataset(features, **kwargs)
         kwargs = {"batch_size": self.args.batch_size, "shuffle": shuffle}

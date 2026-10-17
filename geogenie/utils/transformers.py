@@ -204,15 +204,27 @@ class MinMaxScalerGeo(BaseEstimator, TransformerMixin):
         self.logger = logging.getLogger(__name__)
 
     def fit(self, X, y=None):
-        """Fit does nothing as parameters are not data-dependent.
+        """Set the longitude and latitude ranges from the data.
 
         Args:
-            X (array-like): The data to fit. Ignored. This parameter exists only for compatibility with the sklearn API.
+            X (array-like): Coordinates to fit, shape (n_samples, 2), columns (longitude, latitude).
             y (None, optional): Ignored. This parameter exists only for compatibility with the sklearn API.
 
         Returns:
             self: Returns the instance itself.
         """
+        X = np.asarray(X, dtype=float)
+        lon_min, lon_max = np.nanmin(X[:, 0]), np.nanmax(X[:, 0])
+        lat_min, lat_max = np.nanmin(X[:, 1]), np.nanmax(X[:, 1])
+
+        # Avoid a zero-width range if all samples share a coordinate.
+        if lon_max - lon_min == 0:
+            lon_min, lon_max = lon_min - 0.5, lon_max + 0.5
+        if lat_max - lat_min == 0:
+            lat_min, lat_max = lat_min - 0.5, lat_max + 0.5
+
+        self.lon_range = (lon_min, lon_max)
+        self.lat_range = (lat_min, lat_max)
         return self
 
     def transform(self, X):

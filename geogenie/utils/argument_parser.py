@@ -360,6 +360,13 @@ def setup_parser(test_mode=False):
         help="`--nboots`: Number of bootstrap replicates. Has no effect if `--do_bootstrap` is disabled. Default: 100.",
     )
     training_group.add_argument(
+        "--bootstrap_method",
+        type=str,
+        choices=["samples", "loci", "none"],
+        default="samples",
+        help="`--bootstrap_method`: What each bootstrap replicate resamples. 'samples': training samples with replacement, all loci kept. 'loci': loci with replacement. 'none': no resampling; replicates differ only in initialization and training order. Default: 'samples'.",
+    )
+    training_group.add_argument(
         "--do_gridsearch",
         action="store_true",
         default=False,

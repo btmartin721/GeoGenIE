@@ -72,11 +72,11 @@ def weighted_rmse_loss(y_true, y_pred, sample_weight=None):
     Returns:
         float: Weighted RMSE loss.
     """
-    rmse = torch.sqrt(torch.sum((y_pred - y_true) ** 2, axis=1)).mean()
+    dist = torch.sqrt(torch.sum((y_pred - y_true) ** 2, axis=1))
     if sample_weight is not None:
-        rmse_scaled = rmse * sample_weight
-        return rmse_scaled.mean()
-    return rmse
+        # Weight each sample's error, then take the weighted mean.
+        return (dist * sample_weight).sum() / sample_weight.sum()
+    return dist.mean()
 
 
 class WeightedHuberLoss(nn.Module):
