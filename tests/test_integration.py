@@ -81,3 +81,28 @@ def test_samples_to_plot_selection(s2p, expected_n, tmp_path):
         assert sorted(plotted) == ["s3", "s5"]
     if isinstance(s2p, list):
         assert plotted == ["s1"]
+
+
+def test_optuna_plot_failure_does_not_stop_run(tmp_path):
+    import logging
+
+    import optuna
+
+    from geogenie.optimize.optuna_opt import Optimize
+
+    study = optuna.create_study()
+    study.optimize(lambda t: t.suggest_float("lr", 1e-4, 1e-1), n_trials=2)
+    o = Optimize.__new__(Optimize)
+    o.verbose = 0
+    o.logger = logging.getLogger("test")
+    o.output_dir = str(tmp_path)
+    o.prefix = "t"
+    (tmp_path / "optimize").mkdir()
+
+    def fail(study):
+        raise ValueError("no kaleido")
+
+    o.plotting = types.SimpleNamespace(make_optuna_plots=fail)
+    o.write_optuna_study_details = lambda study: None
+    o.process_optuna_results(study, study.best_trial)
+    assert (tmp_path / "optimize" / "t_best_params.json").exists()

@@ -518,8 +518,13 @@ class Optimize:
         with open(jfn, "w") as f:
             json.dump(best_params, f, indent=2)
 
-        # Generate and save plots and output files.
-        self.plotting.make_optuna_plots(study)
+        # Generate and save plots and output files. Plot export depends on
+        # optional packages (plotly/kaleido); a failure there is logged and the
+        # run continues with the parameters already saved.
+        try:
+            self.plotting.make_optuna_plots(study)
+        except Exception as e:
+            self.logger.warning(f"Could not save Optuna plots: {e}")
         self.write_optuna_study_details(study)
 
         enable_default_handler()
